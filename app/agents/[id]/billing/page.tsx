@@ -1,5 +1,9 @@
 import { CreditCard, Download } from "lucide-react";
+import SourceBadge from "@/components/SourceBadge";
 import { invoices, workspace } from "@/lib/data";
+import { getUsageThisMonth } from "@/lib/twilio";
+
+export const revalidate = 60;
 
 const statusPill: Record<string, string> = {
   paid: "pill-emerald",
@@ -7,13 +11,18 @@ const statusPill: Record<string, string> = {
   overdue: "pill-rose",
 };
 
-export default function BillingPage() {
-  const pct = Math.round((workspace.minutesUsed / workspace.minutesLimit) * 100);
+export default async function BillingPage() {
+  const usage = await getUsageThisMonth();
+  const minutesUsed = Math.round(usage.totalMinutes);
+  const pct = Math.round((minutesUsed / workspace.minutesLimit) * 100);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Billing</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Billing</h1>
+          <SourceBadge source={usage.source} />
+        </div>
         <p className="text-sm text-slate-400 mt-1">
           {workspace.plan} plan · billed monthly
         </p>
@@ -25,21 +34,28 @@ export default function BillingPage() {
             <div>
               <div className="stat-label">Current period</div>
               <div className="text-xl font-semibold tracking-tight text-white mt-0.5">
-                {workspace.minutesUsed.toLocaleString()} minutes
+                {minutesUsed.toLocaleString()} minutes
               </div>
               <div className="text-xs text-slate-500 mt-1">
                 of {workspace.minutesLimit.toLocaleString()} included this month
+                {usage.totalCalls > 0 && ` · ${usage.totalCalls} calls`}
               </div>
             </div>
             <div className="pill-accent">{pct}% used</div>
           </div>
           <div className="h-2 rounded-full bg-white/5 overflow-hidden">
-            <div className="h-full rounded-full bg-accent-gradient" style={{ width: `${pct}%` }} />
+            <div
+              className="h-full rounded-full bg-accent-gradient"
+              style={{ width: `${Math.min(100, pct)}%` }}
+            />
           </div>
           <div className="mt-5 pt-5 border-t border-white/5 grid grid-cols-3 gap-4">
             <Stat label="Rate" value="$0.10 / min" />
-            <Stat label="Overage" value="$0.12 / min" />
-            <Stat label="Renews" value="Jun 26, 2026" />
+            <Stat
+              label="Twilio cost"
+              value={`$${usage.totalPrice.toFixed(2)}`}
+            />
+            <Stat label="Renews" value="Next month" />
           </div>
         </div>
 
@@ -57,6 +73,15 @@ export default function BillingPage() {
           <button className="btn-ghost w-full justify-center mt-3 text-xs">Update card</button>
         </div>
       </div>
+
+      {usage.error && (
+        <div className="card p-4 border border-amber-500/20 bg-amber-500/[0.04]">
+          <div className="text-sm text-amber-300 font-medium">
+            Twilio usage unavailable — showing demo numbers
+          </div>
+          <div className="text-xs text-amber-200/70 mt-1 font-mono break-all">{usage.error}</div>
+        </div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between p-5 pb-3">

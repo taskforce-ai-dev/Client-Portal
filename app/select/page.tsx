@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, ChevronDown, Hexagon, Phone, Plus, Search } from "lucide-react";
+import { Bell, ChevronDown, Hexagon, Phone, Search } from "lucide-react";
 import { agents, workspace } from "@/lib/data";
 
 const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -52,18 +52,13 @@ export default function SelectAgentPage() {
                 Select an agent
               </h1>
               <p className="text-sm text-slate-400 mt-1.5">
-                {agents.length} {agents.length === 1 ? "agent" : "agents"} in{" "}
+                {agents.length} {agents.length === 1 ? "agent" : "agents"} provisioned for{" "}
                 <span className="text-slate-200 font-medium">{workspace.name}</span>
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="relative w-64">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input placeholder="Search agents…" className="input-dark" />
-              </div>
-              <button className="btn-primary">
-                <Plus className="w-4 h-4" /> New Agent
-              </button>
+            <div className="relative w-64">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input placeholder="Search agents…" className="input-dark" />
             </div>
           </div>
 
@@ -116,18 +111,24 @@ export default function SelectAgentPage() {
                 </div>
               </Link>
             ))}
+          </div>
 
-            <button className="card p-5 border-dashed border border-white/10 bg-transparent ring-0 hover:bg-white/[0.02] transition grid place-items-center text-center min-h-[260px]">
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-white/[0.04] ring-1 ring-white/10 grid place-items-center mx-auto mb-3">
-                  <Plus className="w-5 h-5 text-accent-300" />
-                </div>
-                <div className="font-medium text-slate-200">Add another agent</div>
-                <div className="text-xs text-slate-500 mt-1">
-                  Sales · Support · Booking · Cold Call
-                </div>
+          <div className="mt-10 card p-5 flex items-center gap-4 bg-gradient-to-br from-accent-500/[0.06] to-transparent border border-accent-500/15">
+            <div className="w-10 h-10 rounded-xl bg-accent-500/15 text-accent-300 grid place-items-center shrink-0">
+              <Phone className="w-4 h-4" />
+            </div>
+            <div className="flex-1">
+              <div className="font-medium text-white">Need another agent?</div>
+              <div className="text-xs text-slate-400 mt-0.5">
+                New agents are provisioned by the TaskforceAI team. Reach out and we&apos;ll set one up for you.
               </div>
-            </button>
+            </div>
+            <a
+              href="mailto:hello@taskforceai.tech?subject=Request%20a%20new%20agent"
+              className="btn-ghost text-xs"
+            >
+              Contact us
+            </a>
           </div>
         </div>
       </main>

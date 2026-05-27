@@ -4,13 +4,39 @@ import KpiCard from "@/components/KpiCard";
 import StatusBadge from "@/components/StatusBadge";
 import CallsChart from "@/components/CallsChart";
 import OutcomeChart from "@/components/OutcomeChart";
-import { Phone, Plus } from "lucide-react";
-import { agents, calls } from "@/lib/data";
+import SourceBadge from "@/components/SourceBadge";
+import { Phone } from "lucide-react";
+import { agents, workspace } from "@/lib/data";
+import {
+  bucketCallsByHour,
+  bucketOutcomes,
+  callsToday,
+  getCalls,
+  getUsageThisMonth,
+} from "@/lib/twilio";
 
-export default function AgentOverviewPage({ params }: { params: { id: string } }) {
+export const revalidate = 30;
+
+export default async function AgentOverviewPage({ params }: { params: { id: string } }) {
   const agent = agents.find((a) => a.id === params.id);
   if (!agent) notFound();
 
+  const [{ calls, source }, usage] = await Promise.all([
+    getCalls(100),
+    getUsageThisMonth(),
+  ]);
+
+  const today = callsToday(calls);
+  const booked = today.filter((c) => c.outcome === "Booked").length;
+  const convRate = today.length ? Math.round((booked / today.length) * 1000) / 10 : 0;
+  const avgDurSec = today.length
+    ? Math.round(today.reduce((s, c) => s + c.durationSec, 0) / today.length)
+    : 0;
+  const avgDur = `${Math.floor(avgDurSec / 60)}:${String(avgDurSec % 60).padStart(2, "0")}`;
+  const minutesPct = Math.round((usage.totalMinutes / workspace.minutesLimit) * 100);
+
+  const hourly = bucketCallsByHour(today.length ? today : calls);
+  const outcomes = bucketOutcomes(calls);
   const recentCalls = calls.slice(0, 5);
 
   return (
@@ -23,9 +49,10 @@ export default function AgentOverviewPage({ params }: { params: { id: string } }
             {agent.initial}
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-semibold tracking-tight text-white">{agent.name}</h1>
               <StatusBadge status={agent.status} />
+              <SourceBadge source={source} />
             </div>
             <p className="text-sm text-slate-400 mt-1">
               {agent.role} · {agent.channels.join(" · ")}
@@ -36,24 +63,26 @@ export default function AgentOverviewPage({ params }: { params: { id: string } }
           <button className="btn-ghost">
             <Phone className="w-4 h-4" /> Test call
           </button>
-          <button className="btn-primary">
-            <Plus className="w-4 h-4" /> Outbound campaign
-          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Calls today" value={String(agent.callsToday)} delta={12} hint="vs yesterday" />
-        <KpiCard label="Conv. rate" value={`${agent.convRate}%`} delta={4.2} hint="Booked / total" />
-        <KpiCard label="Avg duration" value={agent.avgDuration} delta={-3.1} hint="Trending shorter" />
-        <KpiCard label="Minutes this month" value="1,820" delta={8} hint="36% of plan" />
+        <KpiCard label="Calls today" value={String(today.length)} delta={0} hint="From Twilio" />
+        <KpiCard label="Conv. rate" value={`${convRate}%`} delta={0} hint={`${booked} booked today`} />
+        <KpiCard label="Avg duration" value={avgDur || "0:00"} delta={0} hint="Today" />
+        <KpiCard
+          label="Minutes this month"
+          value={Math.round(usage.totalMinutes).toLocaleString()}
+          delta={0}
+          hint={`${minutesPct}% of ${workspace.minutesLimit.toLocaleString()} plan`}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <CallsChart />
+          <CallsChart data={hourly} total={today.length} title="Calls today" />
         </div>
-        <OutcomeChart />
+        <OutcomeChart data={outcomes} />
       </div>
 
       <div className="card p-5">
@@ -66,32 +95,36 @@ export default function AgentOverviewPage({ params }: { params: { id: string } }
             View all →
           </Link>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left stat-label border-b border-white/5">
-                <th className="py-2 pr-3 font-medium">Caller</th>
-                <th className="py-2 pr-3 font-medium">Number</th>
-                <th className="py-2 pr-3 font-medium">Started</th>
-                <th className="py-2 pr-3 font-medium">Duration</th>
-                <th className="py-2 pr-3 font-medium">Outcome</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentCalls.map((c) => (
-                <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                  <td className="py-3 pr-3 font-medium text-slate-100">{c.caller}</td>
-                  <td className="py-3 pr-3 text-slate-400 font-mono text-xs">{c.number}</td>
-                  <td className="py-3 pr-3 text-slate-500">{c.startedAt}</td>
-                  <td className="py-3 pr-3 text-slate-300">{c.duration}</td>
-                  <td className="py-3 pr-3">
-                    <OutcomePill outcome={c.outcome} />
-                  </td>
+        {recentCalls.length === 0 ? (
+          <div className="py-10 text-center text-sm text-slate-500">No calls yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left stat-label border-b border-white/5">
+                  <th className="py-2 pr-3 font-medium">Caller</th>
+                  <th className="py-2 pr-3 font-medium">Number</th>
+                  <th className="py-2 pr-3 font-medium">Started</th>
+                  <th className="py-2 pr-3 font-medium">Duration</th>
+                  <th className="py-2 pr-3 font-medium">Outcome</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {recentCalls.map((c) => (
+                  <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                    <td className="py-3 pr-3 font-medium text-slate-100">{c.caller}</td>
+                    <td className="py-3 pr-3 text-slate-400 font-mono text-xs">{c.number}</td>
+                    <td className="py-3 pr-3 text-slate-500">{c.startedAt}</td>
+                    <td className="py-3 pr-3 text-slate-300">{c.duration}</td>
+                    <td className="py-3 pr-3">
+                      <OutcomePill outcome={c.outcome} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
