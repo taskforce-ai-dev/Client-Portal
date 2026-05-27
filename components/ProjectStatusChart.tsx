@@ -12,26 +12,33 @@ import {
 } from "recharts";
 import { projectsByStatus } from "@/lib/data";
 
-const colors = ["#10b981", "#f59e0b", "#f43f5e", "#94a3b8"];
+const colors = ["#34D399", "#FBBF24", "#FB7185", "#94A3B8"];
 
 export default function ProjectStatusChart() {
   return (
     <div className="card p-5">
       <div className="mb-4">
-        <div className="text-sm text-slate-500">Projects by status</div>
-        <div className="text-xl font-semibold tracking-tight">45 total</div>
+        <div className="stat-label">Projects by status</div>
+        <div className="text-xl font-semibold tracking-tight text-white">45 total</div>
       </div>
       <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={projectsByStatus} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-            <XAxis dataKey="status" tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="status" tick={{ fill: "#64748B", fontSize: 12 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "#64748B", fontSize: 12 }} axisLine={false} tickLine={false} />
             <Tooltip
-              contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 12 }}
-              cursor={{ fill: "#f1f5f9" }}
+              contentStyle={{
+                background: "#0A0F1C",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.08)",
+                fontSize: 12,
+                color: "#E2E8F0",
+              }}
+              labelStyle={{ color: "#94A3B8" }}
+              cursor={{ fill: "rgba(255,255,255,0.03)" }}
             />
-            <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+            <Bar dataKey="count" radius={[8, 8, 0, 0]}>
               {projectsByStatus.map((_, i) => (
                 <Cell key={i} fill={colors[i % colors.length]} />
               ))}

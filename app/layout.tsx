@@ -7,8 +7,12 @@ import Topbar from "@/components/Topbar";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Client Portal",
+  title: "Portal — TaskforceAI",
   description: "TaskforceAI Client Portal Dashboard",
+};
+
+export const viewport = {
+  themeColor: "#070B14",
 };
 
 export default function RootLayout({

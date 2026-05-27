@@ -2,35 +2,80 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --bg: 248 250 252;
-  --fg: 15 23 42;
-}
-
 html, body {
   height: 100%;
 }
 
 body {
-  background: rgb(var(--bg));
-  color: rgb(var(--fg));
+  background-color: #070B14;
+  background-image:
+    radial-gradient(1200px 600px at 85% 95%, rgba(16,185,129,0.10), transparent 60%),
+    radial-gradient(800px 500px at 10% 0%, rgba(34,211,238,0.06), transparent 60%);
+  background-attachment: fixed;
+  color: #E2E8F0;
   -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.25);
+  color: #fff;
 }
 
 @layer components {
   .card {
-    @apply bg-white rounded-xl border border-slate-200 shadow-sm;
+    @apply bg-ink-900/70 backdrop-blur-sm rounded-2xl border border-white/5 ring-1 ring-inset ring-white/[0.02];
+    box-shadow: 0 1px 0 0 rgba(255,255,255,0.02) inset, 0 24px 60px -30px rgba(0,0,0,0.6);
   }
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ring-1;
+  }
+  .pill-accent {
+    @apply pill bg-accent-500/10 text-accent-300 ring-accent-500/30;
+  }
+  .pill-violet {
+    @apply pill bg-violet-500/10 text-violet-300 ring-violet-500/30;
+  }
+  .pill-emerald {
+    @apply pill bg-emerald-500/10 text-emerald-300 ring-emerald-500/30;
+  }
+  .pill-amber {
+    @apply pill bg-amber-500/10 text-amber-300 ring-amber-500/30;
+  }
+  .pill-rose {
+    @apply pill bg-rose-500/10 text-rose-300 ring-rose-500/30;
+  }
+  .pill-slate {
+    @apply pill bg-white/[0.04] text-slate-300 ring-white/10;
   }
   .btn {
-    @apply inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors;
+    @apply inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-colors;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply btn text-ink-950 font-semibold;
+    background-image: linear-gradient(135deg, #67E8F9 0%, #22D3EE 60%, #38BDF8 100%);
+    box-shadow: 0 0 0 1px rgba(34,211,238,0.4), 0 10px 30px -10px rgba(34,211,238,0.55);
   }
+  .btn-primary:hover { filter: brightness(1.05); }
   .btn-ghost {
-    @apply btn text-slate-700 hover:bg-slate-100;
+    @apply btn bg-white/[0.04] text-slate-200 hover:bg-white/[0.08] ring-1 ring-white/10;
   }
+  .stat-label {
+    @apply text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium;
+  }
+  .input-dark {
+    @apply w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-white/[0.03] border border-white/5 focus:border-accent-400/40 focus:ring-2 focus:ring-accent-400/20 outline-none text-slate-200 placeholder:text-slate-500;
+  }
+  .switch {
+    @apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors;
+  }
+  .switch-on { background-image: linear-gradient(135deg, #22D3EE, #38BDF8); }
+  .switch-off { @apply bg-white/10; }
+  .switch-knob {
+    @apply inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform;
+  }
+}
+
+@layer utilities {
+  .text-faint { color: #64748B; }
+  .border-faint { border-color: rgba(255,255,255,0.06); }
 }
