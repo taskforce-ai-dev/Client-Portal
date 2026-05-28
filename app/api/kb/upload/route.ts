@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { convertPdf, isKbServiceConfigured } from "@/lib/kb";
+import { importPdf, isPdfConversionConfigured } from "@/lib/kb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const agent = req.nextUrl.searchParams.get("agent") || "default";
-
-  if (!isKbServiceConfigured()) {
+  if (!isPdfConversionConfigured()) {
     return NextResponse.json(
-      { error: "KB service not connected. Set KB_API_URL to enable PDF conversion." },
+      { error: "PDF conversion service not configured. Set KB_API_URL." },
       { status: 503 }
     );
   }
@@ -32,7 +30,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await convertPdf(agent, file);
+    const result = await importPdf(file);
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json(

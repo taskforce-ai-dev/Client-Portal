@@ -2,132 +2,170 @@ import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 
+// ---------------------------------------------------------------------------
+// GitHub backend — the Tree House agent's knowledge base lives in its repo at
+// knowledge_docs/hotel_info.txt. We read it on load and commit changes back to
+// that one file. Nothing else in the repo is touched.
+// ---------------------------------------------------------------------------
+const GH_TOKEN = process.env.KB_GITHUB_TOKEN;
+const GH_REPO = process.env.KB_GITHUB_REPO; // e.g. "ChrysFernando/Kavya-Agent-Treehouse"
+const GH_PATH = process.env.KB_GITHUB_PATH || "knowledge_docs/hotel_info.txt";
+const GH_BRANCH = process.env.KB_GITHUB_BRANCH || "main";
+
+// PDF conversion service (Python). Optional — only needed for PDF import.
 const KB_API_URL = process.env.KB_API_URL;
 const KB_API_KEY = process.env.KB_API_KEY;
 
-export function isKbServiceConfigured() {
+export function isGithubConfigured() {
+  return !!(GH_TOKEN && GH_REPO);
+}
+
+export function isPdfConversionConfigured() {
   return !!KB_API_URL;
 }
 
-function authHeaders(): Record<string, string> {
-  return KB_API_KEY ? { Authorization: `Bearer ${KB_API_KEY}` } : {};
-}
-
-function safeId(agentId: string) {
-  return agentId.replace(/[^a-zA-Z0-9_-]/g, "") || "default";
-}
-
-const localDir = path.join(os.tmpdir(), "kb-store");
-function localFile(agentId: string) {
-  return path.join(localDir, `${safeId(agentId)}.md`);
-}
-
-async function readLocal(agentId: string): Promise<string> {
-  try {
-    return await fs.readFile(localFile(agentId), "utf8");
-  } catch {
-    return DEFAULT_KB;
-  }
-}
-
-async function writeLocal(agentId: string, content: string): Promise<void> {
-  await fs.mkdir(localDir, { recursive: true });
-  await fs.writeFile(localFile(agentId), content, "utf8");
-}
+export type KbSource = "github" | "local";
 
 export type KbResult = {
   content: string;
   configured: boolean;
-  source: "service" | "local";
+  source: KbSource;
+  target?: string;
 };
 
-export async function getKbContent(agentId: string): Promise<KbResult> {
-  if (KB_API_URL) {
-    const res = await fetch(`${KB_API_URL}/kb/${safeId(agentId)}`, {
-      headers: { ...authHeaders() },
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      throw new Error(`KB service ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    }
-    const data = await res.json();
-    return { content: data.content ?? "", configured: true, source: "service" };
-  }
-  return { content: await readLocal(agentId), configured: false, source: "local" };
+// ---------------------------------------------------------------------------
+// GitHub Contents API helpers
+// ---------------------------------------------------------------------------
+function ghHeaders(): Record<string, string> {
+  return {
+    Authorization: `Bearer ${GH_TOKEN}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "taskforceai-client-portal",
+  };
 }
 
-export async function saveKbContent(agentId: string, content: string): Promise<KbResult> {
-  if (KB_API_URL) {
-    const res = await fetch(`${KB_API_URL}/kb/${safeId(agentId)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ content }),
-    });
-    if (!res.ok) {
-      throw new Error(`KB service ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    }
-    const data = await res.json();
-    return { content: data.content ?? content, configured: true, source: "service" };
+function ghContentsUrl() {
+  const encodedPath = GH_PATH!.split("/").map(encodeURIComponent).join("/");
+  return `https://api.github.com/repos/${GH_REPO}/contents/${encodedPath}`;
+}
+
+function ghTarget() {
+  return `${GH_REPO}:${GH_PATH}@${GH_BRANCH}`;
+}
+
+async function ghGetFile(): Promise<{ content: string; sha: string | null }> {
+  const res = await fetch(`${ghContentsUrl()}?ref=${encodeURIComponent(GH_BRANCH)}`, {
+    headers: ghHeaders(),
+    cache: "no-store",
+  });
+  if (res.status === 404) {
+    return { content: "", sha: null };
   }
-  await writeLocal(agentId, content);
+  if (!res.ok) {
+    throw new Error(`GitHub ${res.status}: ${(await res.text()).slice(0, 240)}`);
+  }
+  const data = await res.json();
+  const content = Buffer.from(data.content ?? "", "base64").toString("utf8");
+  return { content, sha: data.sha ?? null };
+}
+
+async function ghPutFile(content: string, message: string): Promise<void> {
+  // Re-read the latest SHA right before committing to avoid stale-write 409s.
+  const { sha } = await ghGetFile();
+  const res = await fetch(ghContentsUrl(), {
+    method: "PUT",
+    headers: { ...ghHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      content: Buffer.from(content, "utf8").toString("base64"),
+      branch: GH_BRANCH,
+      ...(sha ? { sha } : {}),
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`GitHub ${res.status}: ${(await res.text()).slice(0, 240)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Local fallback (dev only) — used when GitHub isn't configured.
+// ---------------------------------------------------------------------------
+const localDir = path.join(os.tmpdir(), "kb-store");
+function localFile() {
+  return path.join(localDir, "kb.md");
+}
+async function readLocal(): Promise<string> {
+  try {
+    return await fs.readFile(localFile(), "utf8");
+  } catch {
+    return DEFAULT_KB;
+  }
+}
+async function writeLocal(content: string): Promise<void> {
+  await fs.mkdir(localDir, { recursive: true });
+  await fs.writeFile(localFile(), content, "utf8");
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+export async function getKbContent(): Promise<KbResult> {
+  if (isGithubConfigured()) {
+    const { content } = await ghGetFile();
+    return { content, configured: true, source: "github", target: ghTarget() };
+  }
+  return { content: await readLocal(), configured: false, source: "local" };
+}
+
+export async function saveKbContent(content: string): Promise<KbResult> {
+  if (isGithubConfigured()) {
+    await ghPutFile(content, "chore(kb): update knowledge base from client portal");
+    return { content, configured: true, source: "github", target: ghTarget() };
+  }
+  await writeLocal(content);
   return { content, configured: false, source: "local" };
 }
 
-export type ConvertResult = {
-  filename: string;
-  markdown: string;
-  content: string;
-};
+export type ConvertResult = { filename: string; markdown: string };
 
-export async function convertPdf(agentId: string, file: File): Promise<ConvertResult> {
-  if (!KB_API_URL) {
-    throw new Error("KB service not connected — set KB_API_URL to enable PDF conversion.");
-  }
+async function convertPdf(file: File): Promise<ConvertResult> {
   const out = new FormData();
   out.append("file", file, file.name || "upload.pdf");
-  const res = await fetch(`${KB_API_URL}/kb/${safeId(agentId)}/upload`, {
+  const res = await fetch(`${KB_API_URL}/convert`, {
     method: "POST",
-    headers: { ...authHeaders() },
+    headers: KB_API_KEY ? { Authorization: `Bearer ${KB_API_KEY}` } : {},
     body: out,
   });
   if (!res.ok) {
-    throw new Error(`KB service ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    throw new Error(`Converter ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
   return res.json();
 }
 
-export const DEFAULT_KB = `# Tree House Chalets — Knowledge Base
+// Convert a PDF, append it to the current KB, and persist via the active
+// backend (GitHub when configured). Returns the full updated content.
+export async function importPdf(file: File): Promise<{ filename: string; content: string }> {
+  if (!isPdfConversionConfigured()) {
+    throw new Error("PDF conversion service not configured — set KB_API_URL.");
+  }
+  const { markdown, filename } = await convertPdf(file);
+  const current = (await getKbContent()).content;
+  const heading = `\n\n## Imported from ${filename}\n\n`;
+  const combined = current.trim()
+    ? `${current.replace(/\s+$/, "")}${heading}${markdown.trim()}\n`
+    : `## Imported from ${filename}\n\n${markdown.trim()}\n`;
+  const saved = await saveKbContent(combined);
+  return { filename, content: saved.content };
+}
 
-This is the knowledge Kavya uses to answer guest calls. Edit it freely —
-write it the way you'd explain things to a new front-desk staff member.
+export const DEFAULT_KB = `# Knowledge Base
 
-## About us
+Connect the Tree House agent repo to load the live knowledge base.
 
-Tree House Chalets offers elevated cabin stays surrounded by forest, a short
-drive from town. Each chalet is self-contained with its own deck and views.
+Set KB_GITHUB_TOKEN and KB_GITHUB_REPO (and optionally KB_GITHUB_PATH /
+KB_GITHUB_BRANCH) so this editor reads and writes
+knowledge_docs/hotel_info.txt in the agent's source.
 
-## Pricing & seasons
-
-- **Peak (Dec–Jan, school holidays):** from $420/night, 2-night minimum.
-- **Shoulder (Sep–Nov, Feb–Apr):** from $320/night.
-- **Off-peak (May–Aug):** from $260/night.
-- Rates include cleaning. A 2-night minimum applies on weekends year-round.
-
-## Amenities
-
-- Queen or king beds, full kitchen, wood heater, air-conditioning.
-- Free Wi-Fi and off-street parking.
-- Outdoor deck with BBQ; some chalets have a spa bath.
-
-## Booking & cancellation policy
-
-- Free cancellation up to 14 days before check-in.
-- 7–13 days: 50% refund. Inside 7 days: non-refundable.
-- Check-in 3:00 PM, check-out 10:00 AM. Self check-in via keypad.
-
-## FAQ
-
-**Are pets allowed?** Yes, in pet-friendly chalets only — please ask when booking.
-**Is parking available?** Yes, one space per chalet, free.
-**Do you allow events/parties?** No — these are quiet, residential-style stays.
+Until then, edits are kept in a local draft only.
 `;

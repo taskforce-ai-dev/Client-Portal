@@ -36,9 +36,14 @@ docker run -p 8000:8000 -v "$PWD/data:/data" kb-service
 | Method | Path                    | Body / form           | Returns                         |
 | ------ | ----------------------- | --------------------- | ------------------------------- |
 | GET    | `/health`               | —                     | `{ ok, converter }`             |
+| POST   | `/convert`              | `file=<pdf>`          | `{ filename, markdown }`        |
 | GET    | `/kb/{agent_id}`        | —                     | `{ agent_id, content }`         |
 | PUT    | `/kb/{agent_id}`        | `{ "content": "…" }`  | `{ agent_id, content, bytes }`  |
 | POST   | `/kb/{agent_id}/upload` | `file=<pdf>`          | `{ filename, markdown, content }` |
+
+The portal uses **`/convert`** (stateless PDF→markdown) and commits the
+result to the agent's repo itself. The `/kb/*` endpoints remain for
+standalone use.
 
 `content` is the full markdown KB; on upload the converted markdown is
 appended to it under an `## Imported from <file>` heading.

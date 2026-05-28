@@ -93,6 +93,32 @@ def put_kb(agent_id: str, body: KbBody) -> dict:
     }
 
 
+@app.post("/convert", dependencies=[Depends(require_key)])
+async def convert(file: UploadFile = File(...)) -> dict:
+    """Convert a PDF to markdown and return it — no storage.
+
+    Used by the client portal, which appends the result to the agent's
+    knowledge base and commits it to the agent's repo.
+    """
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    if pymupdf4llm is None:
+        raise HTTPException(
+            status_code=500, detail="pymupdf4llm is not installed on the server"
+        )
+
+    data = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+        tmp.write(data)
+        tmp.flush()
+        try:
+            markdown = pymupdf4llm.to_markdown(tmp.name)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail=f"Failed to convert PDF: {exc}")
+
+    return {"filename": file.filename, "markdown": markdown.strip()}
+
+
 @app.post("/kb/{agent_id}/upload", dependencies=[Depends(require_key)])
 async def upload_pdf(agent_id: str, file: UploadFile = File(...)) -> dict:
     if not (file.filename or "").lower().endswith(".pdf"):

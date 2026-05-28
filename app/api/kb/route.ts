@@ -4,13 +4,9 @@ import { getKbContent, saveKbContent } from "@/lib/kb";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function agentFrom(req: NextRequest) {
-  return req.nextUrl.searchParams.get("agent") || "default";
-}
-
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const data = await getKbContent(agentFrom(req));
+    const data = await getKbContent();
     return NextResponse.json(data);
   } catch (e) {
     return NextResponse.json(
@@ -31,7 +27,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Missing 'content' string" }, { status: 400 });
   }
   try {
-    const data = await saveKbContent(agentFrom(req), body.content);
+    const data = await saveKbContent(body.content);
     return NextResponse.json(data);
   } catch (e) {
     return NextResponse.json(

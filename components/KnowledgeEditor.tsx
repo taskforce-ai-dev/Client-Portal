@@ -8,7 +8,7 @@ import {
   CloudOff,
   Eye,
   FileText,
-  HardDrive,
+  Github,
   Loader2,
   Pencil,
   Save,
@@ -19,9 +19,11 @@ import clsx from "clsx";
 
 type Imported = { name: string; at: number };
 
-export default function KnowledgeEditor({ agentId }: { agentId: string }) {
+export default function KnowledgeEditor() {
   const [content, setContent] = useState("");
   const [configured, setConfigured] = useState(false);
+  const [source, setSource] = useState<"github" | "local">("local");
+  const [target, setTarget] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -36,7 +38,7 @@ export default function KnowledgeEditor({ agentId }: { agentId: string }) {
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/kb?agent=${encodeURIComponent(agentId)}`)
+    fetch(`/api/kb`)
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || `Failed to load (${r.status})`);
@@ -46,6 +48,8 @@ export default function KnowledgeEditor({ agentId }: { agentId: string }) {
         if (!active) return;
         setContent(d.content ?? "");
         setConfigured(!!d.configured);
+        setSource(d.source ?? "local");
+        setTarget(d.target ?? null);
         setLoading(false);
       })
       .catch((e) => {
@@ -56,14 +60,14 @@ export default function KnowledgeEditor({ agentId }: { agentId: string }) {
     return () => {
       active = false;
     };
-  }, [agentId]);
+  }, []);
 
   const save = useCallback(async () => {
     setSaving(true);
     setError(null);
     setStatus(null);
     try {
-      const res = await fetch(`/api/kb?agent=${encodeURIComponent(agentId)}`, {
+      const res = await fetch(`/api/kb`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
@@ -71,15 +75,16 @@ export default function KnowledgeEditor({ agentId }: { agentId: string }) {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || `Save failed (${res.status})`);
       setConfigured(!!d.configured);
+      setSource(d.source ?? source);
       setDirty(false);
       setLastSaved(new Date());
-      setStatus("Saved");
+      setStatus(d.source === "github" ? "Committed to the agent repo" : "Saved");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
-  }, [agentId, content]);
+  }, [content, source]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -105,7 +110,7 @@ export default function KnowledgeEditor({ agentId }: { agentId: string }) {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch(`/api/kb/upload?agent=${encodeURIComponent(agentId)}`, {
+      const res = await fetch(`/api/kb/upload`, {
         method: "POST",
         body: fd,
       });
@@ -135,14 +140,17 @@ export default function KnowledgeEditor({ agentId }: { agentId: string }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          {configured ? (
-            <span className="pill-emerald" title="Saved to the KB service">
-              <HardDrive className="w-3 h-3" /> KB service
+          {source === "github" ? (
+            <span className="pill-emerald" title={target ? `Synced with ${target}` : "Synced with the agent repo"}>
+              <Github className="w-3 h-3" /> Synced to agent repo
             </span>
           ) : (
-            <span className="pill-amber" title="Saved to a local draft. Connect KB_API_URL to persist for Kavya.">
+            <span className="pill-amber" title="Saved to a local draft. Set KB_GITHUB_TOKEN and KB_GITHUB_REPO to sync with the agent's source.">
               <CloudOff className="w-3 h-3" /> Local draft
             </span>
+          )}
+          {target && (
+            <span className="hidden lg:inline text-xs text-slate-500 font-mono">{target}</span>
           )}
           {lastSaved && !dirty && (
             <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
