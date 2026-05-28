@@ -9,3 +9,10 @@ dist
 .vercel
 next-env.d.ts
 .tsbuildinfo
+
+# Python KB service
+kb-service/.venv
+kb-service/__pycache__
+kb-service/kb_store
+kb-service/data
+*.pyc
