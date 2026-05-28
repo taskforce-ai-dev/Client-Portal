@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sentinel · Super Admin Console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #04070f;
+    --panel: #0a1226;
+    --panel-2: #0d172d;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --text: #f4f7ff;
+    --muted: #8a93ab;
+    --accent: #00d4ff;
+    --accent2: #7b61ff;
+    --accent3: #00e5a0;
+    --danger: #ff6b6b;
+    --warn: #ffb454;
+    --ok: #00e5a0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+  }
+  button, input, select, textarea { font-family: inherit; font-size: inherit; }
+  button { cursor: pointer; }
+  a { color: var(--accent); text-decoration: none; }
+
+  .sidebar {
+    width: 240px; min-width: 240px;
+    background: linear-gradient(180deg, #050913 0%, #04070f 100%);
+    border-right: 1px solid var(--border);
+    padding: 22px 16px; display: flex; flex-direction: column; gap: 4px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 18px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .brand-mark {
+    width: 32px; height: 32px; border-radius: 9px;
+    background: linear-gradient(135deg, #ff6b6b, #7b61ff 50%, #00d4ff);
+    display: grid; place-items: center;
+  }
+  .brand-mark::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--panel); }
+  .brand-name { font-weight: 800; letter-spacing: -0.3px; }
+  .brand-name small { display: block; font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: 1px; margin-top: -2px; }
+
+  .nav-item {
+    background: transparent; border: none; color: var(--muted);
+    padding: 9px 12px; border-radius: 9px;
+    text-align: left; display: flex; align-items: center; gap: 10px;
+    font-size: 13.5px; font-weight: 500;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+  .nav-item.active { background: rgba(123, 97, 255, 0.18); color: var(--accent2); }
+  .nav-section { font-size: 10px; letter-spacing: 1.5px; color: var(--muted); padding: 14px 12px 4px; text-transform: uppercase; }
+  .admin-card { margin-top: auto; padding: 14px 10px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .admin-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--accent2), #ff6b6b); display: grid; place-items: center; color: #04070f; font-weight: 700; font-size: 12px; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    height: 56px; padding: 0 22px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(6, 10, 24, 0.85); backdrop-filter: blur(10px);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .page-title { font-size: 16px; font-weight: 700; }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+  .btn {
+    background: rgba(255,255,255,0.06); color: var(--text);
+    border: 1px solid var(--border); border-radius: 9px;
+    padding: 7px 12px; font-weight: 600; font-size: 13px;
+  }
+  .btn:hover { background: rgba(255,255,255,0.1); border-color: var(--border-strong); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent2), #ff6b6b); border-color: transparent; color: #04070f; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.danger { background: rgba(255, 107, 107, 0.16); border-color: rgba(255, 107, 107, 0.4); color: var(--danger); }
+  .btn.warn { background: rgba(255, 180, 84, 0.16); border-color: rgba(255, 180, 84, 0.45); color: var(--warn); }
+  .btn.ok { background: rgba(0, 229, 160, 0.14); border-color: rgba(0, 229, 160, 0.4); color: var(--ok); }
+  .btn.ghost { background: transparent; }
+  .btn.sm { padding: 5px 10px; font-size: 12px; }
+  .content { padding: 22px; overflow-y: auto; flex: 1; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+  .grid { display: grid; gap: 16px; }
+  .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 1100px) { .grid.cols-4 { grid-template-columns: repeat(2, 1fr); } .grid.cols-3 { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 720px) { .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px;
+  }
+  .card-title { font-size: 13px; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+  .card-value { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  tr:last-child td { border-bottom: none; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  }
+  .pill.active { background: rgba(0, 229, 160, 0.15); color: var(--ok); }
+  .pill.trial { background: rgba(0, 212, 255, 0.18); color: var(--accent); }
+  .pill.suspended { background: rgba(255, 107, 107, 0.18); color: var(--danger); }
+  .pill.archived { background: rgba(138, 147, 171, 0.18); color: var(--muted); }
+  .pill.info { background: rgba(0, 212, 255, 0.15); color: var(--accent); }
+  .pill.warning { background: rgba(255, 180, 84, 0.15); color: var(--warn); }
+  .pill.critical { background: rgba(255, 107, 107, 0.18); color: var(--danger); }
+  .pill.open { background: rgba(0, 212, 255, 0.15); color: var(--accent); }
+  .pill.pending { background: rgba(255, 180, 84, 0.15); color: var(--warn); }
+  .pill.resolved { background: rgba(0, 229, 160, 0.15); color: var(--ok); }
+  .pill.closed { background: rgba(138, 147, 171, 0.18); color: var(--muted); }
+  .pill.low { background: rgba(138, 147, 171, 0.18); color: var(--muted); }
+  .pill.normal { background: rgba(0, 212, 255, 0.15); color: var(--accent); }
+  .pill.high { background: rgba(255, 180, 84, 0.15); color: var(--warn); }
+  .pill.urgent { background: rgba(255, 107, 107, 0.18); color: var(--danger); }
+  .pill.super_admin { background: rgba(255, 107, 107, 0.18); color: var(--danger); }
+  .pill.support { background: rgba(0, 212, 255, 0.15); color: var(--accent); }
+  .pill.billing { background: rgba(255, 180, 84, 0.15); color: var(--warn); }
+  .pill.read_only { background: rgba(138, 147, 171, 0.18); color: var(--muted); }
+
+  .toolbar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
+  .toolbar input, .toolbar select {
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 9px; padding: 7px 10px; min-width: 160px;
+  }
+  .toolbar input:focus, .toolbar select:focus { outline: none; border-color: var(--accent2); }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(2, 6, 18, 0.75); display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(4px); }
+  .modal-bg.active { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border-strong); border-radius: 14px; width: min(620px, 92vw); padding: 22px; max-height: 86vh; overflow-y: auto; }
+  .modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .modal .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+  .form-row label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+  .form-row input, .form-row select, .form-row textarea {
+    background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 9px; padding: 9px 11px; width: 100%;
+  }
+  .form-row textarea { resize: vertical; min-height: 90px; }
+  .form-row.inline { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+  .drawer-bg { position: fixed; inset: 0; background: rgba(2, 6, 18, 0.6); display: none; z-index: 90; backdrop-filter: blur(3px); }
+  .drawer-bg.active { display: block; }
+  .drawer { position: fixed; top: 0; right: 0; height: 100vh; width: min(680px, 92vw); background: var(--panel); border-left: 1px solid var(--border-strong); display: none; flex-direction: column; z-index: 91; }
+  .drawer.active { display: flex; }
+  .drawer-header { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .drawer-body { padding: 18px 22px; overflow-y: auto; flex: 1; }
+  .drawer-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+  .empty { text-align: center; padding: 28px 16px; color: var(--muted); font-size: 13px; }
+  .toast-stack { position: fixed; bottom: 18px; right: 18px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+  .toast { background: var(--panel); border: 1px solid var(--border-strong); padding: 10px 14px; border-radius: 9px; font-size: 13px; max-width: 320px; box-shadow: 0 14px 40px rgba(0,0,0,0.45); }
+  .toast.ok { border-color: rgba(0,229,160,0.5); }
+  .toast.err { border-color: rgba(255,107,107,0.5); }
+
+  .progress { height: 6px; background: rgba(255,255,255,0.05); border-radius: 999px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .kv { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+  .kv:last-child { border-bottom: none; }
+  .kv span:first-child { color: var(--muted); font-size: 12.5px; }
+  .kv span:last-child { font-weight: 600; }
+  code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 5px; font-size: 12px; font-family: ui-monospace, monospace; }
+
+  .audit-row { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .audit-row:last-child { border-bottom: none; }
+  .audit-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent2); margin-top: 6px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name">Sentinel<small>SUPER ADMIN</small></div>
+    </div>
+    <button class="nav-item active" data-page="dashboard">📊 Dashboard</button>
+    <button class="nav-item" data-page="clients">🏢 Clients</button>
+    <button class="nav-item" data-page="plans">📐 Plans</button>
+    <button class="nav-item" data-page="admins">🛡️ Admin Users</button>
+    <button class="nav-item" data-page="support">🛟 Support</button>
+    <button class="nav-item" data-page="announcements">📣 Announcements</button>
+    <button class="nav-item" data-page="audit">📝 Audit Log</button>
+
+    <div class="admin-card">
+      <div class="admin-avatar">SO</div>
+      <div style="flex:1">
+        <div style="font-size: 12.5px; font-weight: 700;">Sentinel Operator</div>
+        <div style="font-size: 11px; color: var(--muted);">super_admin</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="page-title" id="pageTitle">Dashboard</div>
+      <div class="topbar-actions">
+        <button class="btn ghost sm" id="refreshBtn">↻ Refresh</button>
+        <a class="btn sm" href="/docs" target="_blank">API Docs</a>
+        <a class="btn ghost sm" href="/portal">Portal →</a>
+      </div>
+    </div>
+    <div class="content">
+
+      <!-- Dashboard -->
+      <section class="page active" data-page="dashboard">
+        <div class="grid cols-4" style="margin-bottom: 18px;">
+          <div class="card"><div class="card-title">Total clients</div><div class="card-value" id="mClients">—</div><div class="card-sub" id="mClientsSub">—</div></div>
+          <div class="card"><div class="card-title">Monthly recurring</div><div class="card-value" id="mMrr">—</div><div class="card-sub">Across all active plans</div></div>
+          <div class="card"><div class="card-title">Active agents</div><div class="card-value" id="mAgents">—</div><div class="card-sub" id="mAgentsSub">—</div></div>
+          <div class="card"><div class="card-title">Open tickets</div><div class="card-value" id="mTickets">—</div><div class="card-sub">Across all clients</div></div>
+        </div>
+        <div class="grid cols-2">
+          <div class="card">
+            <h3 style="margin-bottom: 12px;">Plans distribution</h3>
+            <div id="planDist"></div>
+          </div>
+          <div class="card">
+            <h3 style="margin-bottom: 12px;">Recent admin actions</h3>
+            <div id="recentAudit"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Clients -->
+      <section class="page" data-page="clients">
+        <div class="toolbar">
+          <input id="cliSearch" placeholder="Search by name or email…" />
+          <select id="cliStatus">
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="trial">Trial</option>
+            <option value="suspended">Suspended</option>
+            <option value="archived">Archived</option>
+          </select>
+          <div style="flex:1"></div>
+          <button class="btn primary" id="newClientBtn">+ Provision client</button>
+        </div>
+        <div class="card" style="padding: 0;">
+          <table id="clientsTable">
+            <thead><tr><th>Client</th><th>Plan</th><th>Status</th><th>Spend (MTD)</th><th>Budget</th><th>Agents</th><th>Tickets</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Plans -->
+      <section class="page" data-page="plans">
+        <div class="toolbar">
+          <div style="flex:1"></div>
+          <button class="btn primary" id="newPlanBtn">+ New plan</button>
+        </div>
+        <div class="card" style="padding: 0;">
+          <table id="plansTable">
+            <thead><tr><th>Plan</th><th>Monthly</th><th>Voice min</th><th>AI min</th><th>Messages</th><th>Clients</th><th>Visibility</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Admins -->
+      <section class="page" data-page="admins">
+        <div class="toolbar">
+          <div style="flex:1"></div>
+          <button class="btn primary" id="newAdminBtn">+ Invite admin</button>
+        </div>
+        <div class="card" style="padding: 0;">
+          <table id="adminsTable">
+            <thead><tr><th>Admin</th><th>Email</th><th>Role</th><th>Status</th><th>Last login</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Support -->
+      <section class="page" data-page="support">
+        <div class="toolbar">
+          <select id="supStatusFilter">
+            <option value="">All statuses</option>
+            <option value="open">Open</option>
+            <option value="pending">Pending</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+          <select id="supClientFilter"><option value="">All clients</option></select>
+          <div style="flex:1"></div>
+        </div>
+        <div class="card" style="padding: 0;">
+          <table id="supportTable">
+            <thead><tr><th>Subject</th><th>Client</th><th>Priority</th><th>Status</th><th>Opened</th><th>Messages</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Announcements -->
+      <section class="page" data-page="announcements">
+        <div class="toolbar">
+          <div style="flex:1"></div>
+          <button class="btn primary" id="newAnnBtn">+ New announcement</button>
+        </div>
+        <div class="card" id="annList"><div class="empty">Loading…</div></div>
+      </section>
+
+      <!-- Audit -->
+      <section class="page" data-page="audit">
+        <div class="toolbar">
+          <select id="auditLimit">
+            <option value="50">Last 50</option>
+            <option value="100" selected>Last 100</option>
+            <option value="250">Last 250</option>
+            <option value="500">Last 500</option>
+          </select>
+          <div style="flex:1"></div>
+          <button class="btn sm" id="exportAudit">Export JSON</button>
+        </div>
+        <div class="card" id="auditList"><div class="empty">Loading…</div></div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal-bg" id="modalBg"><div class="modal" id="modalBody"></div></div>
+  <div class="drawer-bg" id="drawerBg"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-header"><div id="drawerTitle" style="font-weight:700;">Detail</div><button class="btn ghost sm" onclick="closeDrawer()">Close</button></div>
+    <div class="drawer-body" id="drawerBody"></div>
+    <div class="drawer-footer" id="drawerFooter"></div>
+  </aside>
+  <div class="toast-stack" id="toastStack"></div>
+
+<script>
+  const ADMIN_ID = "admin_root";
+  const state = { metrics: null, clients: [], plans: [], admins: [], tickets: [], announcements: [], audit: [] };
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const fmtMoney = (n) => "$" + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  function toast(message, kind = "ok") {
+    const div = document.createElement("div"); div.className = "toast " + kind; div.textContent = message;
+    $("#toastStack").appendChild(div); setTimeout(() => div.remove(), 4000);
+  }
+  async function api(path, opts = {}) {
+    const headers = { "content-type": "application/json", "x-admin-id": ADMIN_ID, ...(opts.headers || {}) };
+    const res = await fetch(path, { ...opts, headers });
+    if (!res.ok) {
+      let detail = ""; try { detail = (await res.json()).message; } catch {}
+      throw new Error(`${res.status} ${res.statusText} ${detail || ""}`);
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("json") ? res.json() : res.text();
+  }
+  function openModal(html) { $("#modalBody").innerHTML = html; $("#modalBg").classList.add("active"); }
+  function closeModal() { $("#modalBg").classList.remove("active"); }
+  $("#modalBg").addEventListener("click", (e) => { if (e.target.id === "modalBg") closeModal(); });
+  function openDrawer(title, body, footer = "") {
+    $("#drawerTitle").textContent = title; $("#drawerBody").innerHTML = body; $("#drawerFooter").innerHTML = footer;
+    $("#drawerBg").classList.add("active"); $("#drawer").classList.add("active");
+  }
+  function closeDrawer() { $("#drawerBg").classList.remove("active"); $("#drawer").classList.remove("active"); }
+  $("#drawerBg").addEventListener("click", closeDrawer);
+
+  function show(page) {
+    $$(".page").forEach((el) => el.classList.toggle("active", el.dataset.page === page));
+    $$(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.page === page));
+    const titles = { dashboard: "Dashboard", clients: "Clients", plans: "Plans", admins: "Admin Users", support: "Support", announcements: "Announcements", audit: "Audit Log" };
+    $("#pageTitle").textContent = titles[page] || page;
+    location.hash = page; loadPage(page);
+  }
+  $$(".nav-item").forEach((el) => el.addEventListener("click", () => show(el.dataset.page)));
+
+  // -------- Dashboard
+  async function loadDashboard() {
+    const m = await api("/api/admin/metrics");
+    state.metrics = m;
+    $("#mClients").textContent = m.clients.total;
+    $("#mClientsSub").textContent = `${m.clients.active} active · ${m.clients.trial} trial · ${m.clients.suspended} suspended`;
+    $("#mMrr").textContent = fmtMoney(m.revenue.monthlyRecurring);
+    $("#mAgents").textContent = `${m.agents.live}/${m.agents.total}`;
+    $("#mAgentsSub").textContent = `${m.agents.paused} paused · ${m.agents.idle} idle`;
+    $("#mTickets").textContent = m.support.openTickets;
+    $("#planDist").innerHTML = m.plans.map((p) => `
+      <div class="kv"><span>${p.name}</span><span>${p.clientCount} clients · ${fmtMoney(p.monthlyFee)}/mo</span></div>`).join("");
+    const audit = await api("/api/admin/audit?limit=8");
+    $("#recentAudit").innerHTML = audit.map((a) => `
+      <div class="audit-row"><div class="audit-dot"></div><div style="flex:1">
+        <div style="font-size: 13px;">${a.summary}</div>
+        <div style="font-size: 11px; color: var(--muted);">${a.admin?.name ?? "system"} · ${a.occurredLabel}</div>
+      </div></div>`).join("");
+  }
+
+  // -------- Clients
+  async function loadClients() {
+    const params = new URLSearchParams();
+    if ($("#cliSearch").value) params.set("search", $("#cliSearch").value);
+    if ($("#cliStatus").value) params.set("status", $("#cliStatus").value);
+    const list = await api(`/api/admin/clients?${params}`);
+    state.clients = list;
+    $("#clientsTable tbody").innerHTML = list.map((c) => `
+      <tr>
+        <td>
+          <div style="font-weight: 700;">${c.name}</div>
+          <div style="font-size: 11px; color: var(--muted);">${c.contactEmail ?? "—"} · ${c.slug}</div>
+        </td>
+        <td>${c.plan ? c.plan.name : "—"}</td>
+        <td><span class="pill ${c.status}">${c.status}</span></td>
+        <td>${fmtMoney(c.usage.totalSpend)}</td>
+        <td>
+          ${fmtMoney(c.monthlyBudget)}
+          <div class="progress" style="margin-top: 6px;"><div class="progress-fill" style="width: ${Math.min(100, c.usage.percentUsed)}%"></div></div>
+        </td>
+        <td>${c.counts.agents}</td>
+        <td>${c.counts.openSupportTickets}</td>
+        <td>
+          <button class="btn sm" data-view-client="${c.id}">View</button>
+          <button class="btn sm" data-imp-client="${c.id}">Open portal</button>
+          ${c.status === "suspended"
+            ? `<button class="btn sm ok" data-act-client="${c.id}">Activate</button>`
+            : `<button class="btn sm warn" data-sus-client="${c.id}">Suspend</button>`}
+          <button class="btn sm danger" data-del-client="${c.id}">Delete</button>
+        </td>
+      </tr>`).join("") || `<tr><td colspan="8"><div class="empty">No clients match the filters.</div></td></tr>`;
+
+    $$("[data-view-client]").forEach((b) => b.onclick = () => clientDrawer(b.dataset.viewClient));
+    $$("[data-imp-client]").forEach((b) => b.onclick = async () => {
+      try {
+        const out = await api(`/api/admin/clients/${b.dataset.impClient}/impersonate`, { method: "POST" });
+        window.open(out.portalUrl, "_blank");
+        toast(`Opened ${out.workspaceName} portal`);
+      } catch (e) { toast(e.message, "err"); }
+    });
+    $$("[data-sus-client]").forEach((b) => b.onclick = async () => {
+      const reason = prompt("Reason for suspension?");
+      if (reason === null) return;
+      await api(`/api/admin/clients/${b.dataset.susClient}/suspend`, { method: "POST", body: JSON.stringify({ reason }) });
+      toast("Client suspended"); loadClients();
+    });
+    $$("[data-act-client]").forEach((b) => b.onclick = async () => {
+      await api(`/api/admin/clients/${b.dataset.actClient}/activate`, { method: "POST" });
+      toast("Client re-activated"); loadClients();
+    });
+    $$("[data-del-client]").forEach((b) => b.onclick = async () => {
+      if (!confirm("Permanently delete this client and all of its data?")) return;
+      await api(`/api/admin/clients/${b.dataset.delClient}`, { method: "DELETE" });
+      toast("Client deleted"); loadClients();
+    });
+  }
+  ["cliSearch", "cliStatus"].forEach((id) => $(`#${id}`).oninput = loadClients);
+
+  async function clientDrawer(workspaceId) {
+    const c = await api(`/api/admin/clients/${workspaceId}`);
+    const t = c.supportTickets || [];
+    openDrawer(`Client · ${c.name}`,
+      `<div class="kv"><span>Slug</span><span><code>${c.slug}</code></span></div>
+       <div class="kv"><span>Status</span><span><span class="pill ${c.status}">${c.status}</span></span></div>
+       <div class="kv"><span>Plan</span><span>${c.plan?.name ?? "—"}</span></div>
+       <div class="kv"><span>Contact</span><span>${c.contactName ?? "—"} (${c.contactEmail ?? "—"})</span></div>
+       <div class="kv"><span>Phone</span><span>${c.contactPhone ?? "—"}</span></div>
+       <div class="kv"><span>Timezone</span><span>${c.timezone}</span></div>
+       <div class="kv"><span>Language</span><span>${c.defaultLanguage}</span></div>
+       <div class="kv"><span>Retention</span><span>${c.retentionDays ?? "—"} days</span></div>
+       <div class="kv"><span>Budget</span><span>${fmtMoney((c.monthlyBudgetCents || 0)/100)}</span></div>
+       <div class="kv"><span>Agents</span><span>${c._count?.agents ?? "—"}</span></div>
+       <div class="kv"><span>KB docs</span><span>${c._count?.knowledgeBaseDocuments ?? "—"}</span></div>
+       <div class="kv"><span>API keys</span><span>${(c.apiKeys || []).length}</span></div>
+       <hr style="border-color:var(--border);margin:14px 0;" />
+       <h3 style="font-size: 13px; margin-bottom: 8px;">Open / recent tickets</h3>
+       ${t.length ? t.slice(0, 5).map((tt) => `
+         <div style="padding: 8px 0; border-bottom: 1px solid var(--border);">
+           <div style="font-weight: 600; font-size: 13px;">${tt.subject}</div>
+           <div style="font-size: 11px; color: var(--muted);"><span class="pill ${tt.status}">${tt.status}</span> · <span class="pill ${tt.priority}">${tt.priority}</span></div>
+         </div>`).join("") : `<div class="empty">No tickets</div>`}`,
+      `<button class="btn" id="editClientBtn">Edit</button>
+       <button class="btn" id="openClientPortal">Open portal</button>
+       ${c.status === "suspended"
+        ? `<button class="btn ok" id="actClientBtn">Activate</button>`
+        : `<button class="btn warn" id="susClientBtn">Suspend</button>`}
+       <button class="btn danger" id="archClientBtn">Archive</button>`);
+    $("#editClientBtn").onclick = () => clientForm(c);
+    $("#openClientPortal").onclick = async () => {
+      const out = await api(`/api/admin/clients/${workspaceId}/impersonate`, { method: "POST" });
+      window.open(out.portalUrl, "_blank");
+    };
+    if ($("#susClientBtn")) $("#susClientBtn").onclick = async () => {
+      const reason = prompt("Reason for suspension?");
+      if (reason === null) return;
+      await api(`/api/admin/clients/${workspaceId}/suspend`, { method: "POST", body: JSON.stringify({ reason }) });
+      closeDrawer(); loadClients();
+    };
+    if ($("#actClientBtn")) $("#actClientBtn").onclick = async () => {
+      await api(`/api/admin/clients/${workspaceId}/activate`, { method: "POST" });
+      closeDrawer(); loadClients();
+    };
+    $("#archClientBtn").onclick = async () => {
+      if (!confirm("Archive this client?")) return;
+      await api(`/api/admin/clients/${workspaceId}/archive`, { method: "POST" });
+      closeDrawer(); loadClients();
+    };
+  }
+
+  $("#newClientBtn").onclick = () => clientForm();
+  function clientForm(c) {
+    const isEdit = !!c;
+    openModal(`
+      <h2>${isEdit ? "Edit client" : "Provision client"}</h2>
+      <div class="sub">${isEdit ? "Update workspace metadata, plan, and budget." : "Creates a new tenant workspace and onboards them on a plan."}</div>
+      <form id="clientForm">
+        <div class="form-row"><label>Workspace name</label><input name="name" required value="${c?.name ?? ""}" /></div>
+        <div class="form-row inline">
+          <div><label>Contact name</label><input name="contactName" value="${c?.contactName ?? ""}" /></div>
+          <div><label>Contact email</label><input name="contactEmail" type="email" value="${c?.contactEmail ?? ""}" /></div>
+        </div>
+        <div class="form-row inline">
+          <div><label>Phone</label><input name="contactPhone" value="${c?.contactPhone ?? ""}" /></div>
+          <div><label>Timezone</label><input name="timezone" value="${c?.timezone ?? "Asia/Colombo (UTC+05:30)"}" /></div>
+        </div>
+        <div class="form-row inline">
+          <div><label>Default language</label><input name="defaultLanguage" value="${c?.defaultLanguage ?? "English (US)"}" /></div>
+          <div><label>Plan</label><select name="planId" id="planSelect"></select></div>
+        </div>
+        <div class="form-row inline">
+          <div><label>Status</label><select name="status">${["trial","active","suspended","archived"].map(s => `<option value="${s}" ${c?.status === s ? "selected" : ""}>${s}</option>`).join("")}</select></div>
+          <div><label>Monthly budget ($)</label><input name="monthlyBudget" type="number" step="0.01" value="${c ? ((c.monthlyBudgetCents || 0)/100).toFixed(2) : "2500"}" /></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn primary">${isEdit ? "Save" : "Provision"}</button>
+        </div>
+      </form>`);
+    api("/api/admin/plans").then((plans) => {
+      $("#planSelect").innerHTML = `<option value="">No plan</option>` + plans.map((p) => `<option value="${p.id}" ${c?.plan?.id === p.id ? "selected" : ""}>${p.name}</option>`).join("");
+    });
+    $("#clientForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = {
+        name: fd.get("name"),
+        contactName: fd.get("contactName") || undefined,
+        contactEmail: fd.get("contactEmail") || undefined,
+        contactPhone: fd.get("contactPhone") || undefined,
+        timezone: fd.get("timezone") || undefined,
+        defaultLanguage: fd.get("defaultLanguage") || undefined,
+        planId: fd.get("planId") || undefined,
+        status: fd.get("status"),
+        monthlyBudgetCents: Math.round(Number(fd.get("monthlyBudget") || 0) * 100),
+      };
+      try {
+        if (isEdit) await api(`/api/admin/clients/${c.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        else await api("/api/admin/clients", { method: "POST", body: JSON.stringify(body) });
+        closeModal(); toast(isEdit ? "Client updated" : "Client provisioned"); loadClients();
+      } catch (err) { toast(err.message, "err"); }
+    };
+  }
+
+  // -------- Plans
+  async function loadPlans() {
+    const plans = await api("/api/admin/plans");
+    state.plans = plans;
+    $("#plansTable tbody").innerHTML = plans.map((p) => `
+      <tr>
+        <td><strong>${p.name}</strong>${p.isDefault ? ` <span class="pill normal">default</span>` : ""}<div style="font-size:11px;color:var(--muted);">${p.slug}</div></td>
+        <td>${fmtMoney(p.monthlyFee)}</td>
+        <td>${p.includedVoiceMinutes}</td>
+        <td>${p.includedAiMinutes}</td>
+        <td>${p.includedMessages}</td>
+        <td>${p.clientCount}</td>
+        <td>${p.isPublic ? `<span class="pill info">public</span>` : `<span class="pill closed">private</span>`}</td>
+        <td>
+          <button class="btn sm" data-edit-plan="${p.id}">Edit</button>
+          <button class="btn sm danger" data-del-plan="${p.id}">Delete</button>
+        </td>
+      </tr>`).join("");
+    $$("[data-edit-plan]").forEach((b) => b.onclick = () => planForm(state.plans.find((p) => p.id === b.dataset.editPlan)));
+    $$("[data-del-plan]").forEach((b) => b.onclick = async () => {
+      if (!confirm("Delete this plan? Clients on it will need a new plan.")) return;
+      try { await api(`/api/admin/plans/${b.dataset.delPlan}`, { method: "DELETE" }); toast("Plan deleted"); loadPlans(); }
+      catch (err) { toast(err.message, "err"); }
+    });
+  }
+  $("#newPlanBtn").onclick = () => planForm();
+  function planForm(plan) {
+    const isEdit = !!plan;
+    openModal(`
+      <h2>${isEdit ? "Edit plan" : "Create plan"}</h2>
+      <div class="sub">Define included usage and visibility for sales pages.</div>
+      <form id="planForm">
+        <div class="form-row inline">
+          <div><label>Name</label><input name="name" required value="${plan?.name ?? ""}" /></div>
+          <div><label>Slug</label><input name="slug" value="${plan?.slug ?? ""}" /></div>
+        </div>
+        <div class="form-row"><label>Description</label><textarea name="description">${plan?.description ?? ""}</textarea></div>
+        <div class="form-row inline">
+          <div><label>Monthly fee ($)</label><input name="monthlyFee" type="number" step="0.01" required value="${plan ? (plan.monthlyFee).toFixed(2) : ""}" /></div>
+          <div><label>Voice minutes</label><input name="includedVoiceMinutes" type="number" value="${plan?.includedVoiceMinutes ?? 0}" /></div>
+        </div>
+        <div class="form-row inline">
+          <div><label>AI minutes</label><input name="includedAiMinutes" type="number" value="${plan?.includedAiMinutes ?? 0}" /></div>
+          <div><label>Messages</label><input name="includedMessages" type="number" value="${plan?.includedMessages ?? 0}" /></div>
+        </div>
+        <div class="form-row inline">
+          <div><label>Max agents (blank = no cap)</label><input name="maxAgents" type="number" value="${plan?.maxAgents ?? ""}" /></div>
+          <div><label>Max KB docs</label><input name="maxKnowledgeDocuments" type="number" value="${plan?.maxKnowledgeDocuments ?? ""}" /></div>
+        </div>
+        <div class="form-row inline">
+          <div><label>Public?</label><select name="isPublic"><option value="true" ${plan?.isPublic !== false ? "selected" : ""}>Yes</option><option value="false" ${plan?.isPublic === false ? "selected" : ""}>No</option></select></div>
+          <div><label>Default plan?</label><select name="isDefault"><option value="false" ${!plan?.isDefault ? "selected" : ""}>No</option><option value="true" ${plan?.isDefault ? "selected" : ""}>Yes</option></select></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn primary">${isEdit ? "Save" : "Create"}</button>
+        </div>
+      </form>`);
+    $("#planForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = {
+        name: fd.get("name"),
+        slug: fd.get("slug") || undefined,
+        description: fd.get("description") || undefined,
+        monthlyFeeCents: Math.round(Number(fd.get("monthlyFee") || 0) * 100),
+        includedVoiceMinutes: Number(fd.get("includedVoiceMinutes") || 0),
+        includedAiMinutes: Number(fd.get("includedAiMinutes") || 0),
+        includedMessages: Number(fd.get("includedMessages") || 0),
+        maxAgents: fd.get("maxAgents") ? Number(fd.get("maxAgents")) : null,
+        maxKnowledgeDocuments: fd.get("maxKnowledgeDocuments") ? Number(fd.get("maxKnowledgeDocuments")) : null,
+        isPublic: fd.get("isPublic") === "true",
+        isDefault: fd.get("isDefault") === "true",
+      };
+      try {
+        if (isEdit) await api(`/api/admin/plans/${plan.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        else await api(`/api/admin/plans`, { method: "POST", body: JSON.stringify(body) });
+        closeModal(); toast(isEdit ? "Plan updated" : "Plan created"); loadPlans();
+      } catch (err) { toast(err.message, "err"); }
+    };
+  }
+
+  // -------- Admins
+  async function loadAdmins() {
+    const admins = await api("/api/admin/admins");
+    state.admins = admins;
+    $("#adminsTable tbody").innerHTML = admins.map((a) => `
+      <tr>
+        <td><div style="display:flex;align-items:center;gap:10px;"><div class="admin-avatar" style="background:${a.color};">${a.initials}</div><div>${a.name}</div></div></td>
+        <td>${a.email}</td>
+        <td><span class="pill ${a.role}">${a.role}</span></td>
+        <td>${a.isActive ? `<span class="pill active">active</span>` : `<span class="pill archived">deactivated</span>`}</td>
+        <td>${a.lastLoginLabel ?? "never"}</td>
+        <td>
+          <button class="btn sm" data-edit-admin="${a.id}">Edit</button>
+          ${a.isActive ? `<button class="btn sm danger" data-del-admin="${a.id}">Deactivate</button>` : ""}
+        </td>
+      </tr>`).join("");
+    $$("[data-edit-admin]").forEach((b) => b.onclick = () => adminForm(state.admins.find((a) => a.id === b.dataset.editAdmin)));
+    $$("[data-del-admin]").forEach((b) => b.onclick = async () => {
+      if (!confirm("Deactivate this admin?")) return;
+      await api(`/api/admin/admins/${b.dataset.delAdmin}`, { method: "DELETE" });
+      toast("Deactivated"); loadAdmins();
+    });
+  }
+  $("#newAdminBtn").onclick = () => adminForm();
+  function adminForm(admin) {
+    const isEdit = !!admin;
+    openModal(`
+      <h2>${isEdit ? "Edit admin" : "Invite admin"}</h2>
+      <div class="sub">Admins authenticate against the Sentinel console.</div>
+      <form id="adminForm">
+        <div class="form-row inline">
+          <div><label>Name</label><input name="name" required value="${admin?.name ?? ""}" /></div>
+          <div><label>Initials</label><input name="initials" maxlength="3" required value="${admin?.initials ?? ""}" /></div>
+        </div>
+        <div class="form-row"><label>Email</label><input name="email" type="email" required value="${admin?.email ?? ""}" ${isEdit ? "disabled" : ""} /></div>
+        <div class="form-row inline">
+          <div><label>Role</label><select name="role">${["super_admin","support","billing","read_only"].map(r => `<option value="${r}" ${admin?.role === r ? "selected" : ""}>${r}</option>`).join("")}</select></div>
+          <div><label>Color</label><input type="color" name="color" value="${admin?.color ?? "#7b61ff"}" /></div>
+        </div>
+        ${isEdit ? `<div class="form-row"><label>Active</label><select name="isActive"><option value="true" ${admin.isActive ? "selected" : ""}>Active</option><option value="false" ${!admin.isActive ? "selected" : ""}>Deactivated</option></select></div>` : ""}
+        <div class="form-actions">
+          <button type="button" class="btn ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn primary">${isEdit ? "Save" : "Invite"}</button>
+        </div>
+      </form>`);
+    $("#adminForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try {
+        if (isEdit) {
+          const body = { name: fd.get("name"), role: fd.get("role"), color: fd.get("color"), isActive: fd.get("isActive") === "true" };
+          await api(`/api/admin/admins/${admin.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        } else {
+          const body = { email: fd.get("email"), name: fd.get("name"), role: fd.get("role"), initials: fd.get("initials"), color: fd.get("color") };
+          await api(`/api/admin/admins`, { method: "POST", body: JSON.stringify(body) });
+        }
+        closeModal(); toast("Saved"); loadAdmins();
+      } catch (err) { toast(err.message, "err"); }
+    };
+  }
+
+  // -------- Support
+  async function loadSupport() {
+    if (!state.clients.length) state.clients = await api("/api/admin/clients");
+    $("#supClientFilter").innerHTML = `<option value="">All clients</option>` + state.clients.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
+    await renderSupport();
+  }
+  async function renderSupport() {
+    const params = new URLSearchParams();
+    if ($("#supStatusFilter").value) params.set("status", $("#supStatusFilter").value);
+    if ($("#supClientFilter").value) params.set("workspaceId", $("#supClientFilter").value);
+    const tickets = await api(`/api/admin/support/tickets?${params}`);
+    state.tickets = tickets;
+    $("#supportTable tbody").innerHTML = tickets.map((t) => `
+      <tr>
+        <td><strong>${t.subject}</strong></td>
+        <td>${t.workspaceName}</td>
+        <td><span class="pill ${t.priority}">${t.priority}</span></td>
+        <td><span class="pill ${t.status}">${t.status}</span></td>
+        <td>${t.createdLabel}</td>
+        <td>${t.messageCount}</td>
+        <td><button class="btn sm" data-open-ticket="${t.id}">Open</button></td>
+      </tr>`).join("") || `<tr><td colspan="7"><div class="empty">No tickets.</div></td></tr>`;
+    $$("[data-open-ticket]").forEach((b) => b.onclick = () => openTicket(b.dataset.openTicket));
+  }
+  ["supStatusFilter", "supClientFilter"].forEach((id) => $(`#${id}`).oninput = renderSupport);
+
+  async function openTicket(id) {
+    const t = await api(`/api/admin/support/tickets/${id}`);
+    const messages = t.messages.map((m) => `
+      <div style="margin-bottom: 10px; padding: 10px; background: ${m.authorRole === "admin" ? "rgba(123, 97, 255, 0.1)" : "rgba(0, 212, 255, 0.08)"}; border-radius: 9px;">
+        <div style="font-size: 11px; color: var(--muted); margin-bottom: 4px;">${m.author} (${m.authorRole}) · ${m.createdLabel}</div>
+        <div>${m.body}</div>
+      </div>`).join("");
+    openDrawer(`Ticket · ${t.subject}`,
+      `<div class="kv"><span>Client</span><span>${t.workspaceName}</span></div>
+       <div class="kv"><span>Status</span><span><span class="pill ${t.status}">${t.status}</span></span></div>
+       <div class="kv"><span>Priority</span><span><span class="pill ${t.priority}">${t.priority}</span></span></div>
+       <div class="kv"><span>Opened by</span><span>${t.openedBy ?? "—"}</span></div>
+       <div class="kv"><span>Assigned to</span><span>${t.assignedTo ?? "—"}</span></div>
+       <hr style="border-color: var(--border); margin: 14px 0;" />
+       <div>${t.body}</div>
+       <hr style="border-color: var(--border); margin: 14px 0;" />
+       <h3 style="font-size:13px;margin-bottom:8px;">Conversation</h3>
+       ${messages || `<div class="empty">No replies yet.</div>`}
+       <form id="replyForm" style="margin-top:14px;">
+         <div class="form-row"><label>Reply as admin</label><textarea name="body" required></textarea></div>
+         <div class="form-row"><label>Author</label><input name="author" required value="Sentinel Operator" /></div>
+         <div class="form-actions"><button class="btn primary" type="submit">Send reply</button></div>
+       </form>`,
+      `<button class="btn ok" data-resolve="${id}">Mark resolved</button>
+       <button class="btn warn" data-pend="${id}">Mark pending</button>
+       <button class="btn" data-prio="${id}">Change priority</button>
+       <button class="btn ghost" data-assign="${id}">Assign</button>
+       <button class="btn ghost" data-close="${id}">Close</button>`);
+    $("#replyForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/admin/support/tickets/${id}/reply`, { method: "POST", body: JSON.stringify({ author: fd.get("author"), body: fd.get("body") }) });
+      openTicket(id); renderSupport();
+    };
+    $$("[data-resolve]").forEach((b) => b.onclick = async () => { await api(`/api/admin/support/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ status: "resolved" }) }); openTicket(id); renderSupport(); });
+    $$("[data-pend]").forEach((b) => b.onclick = async () => { await api(`/api/admin/support/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ status: "pending" }) }); openTicket(id); renderSupport(); });
+    $$("[data-close]").forEach((b) => b.onclick = async () => { await api(`/api/admin/support/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ status: "closed" }) }); closeDrawer(); renderSupport(); });
+    $$("[data-prio]").forEach((b) => b.onclick = async () => {
+      const p = prompt("Priority? (low, normal, high, urgent)", t.priority);
+      if (!p) return;
+      await api(`/api/admin/support/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ priority: p }) }); openTicket(id);
+    });
+    $$("[data-assign]").forEach((b) => b.onclick = async () => {
+      const a = prompt("Assign to (admin email)?", t.assignedTo ?? "");
+      if (a === null) return;
+      await api(`/api/admin/support/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ assignedTo: a || null }) }); openTicket(id);
+    });
+  }
+
+  // -------- Announcements
+  async function loadAnnouncements() {
+    const anns = await api("/api/admin/announcements");
+    state.announcements = anns;
+    $("#annList").innerHTML = anns.length ? anns.map((a) => `
+      <div style="padding: 14px 0; border-bottom: 1px solid var(--border);">
+        <div style="display:flex; justify-content: space-between; align-items: center;">
+          <strong>${a.title}</strong>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span class="pill ${a.severity}">${a.severity}</span>
+            <span class="pill info">${a.audience}</span>
+            <button class="btn sm danger" data-del-ann="${a.id}">Retract</button>
+          </div>
+        </div>
+        <div style="color: var(--muted); margin: 6px 0;">${a.publishedLabel} · ${a.targetCount} recipients, ${a.acknowledgedCount} acknowledged</div>
+        <div>${a.body}</div>
+      </div>`).join("") : `<div class="empty">No announcements published.</div>`;
+    $$("[data-del-ann]").forEach((b) => b.onclick = async () => {
+      if (!confirm("Retract this announcement?")) return;
+      await api(`/api/admin/announcements/${b.dataset.delAnn}`, { method: "DELETE" });
+      loadAnnouncements();
+    });
+  }
+  $("#newAnnBtn").onclick = () => {
+    openModal(`
+      <h2>New announcement</h2>
+      <div class="sub">Targeted at all clients or a specific cohort.</div>
+      <form id="annForm">
+        <div class="form-row"><label>Title</label><input name="title" required /></div>
+        <div class="form-row"><label>Body</label><textarea name="body" required></textarea></div>
+        <div class="form-row inline">
+          <div><label>Severity</label><select name="severity"><option value="info" selected>info</option><option value="warning">warning</option><option value="critical">critical</option></select></div>
+          <div><label>Audience</label><select name="audience"><option value="all" selected>all</option><option value="trial">trial</option><option value="active">active</option><option value="suspended">suspended</option></select></div>
+        </div>
+        <div class="form-row"><label>Expires at (optional)</label><input name="expiresAt" type="datetime-local" /></div>
+        <div class="form-actions">
+          <button type="button" class="btn ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn primary">Publish</button>
+        </div>
+      </form>`);
+    $("#annForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const body = {
+        title: fd.get("title"), body: fd.get("body"),
+        severity: fd.get("severity"), audience: fd.get("audience"),
+        expiresAt: fd.get("expiresAt") ? new Date(String(fd.get("expiresAt"))).toISOString() : null,
+      };
+      try { await api("/api/admin/announcements", { method: "POST", body: JSON.stringify(body) }); closeModal(); toast("Published"); loadAnnouncements(); }
+      catch (err) { toast(err.message, "err"); }
+    };
+  };
+
+  // -------- Audit
+  async function loadAudit() {
+    const limit = $("#auditLimit").value || 100;
+    const entries = await api(`/api/admin/audit?limit=${limit}`);
+    state.audit = entries;
+    $("#auditList").innerHTML = entries.length ? entries.map((a) => `
+      <div class="audit-row">
+        <div class="audit-dot"></div>
+        <div style="flex: 1;">
+          <div style="font-size: 13px;"><strong>${a.action}</strong> · ${a.summary}</div>
+          <div style="font-size: 11px; color: var(--muted);">${a.admin?.name ?? "system"} · ${a.targetType ?? ""} ${a.targetId ?? ""} · ${a.occurredLabel}</div>
+        </div>
+      </div>`).join("") : `<div class="empty">No audit entries yet.</div>`;
+  }
+  $("#auditLimit").onchange = loadAudit;
+  $("#exportAudit").onclick = () => {
+    const blob = new Blob([JSON.stringify(state.audit, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `audit-${Date.now()}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  function loadPage(p) {
+    const map = {
+      dashboard: loadDashboard,
+      clients: loadClients,
+      plans: loadPlans,
+      admins: loadAdmins,
+      support: loadSupport,
+      announcements: loadAnnouncements,
+      audit: loadAudit,
+    };
+    return (map[p] ?? loadDashboard)().catch((err) => toast(err.message, "err"));
+  }
+
+  $("#refreshBtn").onclick = () => loadPage(location.hash.replace("#","") || "dashboard");
+
+  (async function boot() {
+    const initial = location.hash.replace("#","") || "dashboard";
+    show(initial);
+  })();
+</script>
+</body>
+</html>

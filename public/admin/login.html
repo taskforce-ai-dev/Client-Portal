@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sentinel — Sign in</title>
+<style>
+  :root {
+    --bg-0: #04070f;
+    --bg-1: #080d1a;
+    --cyan: #00d4ff;
+    --violet: #7b61ff;
+    --rose: #ff4d6d;
+    --text-0: #f4f7ff;
+    --text-1: #c8d0e3;
+    --text-2: #8a93ab;
+    --text-3: #5a6378;
+    --glass-bg: rgba(255, 255, 255, 0.045);
+    --glass-border: rgba(255, 255, 255, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100vh; }
+  body {
+    font-family: 'Sora', system-ui, -apple-system, Segoe UI, sans-serif;
+    color: var(--text-0);
+    background: var(--bg-0);
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(1200px 800px at 12% -10%, rgba(123,97,255,0.18), transparent 60%),
+      radial-gradient(1000px 700px at 95% 10%, rgba(0,212,255,0.13), transparent 60%),
+      linear-gradient(180deg, #04070f 0%, #060a16 50%, #04070f 100%);
+  }
+  .card {
+    width: 100%; max-width: 420px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 18px;
+    padding: 36px 32px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 30px 60px -30px rgba(0,0,0,0.6);
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 24px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #ffffff, #cfd6ee 60%, #8a93ab);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { margin: 0 0 28px; color: var(--text-2); font-size: 13px; }
+  label {
+    display: block;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text-2); margin-bottom: 6px; margin-top: 14px;
+  }
+  input {
+    width: 100%; padding: 11px 13px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px; color: var(--text-0);
+    font-size: 14px; outline: none;
+    transition: border-color 150ms, background 150ms;
+  }
+  input:focus {
+    border-color: rgba(0,212,255,0.5);
+    background: rgba(0,212,255,0.04);
+  }
+  button {
+    width: 100%;
+    margin-top: 22px;
+    padding: 12px 16px;
+    border: none; border-radius: 10px;
+    background: linear-gradient(135deg, #00d4ff, #4d8bff);
+    color: #04070f; font-weight: 600; font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 6px 24px -4px rgba(0,212,255,0.5);
+  }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  .error {
+    margin-top: 14px; padding: 10px 12px;
+    background: rgba(255,77,109,0.08);
+    border: 1px solid rgba(255,77,109,0.3);
+    border-radius: 8px;
+    color: #ffa9b9; font-size: 13px;
+    display: none;
+  }
+  .error.show { display: block; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 22px;
+  }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: conic-gradient(from 210deg, #00d4ff, #7b61ff, #00e5a0, #00d4ff);
+    box-shadow: 0 0 18px rgba(0,212,255,0.4);
+  }
+  .brand-name {
+    font-weight: 700; font-size: 16px; letter-spacing: -0.01em;
+  }
+  .brand-name span { color: var(--cyan); }
+  .footer { margin-top: 18px; text-align: center; font-size: 12px; color: var(--text-3); }
+  .footer a { color: var(--text-2); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-name"><span>Sentinel</span> · Admin</div>
+    </div>
+    <h1>Sign in</h1>
+    <p class="sub">Super admin console — operators only.</p>
+    <form id="f" autocomplete="on">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" required autocomplete="email" autofocus />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password" />
+      <div class="error" id="err"></div>
+      <button id="btn" type="submit">Sign in</button>
+    </form>
+    <div class="footer">
+      <a href="/portal/login">Client portal sign in →</a>
+    </div>
+  </div>
+<script>
+const form = document.getElementById('f');
+const err = document.getElementById('err');
+const btn = document.getElementById('btn');
+form.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  err.classList.remove('show');
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  try {
+    const res = await fetch('/api/auth/admin/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('email').value.trim(),
+        password: document.getElementById('password').value,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: 'Sign in failed' }));
+      throw new Error(body.message || 'Sign in failed');
+    }
+    const next = new URLSearchParams(window.location.search).get('next') || '/admin/';
+    window.location.href = next;
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
+  }
+});
+</script>
+</body>
+</html>
