@@ -27,9 +27,15 @@ const account = (id: string) => [
   { href: `/agents/${id}/settings`, label: "Settings", icon: Settings },
 ];
 
-export default function AgentSidebar({ agent }: { agent: Agent }) {
+export default function AgentSidebar({
+  agent,
+  minutesUsed,
+}: {
+  agent: Agent;
+  minutesUsed: number;
+}) {
   const pathname = usePathname();
-  const pct = Math.round((workspace.minutesUsed / workspace.minutesLimit) * 100);
+  const pct = Math.min(100, Math.round((minutesUsed / workspace.minutesLimit) * 100));
 
   const Item = ({
     href,
@@ -126,7 +132,7 @@ export default function AgentSidebar({ agent }: { agent: Agent }) {
           <div className="h-full rounded-full bg-accent-gradient" style={{ width: `${pct}%` }} />
         </div>
         <div className="text-[11px] text-slate-500 mt-2">
-          {workspace.minutesUsed.toLocaleString()} / {workspace.minutesLimit.toLocaleString()} used
+          {minutesUsed.toLocaleString()} / {workspace.minutesLimit.toLocaleString()} used
         </div>
       </div>
     </aside>

@@ -5,34 +5,32 @@ import StatusBadge from "@/components/StatusBadge";
 import CallsChart from "@/components/CallsChart";
 import OutcomeChart from "@/components/OutcomeChart";
 import SourceBadge from "@/components/SourceBadge";
+import AutoRefresh from "@/components/AutoRefresh";
+import TwilioNotice from "@/components/TwilioNotice";
 import { Phone } from "lucide-react";
 import { agents, workspace } from "@/lib/data";
 import {
   bucketCallsByHour,
   bucketOutcomes,
+  callStats,
   callsToday,
   getCalls,
   getUsageThisMonth,
 } from "@/lib/twilio";
 
-export const revalidate = 30;
+export const revalidate = 15;
 
 export default async function AgentOverviewPage({ params }: { params: { id: string } }) {
   const agent = agents.find((a) => a.id === params.id);
   if (!agent) notFound();
 
-  const [{ calls, source }, usage] = await Promise.all([
-    getCalls(100),
+  const [{ calls, configured, error }, usage] = await Promise.all([
+    getCalls(200),
     getUsageThisMonth(),
   ]);
 
   const today = callsToday(calls);
-  const booked = today.filter((c) => c.outcome === "Booked").length;
-  const convRate = today.length ? Math.round((booked / today.length) * 1000) / 10 : 0;
-  const avgDurSec = today.length
-    ? Math.round(today.reduce((s, c) => s + c.durationSec, 0) / today.length)
-    : 0;
-  const avgDur = `${Math.floor(avgDurSec / 60)}:${String(avgDurSec % 60).padStart(2, "0")}`;
+  const { convRate, booked, avgDuration } = callStats(today);
   const minutesPct = Math.round((usage.totalMinutes / workspace.minutesLimit) * 100);
 
   const hourly = bucketCallsByHour(today.length ? today : calls);
@@ -52,7 +50,7 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-semibold tracking-tight text-white">{agent.name}</h1>
               <StatusBadge status={agent.status} />
-              <SourceBadge source={source} />
+              <SourceBadge configured={configured} error={error} />
             </div>
             <p className="text-sm text-slate-400 mt-1">
               {agent.role} · {agent.channels.join(" · ")}
@@ -60,16 +58,19 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <AutoRefresh />
           <button className="btn-ghost">
             <Phone className="w-4 h-4" /> Test call
           </button>
         </div>
       </div>
 
+      <TwilioNotice configured={configured} error={error} />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Calls today" value={String(today.length)} delta={0} hint="From Twilio" />
         <KpiCard label="Conv. rate" value={`${convRate}%`} delta={0} hint={`${booked} booked today`} />
-        <KpiCard label="Avg duration" value={avgDur || "0:00"} delta={0} hint="Today" />
+        <KpiCard label="Avg duration" value={avgDuration} delta={0} hint="Today" />
         <KpiCard
           label="Minutes this month"
           value={Math.round(usage.totalMinutes).toLocaleString()}
@@ -96,7 +97,9 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
           </Link>
         </div>
         {recentCalls.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-500">No calls yet.</div>
+          <div className="py-10 text-center text-sm text-slate-500">
+            {configured ? "No calls yet." : "Connect Twilio to see calls."}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

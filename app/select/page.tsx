@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { Bell, ChevronDown, Hexagon, Phone, Search } from "lucide-react";
 import { agents, workspace } from "@/lib/data";
+import { callStats, callsToday, getCalls } from "@/lib/twilio";
+
+export const revalidate = 30;
 
 const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
   "Voice Call": Phone,
 };
 
-export default function SelectAgentPage() {
+export default async function SelectAgentPage() {
+  const { calls } = await getCalls(200);
+  const today = callsToday(calls);
+  const stats = callStats(today);
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="h-16 border-b border-white/5 bg-ink-950/60 backdrop-blur-xl flex items-center justify-between px-6 lg:px-8 gap-4">
@@ -101,9 +108,9 @@ export default function SelectAgentPage() {
                 </div>
 
                 <div className="mt-5 grid grid-cols-3 gap-2">
-                  <Stat label="Calls today" value={String(a.callsToday)} />
-                  <Stat label="Conv. rate" value={`${a.convRate}%`} />
-                  <Stat label="Avg dur." value={a.avgDuration} />
+                  <Stat label="Calls today" value={String(today.length)} />
+                  <Stat label="Conv. rate" value={`${stats.convRate}%`} />
+                  <Stat label="Avg dur." value={stats.avgDuration} />
                 </div>
 
                 <div className="mt-5 pt-4 border-t border-white/5 text-xs text-accent-300 group-hover:text-accent-200 font-medium flex items-center justify-end">

@@ -1,5 +1,3 @@
-import { calls as mockCalls } from "./data";
-
 const TWILIO_BASE = "https://api.twilio.com/2010-04-01";
 
 export type DisplayCall = {
@@ -16,7 +14,19 @@ export type DisplayCall = {
   recordingUrl?: string | null;
 };
 
-export type DataSource = "twilio" | "mock";
+export type CallsResult = {
+  calls: DisplayCall[];
+  configured: boolean;
+  error?: string;
+};
+
+export type UsageResult = {
+  configured: boolean;
+  totalCalls: number;
+  totalMinutes: number;
+  totalPrice: number;
+  error?: string;
+};
 
 export function isTwilioConfigured() {
   return !!(
@@ -38,7 +48,7 @@ async function twilioGet(path: string) {
       Authorization: authHeader(),
       Accept: "application/json",
     },
-    next: { revalidate: 30 },
+    next: { revalidate: 15 },
   });
   if (!res.ok) {
     const body = await res.text();
@@ -77,11 +87,9 @@ function mapStatusToOutcome(status: string): DisplayCall["outcome"] {
     case "completed":
       return "Booked";
     case "no-answer":
-      return "No answer";
     case "busy":
       return "No answer";
     case "failed":
-      return "Cancelled";
     case "canceled":
       return "Cancelled";
     case "voicemail":
@@ -101,7 +109,6 @@ type TwilioCall = {
   status: string;
   duration: string;
   start_time: string;
-  subresource_uris?: { recordings?: string };
 };
 
 function mapCall(c: TwilioCall): DisplayCall {
@@ -122,52 +129,27 @@ function mapCall(c: TwilioCall): DisplayCall {
   };
 }
 
-function mockToDisplay(): DisplayCall[] {
-  return mockCalls.map((c) => ({
-    id: c.id,
-    caller: c.caller,
-    number: c.number,
-    startedAt: c.startedAt,
-    startedAtIso: "",
-    duration: c.duration,
-    durationSec: parseInt(c.duration.split(":")[0], 10) * 60 + parseInt(c.duration.split(":")[1], 10),
-    outcome: c.outcome,
-    sentiment: c.sentiment,
-    direction: "inbound",
-  }));
-}
-
-export async function getCalls(limit = 50): Promise<{
-  calls: DisplayCall[];
-  source: DataSource;
-  error?: string;
-}> {
+export async function getCalls(limit = 50): Promise<CallsResult> {
   if (!isTwilioConfigured()) {
-    return { calls: mockToDisplay(), source: "mock" };
+    return { calls: [], configured: false };
   }
   try {
     const sub = process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID!;
     const data = await twilioGet(`/Accounts/${sub}/Calls.json?PageSize=${limit}`);
     const raw = (data.calls ?? []) as TwilioCall[];
-    return { calls: raw.map(mapCall), source: "twilio" };
+    return { calls: raw.map(mapCall), configured: true };
   } catch (e) {
     return {
-      calls: mockToDisplay(),
-      source: "mock",
+      calls: [],
+      configured: true,
       error: e instanceof Error ? e.message : String(e),
     };
   }
 }
 
-export async function getUsageThisMonth(): Promise<{
-  source: DataSource;
-  totalCalls: number;
-  totalMinutes: number;
-  totalPrice: number;
-  error?: string;
-}> {
+export async function getUsageThisMonth(): Promise<UsageResult> {
   if (!isTwilioConfigured()) {
-    return { source: "mock", totalCalls: 100, totalMinutes: 1820, totalPrice: 189 };
+    return { configured: false, totalCalls: 0, totalMinutes: 0, totalPrice: 0 };
   }
   try {
     const sub = process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID!;
@@ -189,13 +171,13 @@ export async function getUsageThisMonth(): Promise<{
       totalMinutes += r.usage_unit === "minutes" ? usage : usage / 60;
       totalPrice += parseFloat(r.price || "0");
     }
-    return { source: "twilio", totalCalls, totalMinutes, totalPrice };
+    return { configured: true, totalCalls, totalMinutes, totalPrice };
   } catch (e) {
     return {
-      source: "mock",
-      totalCalls: 100,
-      totalMinutes: 1820,
-      totalPrice: 189,
+      configured: true,
+      totalCalls: 0,
+      totalMinutes: 0,
+      totalPrice: 0,
       error: e instanceof Error ? e.message : String(e),
     };
   }
@@ -215,7 +197,7 @@ export function bucketCallsByHour(calls: DisplayCall[]) {
   const hours = [6, 8, 10, 12, 14, 16, 18, 20, 22];
   return hours.map((h) => ({
     hour: h === 12 ? "12p" : h < 12 ? `${h}a` : `${h - 12}p`,
-    calls: byHour.get(h) ?? byHour.get(h - 1) ?? 0,
+    calls: (byHour.get(h) ?? 0) + (byHour.get(h - 1) ?? 0),
   }));
 }
 
@@ -272,4 +254,13 @@ export function callsToday(calls: DisplayCall[]) {
     const d = new Date(c.startedAtIso);
     return !isNaN(d.getTime()) && d >= todayStart;
   });
+}
+
+export function callStats(calls: DisplayCall[]) {
+  const total = calls.length;
+  const booked = calls.filter((c) => c.outcome === "Booked").length;
+  const convRate = total ? Math.round((booked / total) * 1000) / 10 : 0;
+  const avgSec = total ? Math.round(calls.reduce((s, c) => s + c.durationSec, 0) / total) : 0;
+  const avgDuration = `${Math.floor(avgSec / 60)}:${String(avgSec % 60).padStart(2, "0")}`;
+  return { total, booked, convRate, avgSec, avgDuration };
 }

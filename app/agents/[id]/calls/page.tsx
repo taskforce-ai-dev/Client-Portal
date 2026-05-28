@@ -1,8 +1,10 @@
 import { Download, Filter, Play, Search } from "lucide-react";
 import SourceBadge from "@/components/SourceBadge";
+import AutoRefresh from "@/components/AutoRefresh";
+import TwilioNotice from "@/components/TwilioNotice";
 import { getCalls } from "@/lib/twilio";
 
-export const revalidate = 30;
+export const revalidate = 15;
 
 const outcomePill: Record<string, string> = {
   Booked: "pill-emerald",
@@ -19,7 +21,7 @@ const sentimentColor: Record<string, string> = {
 };
 
 export default async function CallLogsPage() {
-  const { calls, source, error } = await getCalls(100);
+  const { calls, configured, error } = await getCalls(200);
 
   return (
     <div className="space-y-6">
@@ -27,14 +29,14 @@ export default async function CallLogsPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight text-white">Call Logs</h1>
-            <SourceBadge source={source} />
+            <SourceBadge configured={configured} error={error} />
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            {calls.length} {calls.length === 1 ? "call" : "calls"} ·{" "}
-            {source === "twilio" ? "live from Twilio" : "showing demo data"}
+            {calls.length} {calls.length === 1 ? "call" : "calls"} · live from Twilio
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <AutoRefresh />
           <div className="relative w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input placeholder="Search by caller or number…" className="input-dark" />
@@ -48,16 +50,13 @@ export default async function CallLogsPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="card p-4 border border-amber-500/20 bg-amber-500/[0.04]">
-          <div className="text-sm text-amber-300 font-medium">Twilio connection error</div>
-          <div className="text-xs text-amber-200/70 mt-1 font-mono break-all">{error}</div>
-        </div>
-      )}
+      <TwilioNotice configured={configured} error={error} />
 
       <div className="card overflow-hidden">
         {calls.length === 0 ? (
-          <div className="py-16 text-center text-sm text-slate-500">No calls yet.</div>
+          <div className="py-16 text-center text-sm text-slate-500">
+            {configured && !error ? "No calls yet." : "No live call data to show."}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

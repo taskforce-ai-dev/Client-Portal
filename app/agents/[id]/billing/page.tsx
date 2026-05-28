@@ -1,5 +1,6 @@
 import { CreditCard, Download } from "lucide-react";
 import SourceBadge from "@/components/SourceBadge";
+import TwilioNotice from "@/components/TwilioNotice";
 import { invoices, workspace } from "@/lib/data";
 import { getUsageThisMonth } from "@/lib/twilio";
 
@@ -21,12 +22,14 @@ export default async function BillingPage() {
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight text-white">Billing</h1>
-          <SourceBadge source={usage.source} />
+          <SourceBadge configured={usage.configured} error={usage.error} />
         </div>
         <p className="text-sm text-slate-400 mt-1">
           {workspace.plan} plan · billed monthly
         </p>
       </div>
+
+      <TwilioNotice configured={usage.configured} error={usage.error} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="card p-5 lg:col-span-2">
@@ -73,15 +76,6 @@ export default async function BillingPage() {
           <button className="btn-ghost w-full justify-center mt-3 text-xs">Update card</button>
         </div>
       </div>
-
-      {usage.error && (
-        <div className="card p-4 border border-amber-500/20 bg-amber-500/[0.04]">
-          <div className="text-sm text-amber-300 font-medium">
-            Twilio usage unavailable — showing demo numbers
-          </div>
-          <div className="text-xs text-amber-200/70 mt-1 font-mono break-all">{usage.error}</div>
-        </div>
-      )}
 
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between p-5 pb-3">
