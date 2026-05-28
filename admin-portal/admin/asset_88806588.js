@@ -1,87 +1,133 @@
 /* ============================================================
    Sentinel Super Admin Console — data wiring
-   Data is baked in here so the console renders reliably without
-   depending on a runtime API call. Replace window.__LIVE_ADMIN with a
-   fetch to your backend when you wire one up.
+   Data is baked in here (shapes match the reference sentinel-bundle
+   builder exactly) so the console renders without a runtime API call.
+   Swap window.__LIVE_ADMIN for a fetch when a backend is wired up.
    ============================================================ */
-window.__LIVE_ADMIN = {
-  CLIENTS: [
-    { id: "cli_treehouse", name: "Tree House Chalets", slug: "tree-house-chalets", contactName: "Chrys Fernando", contactEmail: "hello@treehousechalets.com", contactPhone: "+94 71 707 3529", plan: { name: "Growth" }, status: "active", mrr: 1990, monthlyBudget: 3000, timezone: "Asia/Colombo", defaultLanguage: "en", usage: { totalSpend: 1180, percentUsed: 39 }, counts: { agents: 1, openSupportTickets: 0 } },
-    { id: "cli_winrich", name: "Winrich Hotel", slug: "winrich-hotel", contactName: "Ops Team", contactEmail: "ops@winrich.com", contactPhone: "", plan: { name: "Scale" }, status: "active", mrr: 1480, monthlyBudget: 2500, timezone: "Asia/Colombo", defaultLanguage: "en", usage: { totalSpend: 980, percentUsed: 39 }, counts: { agents: 2, openSupportTickets: 1 } },
-    { id: "cli_flico", name: "Flico", slug: "flico", contactName: "Flico Team", contactEmail: "team@flico.io", contactPhone: "", plan: { name: "Starter" }, status: "active", mrr: 976, monthlyBudget: 1500, timezone: "UTC", defaultLanguage: "en", usage: { totalSpend: 410, percentUsed: 27 }, counts: { agents: 1, openSupportTickets: 0 } },
-    { id: "cli_aether", name: "Aether Labs", slug: "aether-labs", contactName: "Founder", contactEmail: "founder@aether.ai", contactPhone: "", plan: { name: "Trial" }, status: "trial", mrr: 0, monthlyBudget: 0, timezone: "UTC", defaultLanguage: "en", usage: { totalSpend: 0, percentUsed: 0 }, counts: { agents: 1, openSupportTickets: 0 } },
-    { id: "cli_northwind", name: "Northwind Co", slug: "northwind-co", contactName: "Admin", contactEmail: "admin@northwind.co", contactPhone: "", plan: { name: "Growth" }, status: "blocked", mrr: 0, monthlyBudget: 2000, timezone: "UTC", defaultLanguage: "en", usage: { totalSpend: 0, percentUsed: 0 }, counts: { agents: 0, openSupportTickets: 0 } }
-  ],
-  CLIENT_BREAKDOWN: [
-    { label: "Active", count: 3, color: "#34d399" },
-    { label: "Trial", count: 1, color: "#f59e0b" },
-    { label: "Overdue", count: 0, color: "#ef4444" },
-    { label: "Blocked", count: 1, color: "#94a3b8" }
-  ],
-  REVENUE_TREND: [
-    { month: "Jun '25", mrr: 0, collected: 0, value: 0 },
-    { month: "Jul '25", mrr: 0, collected: 0, value: 0 },
-    { month: "Aug '25", mrr: 0, collected: 0, value: 0 },
-    { month: "Sep '25", mrr: 0, collected: 0, value: 0 },
-    { month: "Oct '25", mrr: 120, collected: 110, value: 120 },
-    { month: "Nov '25", mrr: 360, collected: 330, value: 360 },
-    { month: "Dec '25", mrr: 720, collected: 660, value: 720 },
-    { month: "Jan '26", mrr: 1200, collected: 1100, value: 1200 },
-    { month: "Feb '26", mrr: 1850, collected: 1700, value: 1850 },
-    { month: "Mar '26", mrr: 2600, collected: 2400, value: 2600 },
-    { month: "Apr '26", mrr: 3500, collected: 3220, value: 3500 },
-    { month: "May '26", mrr: 4446, collected: 4090, value: 4446 }
-  ],
-  MRR_MOVEMENT: [
-    { month: "Dec '25", value: 620 }, { month: "Jan '26", value: 750 }, { month: "Feb '26", value: 700 },
-    { month: "Mar '26", value: 900 }, { month: "Apr '26", value: 910 }, { month: "May '26", value: 946 }
-  ],
-  EARNINGS_MONTHLY: [
-    { month: "Dec '25", value: 1800, amount: 1800 }, { month: "Jan '26", value: 2100, amount: 2100 },
-    { month: "Feb '26", value: 2400, amount: 2400 }, { month: "Mar '26", value: 3000, amount: 3000 },
-    { month: "Apr '26", value: 3600, amount: 3600 }, { month: "May '26", value: 4096, amount: 4096 }
-  ],
-  REVENUE_BY_PLAN: [
-    { label: "Growth", plan: "Growth", value: 3980, color: "#00d4ff" },
-    { label: "Scale", plan: "Scale", value: 1480, color: "#7b61ff" },
-    { label: "Starter", plan: "Starter", value: 976, color: "#34d399" }
-  ],
-  ACTIVITY_FEED: [
-    { action: "Agent created", detail: "Reset password · chanya@treehousechalets (Tree House Chalets)", ts: "09:39:06", color: "#34d399" },
-    { action: "Agent created", detail: "Added Chanya (chanya@…) to Tree House Chalets", ts: "09:38:33", color: "#00d4ff" },
-    { action: "Client activated", detail: "Winrich Hotel moved to Scale plan", ts: "08:12:50", color: "#34d399" },
-    { action: "Payment received", detail: "$1,990 · Tree House Chalets", ts: "Yesterday", color: "#7b61ff" },
-    { action: "Trial started", detail: "Aether Labs began a 14-day trial", ts: "2d ago", color: "#f59e0b" }
-  ],
-  ADMIN_USERS: [
-    { id: "adm_maya", name: "Maya Reyes", email: "maya@taskforceai.tech", role: "super_admin", status: "active", isActive: true, color: "#7b61ff", initials: "MR", lastLoginLabel: "Today" },
-    { id: "adm_chrys", name: "Chrys Fernando", email: "chrys@taskforceai.tech", role: "super_admin", status: "active", isActive: true, color: "#00d4ff", initials: "CF", lastLoginLabel: "Today" }
-  ],
-  SERVICES: [
-    { name: "API", status: "operational", value: 99.98 },
-    { name: "Voice gateway", status: "operational", value: 99.95 },
-    { name: "Dashboard", status: "operational", value: 100 },
-    { name: "Webhooks", status: "operational", value: 99.92 }
-  ],
-  AGENT_TEMPLATES: [
-    { name: "Booking Agent", label: "Booking", count: 4, value: 4 },
-    { name: "Support Agent", label: "Support", count: 2, value: 2 },
-    { name: "Sales Agent", label: "Sales", count: 1, value: 1 }
-  ],
-  PAYMENTS: [],
-  OVERDUE: [],
-  TICKETS: [],
-  INCIDENTS: [],
-  CLIENT_INVOICES: [],
-  AUDIT_LOG: [
-    { action: "agent.create", summary: "Reset password · chanya@treehousechalets", admin: { name: "Maya Reyes" }, occurredLabel: "09:39:06" },
-    { action: "agent.create", summary: "Added Chanya to Tree House Chalets", admin: { name: "Maya Reyes" }, occurredLabel: "09:38:33" },
-    { action: "client.activate", summary: "Winrich Hotel moved to Scale plan", admin: { name: "Chrys Fernando" }, occurredLabel: "08:12:50" }
-  ]
-};
+window.__LIVE_ADMIN = (function () {
+  var months = [];
+  for (var i = 11; i >= 0; i--) {
+    var d = new Date(Date.UTC(2026, 4 - i, 1));
+    months.push(d.toLocaleString("en-US", { month: "short", year: "2-digit" }).replace(" ", " '"));
+  }
+  var curve = [0, 0, 0, 0, 120, 360, 720, 1200, 1850, 2600, 3500, 4446];
+
+  var REVENUE_TREND = months.map(function (m, i) {
+    return { month: m, mrr: curve[i], collected: Math.round(curve[i] * 0.92) };
+  });
+
+  var EARNINGS_MONTHLY = months.map(function (m, i) {
+    var invoiced = curve[i];
+    var collected = Math.round(curve[i] * 0.92);
+    return {
+      month: m,
+      clients: Math.min(5, Math.max(0, Math.round((i - 3) * 0.8))),
+      newClients: i >= 8 ? 1 : 0,
+      churned: 0,
+      invoiced: invoiced,
+      collected: collected,
+      outstanding: invoiced - collected,
+      netMrr: curve[i],
+    };
+  });
+
+  var CLIENTS = [
+    { id: "TH-1042", workspaceId: "ws_treehouse", company: "Tree House Chalets", contact: "Chrys Fernando", email: "hello@treehousechalets.com", country: "LK", plan: "Growth", status: "Active", mrr: 1990, totalPaid: 5970, agents: 1, joined: "2026-03-12", lastActive: "2h ago", phone: "+94 71 707 3529", timezone: "Asia/Colombo" },
+    { id: "WR-1039", workspaceId: "ws_winrich", company: "Winrich Hotel", contact: "Ops Team", email: "ops@winrich.com", country: "LK", plan: "Scale", status: "Active", mrr: 1480, totalPaid: 4440, agents: 2, joined: "2026-02-02", lastActive: "5h ago", phone: "—", timezone: "Asia/Colombo" },
+    { id: "FL-1051", workspaceId: "ws_flico", company: "Flico", contact: "Flico Team", email: "team@flico.io", country: "US", plan: "Starter", status: "Active", mrr: 976, totalPaid: 2928, agents: 1, joined: "2026-04-18", lastActive: "1d ago", phone: "—", timezone: "UTC" },
+    { id: "AE-1063", workspaceId: "ws_aether", company: "Aether Labs", contact: "Founder", email: "founder@aether.ai", country: "US", plan: "Trial", status: "Trial", mrr: 0, totalPaid: 0, agents: 1, joined: "2026-05-20", lastActive: "3h ago", phone: "—", timezone: "UTC" },
+    { id: "NW-1009", workspaceId: "ws_northwind", company: "Northwind Co", contact: "Admin", email: "admin@northwind.co", country: "GB", plan: "Growth", status: "Blocked", mrr: 0, totalPaid: 1990, agents: 0, joined: "2025-11-21", lastActive: "21d ago", phone: "—", timezone: "Europe/London" },
+  ];
+
+  var CLIENT_BREAKDOWN = [
+    { name: "Active", count: 3, color: "#10b981" },
+    { name: "Trial", count: 1, color: "#f59e0b" },
+    { name: "Overdue", count: 0, color: "#f43f5e" },
+    { name: "Blocked", count: 1, color: "#6b7280" },
+    { name: "Churned", count: 0, color: "#4b5563" },
+  ];
+
+  var ACTIVITY_FEED = [
+    { ts: "09:39:06", action: "agent_created", client: "Tree House Chalets", detail: "Reset password · chanya@treehousechalets" },
+    { ts: "09:38:33", action: "agent_created", client: "Tree House Chalets", detail: "Added Chanya to Tree House Chalets" },
+    { ts: "08:12:50", action: "plan_upgrade", client: "Winrich Hotel", detail: "Moved to Scale plan" },
+    { ts: "07:50:11", action: "payment_received", client: "Tree House Chalets", detail: "$1,990 received" },
+    { ts: "06:30:00", action: "signup", client: "Aether Labs", detail: "Started 14-day trial" },
+    { ts: "Yesterday", action: "ticket_opened", client: "Winrich Hotel", detail: "Voice latency question" },
+  ];
+
+  var PAYMENTS = [
+    { id: "P-2041", client: "Tree House Chalets", date: "2026-05-01", amount: 1990, plan: "Growth", method: "—", status: "Paid" },
+    { id: "P-2042", client: "Winrich Hotel", date: "2026-05-01", amount: 1480, plan: "Scale", method: "—", status: "Paid" },
+    { id: "P-2043", client: "Flico", date: "2026-05-12", amount: 976, plan: "Starter", method: "—", status: "Pending" },
+  ];
+
+  var ADMIN_USERS = [
+    { name: "Maya Reyes", email: "maya@taskforceai.tech", role: "Super Admin", lastLogin: "Today", status: "Active" },
+    { name: "Chrys Fernando", email: "chrys@taskforceai.tech", role: "Super Admin", lastLogin: "Today", status: "Active" },
+  ];
+
+  var SERVICES = [
+    { name: "API", status: "Operational", uptime: 99.98, latency: 142, lastIncident: "—" },
+    { name: "Voice gateway", status: "Operational", uptime: 99.95, latency: 88, lastIncident: "12d ago" },
+    { name: "Dashboard", status: "Operational", uptime: 100, latency: 60, lastIncident: "—" },
+    { name: "Webhooks", status: "Operational", uptime: 99.92, latency: 210, lastIncident: "—" },
+  ];
+
+  var AGENT_TEMPLATES = [
+    { id: "growth", name: "Booking Agent", description: "Calendar reservations & confirmations", model: "balanced", voice: "Nova", channel: "voice", voiceCost: 0.1, aiCost: 0.002, callCost: 0.12, active: true },
+    { id: "scale", name: "Support Agent", description: "Inbound resolution & customer care", model: "quality", voice: "Aria", channel: "voice", voiceCost: 0.12, aiCost: 0.003, callCost: 0.14, active: true },
+    { id: "starter", name: "Sales Agent", description: "Outbound conversion & pipeline", model: "fast", voice: "Rex", channel: "voice", voiceCost: 0.09, aiCost: 0.002, callCost: 0.1, active: true },
+  ];
+
+  var REVENUE_BY_PLAN = [
+    { plan: "Growth", revenue: 1990 },
+    { plan: "Scale", revenue: 1480 },
+    { plan: "Starter", revenue: 976 },
+  ];
+
+  var MRR_MOVEMENT = [
+    { kind: "New", value: 976, color: "#10b981" },
+    { kind: "Expansion", value: 490, color: "#34d399" },
+    { kind: "Contraction", value: 0, color: "#f59e0b" },
+    { kind: "Churned", value: 0, color: "#f43f5e" },
+  ];
+
+  var AUDIT_LOG = [
+    { ts: "2026-05-28 09:39:06", admin: "Maya Reyes", action: "Agent Create", type: "agent", target: "Tree House Chalets", ip: "—", details: "Reset password · chanya@treehousechalets" },
+    { ts: "2026-05-28 09:38:33", admin: "Maya Reyes", action: "Agent Create", type: "agent", target: "Tree House Chalets", ip: "—", details: "Added Chanya to Tree House Chalets" },
+    { ts: "2026-05-28 08:12:50", admin: "Chrys Fernando", action: "Client Activate", type: "client", target: "Winrich Hotel", ip: "—", details: "Moved to Scale plan" },
+  ];
+
+  var CLIENT_INVOICES = [
+    { id: "INV-2041", date: "2026-05-01", amount: 1990, status: "Paid" },
+    { id: "INV-2042", date: "2026-05-01", amount: 1480, status: "Paid" },
+    { id: "INV-2043", date: "2026-05-12", amount: 976, status: "Pending" },
+  ];
+
+  return {
+    PLATFORM_NAME: "Sentinel",
+    CLIENTS: CLIENTS,
+    REVENUE_TREND: REVENUE_TREND,
+    CLIENT_BREAKDOWN: CLIENT_BREAKDOWN,
+    ACTIVITY_FEED: ACTIVITY_FEED,
+    PAYMENTS: PAYMENTS,
+    OVERDUE: [],
+    TICKETS: [],
+    AUDIT_LOG: AUDIT_LOG,
+    ADMIN_USERS: ADMIN_USERS,
+    SERVICES: SERVICES,
+    INCIDENTS: [],
+    AGENT_TEMPLATES: AGENT_TEMPLATES,
+    EARNINGS_MONTHLY: EARNINGS_MONTHLY,
+    REVENUE_BY_PLAN: REVENUE_BY_PLAN,
+    MRR_MOVEMENT: MRR_MOVEMENT,
+    CLIENT_INVOICES: CLIENT_INVOICES,
+    announcements: [],
+  };
+})();
 
 const PLATFORM_NAME = "Sentinel";
-
 const CLIENTS = [];
 const REVENUE_TREND = [];
 const CLIENT_BREAKDOWN = [];
@@ -98,33 +144,22 @@ const EARNINGS_MONTHLY = [];
 const REVENUE_BY_PLAN = [];
 const MRR_MOVEMENT = [];
 const CLIENT_INVOICES = [];
+const announcements = [];
 
-const fmtMoney = (n) => "$" + Math.round(Math.abs(n)).toLocaleString();
-const fmtMoneySigned = (n) => (n < 0 ? "-" : "") + "$" + Math.round(Math.abs(n)).toLocaleString();
+const fmtMoney = (n) => "$" + Math.round(Math.abs(n || 0)).toLocaleString();
+const fmtMoneySigned = (n) => (n < 0 ? "-" : "") + "$" + Math.round(Math.abs(n || 0)).toLocaleString();
 const fmtAbbrev = (n) => {
-  const abs = Math.abs(n);
+  const abs = Math.abs(n || 0);
   if (abs >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (abs >= 1_000)     return (n / 1_000).toFixed(1) + "K";
-  return Math.round(n).toLocaleString();
+  return Math.round(n || 0).toLocaleString();
 };
-const fmtPct = (n, decimals = 1) => n.toFixed(decimals) + "%";
+const fmtPct = (n, decimals = 1) => (n || 0).toFixed(decimals) + "%";
 const formatDate = (d) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 const daysAgo = (n) => `${n}d ago`;
 
 (function applyLive() {
   var live = window.__LIVE_ADMIN || {};
-  var base = {
-    PLATFORM_NAME: PLATFORM_NAME, CLIENTS: CLIENTS, REVENUE_TREND: REVENUE_TREND,
-    CLIENT_BREAKDOWN: CLIENT_BREAKDOWN, ACTIVITY_FEED: ACTIVITY_FEED,
-    PAYMENTS: PAYMENTS, OVERDUE: OVERDUE, TICKETS: TICKETS, AUDIT_LOG: AUDIT_LOG,
-    ADMIN_USERS: ADMIN_USERS, SERVICES: SERVICES, INCIDENTS: INCIDENTS,
-    AGENT_TEMPLATES: AGENT_TEMPLATES, EARNINGS_MONTHLY: EARNINGS_MONTHLY,
-    REVENUE_BY_PLAN: REVENUE_BY_PLAN, MRR_MOVEMENT: MRR_MOVEMENT,
-    CLIENT_INVOICES: CLIENT_INVOICES,
-  };
-  for (var k in base) {
-    var liveVal = live[k];
-    window[k] = (liveVal != null) ? liveVal : base[k];
-  }
+  Object.keys(live).forEach(function (k) { window[k] = live[k]; });
   Object.assign(window, { fmtMoney: fmtMoney, fmtMoneySigned: fmtMoneySigned, fmtAbbrev: fmtAbbrev, fmtPct: fmtPct, formatDate: formatDate, daysAgo: daysAgo });
 })();
