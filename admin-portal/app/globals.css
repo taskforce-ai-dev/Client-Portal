@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { height: 100%; }
+
+body {
+  background-color: #04070f;
+  background-image:
+    radial-gradient(1200px 800px at 12% -10%, rgba(123,97,255,0.16), transparent 60%),
+    radial-gradient(1000px 700px at 95% 8%, rgba(0,212,255,0.12), transparent 60%);
+  background-attachment: fixed;
+  color: #f4f7ff;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: rgba(0,212,255,0.25); color: #fff; }
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-white/[0.08] bg-white/[0.045] backdrop-blur-xl;
+    box-shadow: 0 30px 60px -30px rgba(0,0,0,0.6);
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ring-1;
+  }
+  .pill-cyan { @apply pill bg-cyan/10 text-cyan ring-cyan/30; }
+  .pill-violet { @apply pill text-violet ring-violet/30; background: rgba(123,97,255,0.12); }
+  .pill-emerald { @apply pill text-emerald ring-emerald/30; background: rgba(0,229,160,0.12); }
+  .pill-amber { @apply pill text-amber-300 ring-amber-500/30 bg-amber-500/10; }
+  .pill-rose { @apply pill text-rose ring-rose/30; background: rgba(255,107,107,0.12); }
+  .pill-slate { @apply pill bg-white/[0.05] text-slate-300 ring-white/10; }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn font-semibold text-bg-0;
+    background-image: linear-gradient(135deg, #00d4ff, #4d8bff);
+    box-shadow: 0 6px 24px -4px rgba(0,212,255,0.5);
+  }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-ghost {
+    @apply btn bg-white/[0.04] text-slate-200 ring-1 ring-white/10 hover:bg-white/[0.08];
+  }
+  .btn-danger {
+    @apply btn ring-1 ring-rose/30 text-rose hover:bg-rose/10;
+    background: rgba(255,107,107,0.08);
+  }
+
+  .input {
+    @apply w-full px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.08] text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-600;
+  }
+  .input:focus { border-color: rgba(0,212,255,0.5); background: rgba(0,212,255,0.04); }
+
+  .label {
+    @apply block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 mb-1.5;
+  }
+  .stat-label {
+    @apply text-[10px] uppercase tracking-[0.14em] text-slate-500 font-semibold;
+  }
+}
