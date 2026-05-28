@@ -1,0 +1,222 @@
+{
+  "index": [
+    {
+      "uuid": "e7e9eea3-3479-4c1a-9bdf-84b81f3dd696",
+      "name": "asset_e7e9eea3.js",
+      "mime": "text/javascript",
+      "size": 109931,
+      "compressed": true
+    },
+    {
+      "uuid": "d553ce44-fc09-462d-a049-73dc98bc0668",
+      "name": "asset_d553ce44.js",
+      "mime": "application/javascript",
+      "size": 1722,
+      "compressed": true
+    },
+    {
+      "uuid": "e7952810-9fe5-4ba8-803c-ecaa6c5a60cb",
+      "name": "asset_e7952810.js",
+      "mime": "application/javascript",
+      "size": 498814,
+      "compressed": true
+    },
+    {
+      "uuid": "e1bb6c14-722b-4369-a54d-c21b4a9e19af",
+      "name": "asset_e1bb6c14.js",
+      "mime": "text/javascript",
+      "size": 1080227,
+      "compressed": true
+    },
+    {
+      "uuid": "c86a0410-19db-4a11-9ff4-08170a28d5e5",
+      "name": "asset_c86a0410.js",
+      "mime": "application/javascript",
+      "size": 21145,
+      "compressed": true
+    },
+    {
+      "uuid": "02505fff-6be4-4a44-93c3-895ea73e8c10",
+      "name": "asset_02505fff.js",
+      "mime": "application/javascript",
+      "size": 11998,
+      "compressed": true
+    },
+    {
+      "uuid": "6ef02917-364d-4c3f-bafd-3040f91407e4",
+      "name": "asset_6ef02917.js",
+      "mime": "application/javascript",
+      "size": 3492,
+      "compressed": true
+    },
+    {
+      "uuid": "fcb16bc4-0de1-4107-a91e-f4547dc65353",
+      "name": "asset_fcb16bc4.js",
+      "mime": "text/javascript",
+      "size": 3137752,
+      "compressed": true
+    },
+    {
+      "uuid": "88806588-4d50-4cd6-ae09-ddc8c60d0cc8",
+      "name": "asset_88806588.js",
+      "mime": "application/javascript",
+      "size": 20081,
+      "compressed": true
+    },
+    {
+      "uuid": "d3549e48-869d-4a58-8ca2-316d141928c9",
+      "name": "asset_d3549e48.js",
+      "mime": "application/javascript",
+      "size": 17409,
+      "compressed": true
+    },
+    {
+      "uuid": "d8393064-b4fc-457b-af24-756417ca3a73",
+      "name": "asset_d8393064.js",
+      "mime": "application/javascript",
+      "size": 20255,
+      "compressed": true
+    },
+    {
+      "uuid": "eec62e3a-1781-40ef-b850-5bd84f1e7310",
+      "name": "asset_eec62e3a.js",
+      "mime": "application/javascript",
+      "size": 41590,
+      "compressed": true
+    },
+    {
+      "uuid": "7726b48b-1fc2-4b61-95b8-5f0603e9b543",
+      "name": "asset_7726b48b.js",
+      "mime": "application/javascript",
+      "size": 24979,
+      "compressed": true
+    },
+    {
+      "uuid": "bc8bb0b3-22b0-4847-ae5f-577963124cfa",
+      "name": "asset_bc8bb0b3.js",
+      "mime": "application/javascript",
+      "size": 14158,
+      "compressed": true
+    },
+    {
+      "uuid": "1394cba6-e734-4108-9c1e-691f0d4f5bf3",
+      "name": "asset_1394cba6.bin",
+      "mime": "font/woff2",
+      "size": 18228,
+      "compressed": false
+    },
+    {
+      "uuid": "c0f6167b-e844-45d3-b44a-e845dc7b851e",
+      "name": "asset_c0f6167b.bin",
+      "mime": "font/woff2",
+      "size": 36932,
+      "compressed": false
+    },
+    {
+      "uuid": "22711643-d2ba-4c57-8457-b6e93715a17f",
+      "name": "asset_22711643.bin",
+      "mime": "font/woff2",
+      "size": 6912,
+      "compressed": false
+    },
+    {
+      "uuid": "513e6151-6106-4071-842d-66d7f26ff1a1",
+      "name": "asset_513e6151.bin",
+      "mime": "font/woff2",
+      "size": 8356,
+      "compressed": false
+    },
+    {
+      "uuid": "fe5469bc-ec32-47bf-90c7-3425aec3221c",
+      "name": "asset_fe5469bc.bin",
+      "mime": "font/woff2",
+      "size": 5868,
+      "compressed": false
+    },
+    {
+      "uuid": "1fe4d3e0-5e9a-477c-b561-08c96357ca3b",
+      "name": "asset_1fe4d3e0.bin",
+      "mime": "font/woff2",
+      "size": 13348,
+      "compressed": false
+    },
+    {
+      "uuid": "34b64665-6e45-498a-989e-5918baa72b4b",
+      "name": "asset_34b64665.bin",
+      "mime": "font/woff2",
+      "size": 14708,
+      "compressed": false
+    },
+    {
+      "uuid": "2a7c3a47-1f36-459f-bd3b-9ad477e93647",
+      "name": "asset_2a7c3a47.bin",
+      "mime": "font/woff2",
+      "size": 6972,
+      "compressed": false
+    },
+    {
+      "uuid": "24ef022f-12b8-4ef8-9cd6-13dc1fa306c1",
+      "name": "asset_24ef022f.bin",
+      "mime": "font/woff2",
+      "size": 8460,
+      "compressed": false
+    },
+    {
+      "uuid": "24b1a7c2-ed51-462e-b19e-d14b10ba089c",
+      "name": "asset_24b1a7c2.bin",
+      "mime": "font/woff2",
+      "size": 6040,
+      "compressed": false
+    },
+    {
+      "uuid": "e2d0cb90-d396-4c54-bf82-ded839cc2772",
+      "name": "asset_e2d0cb90.bin",
+      "mime": "font/woff2",
+      "size": 13432,
+      "compressed": false
+    },
+    {
+      "uuid": "71be003f-29c5-48d4-9b0e-d00d34d5945b",
+      "name": "asset_71be003f.bin",
+      "mime": "font/woff2",
+      "size": 14888,
+      "compressed": false
+    },
+    {
+      "uuid": "ad6b5829-c29e-4917-ad99-2e5b348c5981",
+      "name": "asset_ad6b5829.bin",
+      "mime": "font/woff2",
+      "size": 7692,
+      "compressed": false
+    },
+    {
+      "uuid": "2775fa84-5d75-478e-99b1-838abd760aed",
+      "name": "asset_2775fa84.bin",
+      "mime": "font/woff2",
+      "size": 9352,
+      "compressed": false
+    },
+    {
+      "uuid": "da691bd0-099f-4530-8e62-81fa184d8c68",
+      "name": "asset_da691bd0.bin",
+      "mime": "font/woff2",
+      "size": 6932,
+      "compressed": false
+    },
+    {
+      "uuid": "5328b085-9456-49c3-a595-ba61b34bf829",
+      "name": "asset_5328b085.bin",
+      "mime": "font/woff2",
+      "size": 14328,
+      "compressed": false
+    },
+    {
+      "uuid": "7556fc12-4e7b-451e-9256-bea1376f150a",
+      "name": "asset_7556fc12.bin",
+      "mime": "font/woff2",
+      "size": 15620,
+      "compressed": false
+    }
+  ],
+  "extResources": []
+}
