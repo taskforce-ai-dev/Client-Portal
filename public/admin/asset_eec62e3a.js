@@ -502,6 +502,13 @@ const MiniStat = ({ label, value, delta, tone }) => (
 /* ============================================================
    NEW CLIENT PAGE
    ============================================================ */
+const pwWordsA = ["Cedar", "Falcon", "Harbor", "Aspen", "Lumen", "Vertex", "Cobalt", "Onyx", "Maple", "Solace", "Nimbus", "Quartz"];
+const pwWordsB = ["Otter", "Comet", "Ridge", "Delta", "Pine", "Ember", "Lynx", "Reef", "Sage", "Vale", "Hawk", "Drift"];
+const suggestPassword = () => {
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  return pick(pwWordsA) + "-" + pick(pwWordsB) + "-" + Math.floor(1000 + Math.random() * 9000);
+};
+
 const NewClientPage = () => {
   const [plan, setPlan] = useState("Growth");
   const [cycle, setCycle] = useState("Monthly");
@@ -510,7 +517,58 @@ const NewClientPage = () => {
   const [api, setApi] = useState(false);
   const [features, setFeatures] = useState({ Analytics: true, "Knowledge Base": true, Transcripts: true, "Billing View": true, "Team Members": false });
   const [autoInvoice, setAutoInvoice] = useState(true);
+  const [company, setCompany] = useState("");
+  const [contact, setContact] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState(suggestPassword());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [created, setCreated] = useState(null);
   const toast = useToast();
+
+  const createClient = async (welcome) => {
+    setErr("");
+    if (!company.trim() || !email.trim() || !password.trim()) {
+      setErr("Company, login email and password are required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/clients", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ company: company.trim(), contact: contact.trim(), email: email.trim(), password: password, plan: plan, status: "active" }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || ("Failed (" + r.status + ")"));
+      setCreated({ email: email.trim(), password: password });
+      toast(welcome ? "Client created & welcome email sent" : "Client created", "success");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (created) {
+    return (
+      <div style={{ maxWidth: 560, margin: "0 auto" }}>
+        <div className="panel" style={{ padding: 24 }}>
+          <div style={{ fontSize: 18, fontWeight: 600, color: "var(--emerald)" }}>Client created ✓</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 6 }}>Share these credentials — they sign in at the client portal login page:</div>
+          <div className="panel-flat" style={{ padding: 14, marginTop: 14, fontFamily: "var(--ff-mono)", fontSize: 13, lineHeight: 1.9 }}>
+            <div>Email: {created.email}</div>
+            <div>Password: {created.password}</div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+            <button className="btn btn-secondary" onClick={() => { navigator.clipboard && navigator.clipboard.writeText("Email: " + created.email + "\nPassword: " + created.password); toast("Credentials copied", "success"); }}>Copy credentials</button>
+            <button className="btn btn-primary" onClick={() => { setCreated(null); setCompany(""); setContact(""); setEmail(""); setPassword(suggestPassword()); }}>Create another</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const plans = [
     { id: "Starter",    price: 29,   agents: "2",        calls: "500",     storage: "5 GB",   support: "Email",          features: ["Voice agent", "Basic analytics"] },
@@ -530,9 +588,9 @@ const NewClientPage = () => {
 
       <FormSection title="Account details" subtitle="Primary contact and location.">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Company name"><input className="input" placeholder="Acme Logistics, Inc." /></Field>
-          <Field label="Contact name"><input className="input" placeholder="Jane Doe" /></Field>
-          <Field label="Email address"><input className="input" type="email" placeholder="jane@acme.com" /></Field>
+          <Field label="Company name"><input className="input" placeholder="Acme Logistics, Inc." value={company} onChange={(e) => setCompany(e.target.value)} /></Field>
+          <Field label="Contact name"><input className="input" placeholder="Jane Doe" value={contact} onChange={(e) => setContact(e.target.value)} /></Field>
+          <Field label="Email address"><input className="input" type="email" placeholder="jane@acme.com" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <Field label="Phone number"><input className="input mono" placeholder="+1 ___-___-____" /></Field>
           <Field label="Country">
             <select className="input">
@@ -541,6 +599,16 @@ const NewClientPage = () => {
           </Field>
           <Field label="Timezone"><select className="input"><option>America/Los_Angeles</option><option>America/New_York</option><option>Europe/London</option><option>Asia/Singapore</option></select></Field>
         </div>
+      </FormSection>
+
+      <FormSection title="Client portal login" subtitle="The client signs in with the email above and this password. Share it with them after creating the account.">
+        <Field label="Password">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input className="input mono" value={password} onChange={(e) => setPassword(e.target.value)} style={{ flex: 1 }} />
+            <button type="button" className="btn btn-secondary" title="Suggest another" onClick={() => setPassword(suggestPassword())}>↻</button>
+            <button type="button" className="btn btn-secondary" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(password); toast("Password copied", "success"); }}>Copy</button>
+          </div>
+        </Field>
       </FormSection>
 
       <FormSection title="Plan selection" subtitle="Pick a starting tier — can be upgraded any time.">
@@ -627,10 +695,11 @@ const NewClientPage = () => {
         </div>
       </FormSection>
 
+      {err && <div style={{ color: "#ff8585", fontSize: 12.5, textAlign: "right" }}>{err}</div>}
+
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-ghost" onClick={() => toast("Draft saved", "success")}>Save as draft</button>
-        <button className="btn btn-secondary" onClick={() => toast("Account created", "success")}>Create account only</button>
-        <button className="btn btn-primary" onClick={() => toast("Account created & welcome email sent", "success")}>Create account & send welcome email</button>
+        <button className="btn btn-secondary" disabled={busy} onClick={() => createClient(false)}>Create account only</button>
+        <button className="btn btn-primary" disabled={busy} onClick={() => createClient(true)}>{busy ? "Creating…" : "Create account & send welcome email"}</button>
       </div>
     </div>
   );
