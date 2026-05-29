@@ -26,7 +26,9 @@ const PAGE_TITLES = {
 const App = () => {
   const [active, setActive] = useState("dashboard");
   const [drawerClient, setDrawerClient] = useState(null);
+  const [configAgent, setConfigAgent] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const navigate = (id) => { setConfigAgent(null); setActive(id); };
 
   // Cmd+K handler
   useEffect(() => {
@@ -71,14 +73,18 @@ const App = () => {
   return (
     <ToastProvider>
       <div className="app-shell">
-        <Sidebar active={active} onNavigate={setActive} />
+        <Sidebar active={configAgent ? "clients" : active} onNavigate={navigate} />
         <div className="main-col">
-          <HeaderBar title={PAGE_TITLES[active] || "Dashboard"} onSearch={() => setPaletteOpen(true)} />
-          <div className="content">{renderPage()}</div>
+          <HeaderBar title={configAgent ? "Agent configuration" : (PAGE_TITLES[active] || "Dashboard")} onSearch={() => setPaletteOpen(true)} />
+          <div className="content">
+            {configAgent
+              ? <AgentConfigPage agentId={configAgent} onBack={() => setConfigAgent(null)} />
+              : renderPage()}
+          </div>
         </div>
       </div>
 
-      {drawerClient && <ClientDrawer client={drawerClient} onClose={() => setDrawerClient(null)} />}
+      {drawerClient && <ClientDrawer client={drawerClient} onClose={() => setDrawerClient(null)} onConfigureAgent={(id) => { setDrawerClient(null); setConfigAgent(id); }} />}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNavigate={setActive} />
     </ToastProvider>
   );

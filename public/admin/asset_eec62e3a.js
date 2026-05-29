@@ -246,7 +246,7 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
    CLIENT DETAIL DRAWER (5 tabs)
    ============================================================ */
 
-const ClientDrawer = ({ client, onClose }) => {
+const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
   const [tab, setTab] = useState(client && client.__tab ? client.__tab : "profile");
   const [notes, setNotes] = useState("VIP — quarterly business review scheduled.\nContact prefers async communication via email.");
   const [confirm, setConfirm] = useState(null);
@@ -498,7 +498,7 @@ const ClientDrawer = ({ client, onClose }) => {
               </div>
               {agentList.map((a) => (
                 <div key={a.id} className="panel-flat" style={{ padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { window.location.href = "/admin/agents/" + a.id; }} title="Open agent configuration">
+                  <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onConfigureAgent && onConfigureAgent(a.id)} title="Open agent configuration">
                     <div style={{ fontSize: 12.5, color: "var(--text-0)" }}>{a.name}</div>
                     <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
                       {a.role || "Voice Agent"} · {a.channels}
@@ -506,7 +506,7 @@ const ClientDrawer = ({ client, onClose }) => {
                     {a.description && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>{a.description}</div>}
                   </div>
                   <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", textTransform: "uppercase" }}>{a.type}</span>
-                  <button className="btn btn-secondary btn-xs" onClick={() => { window.location.href = "/admin/agents/" + a.id; }}>Configure</button>
+                  <button className="btn btn-secondary btn-xs" onClick={() => onConfigureAgent && onConfigureAgent(a.id)}>Configure</button>
                   <button className="btn btn-ghost btn-xs danger" title="Remove agent" onClick={() => delAgent(a.id)}><Icon name="x" size={12} /></button>
                 </div>
               ))}
@@ -858,4 +858,139 @@ const Field = ({ label, children, style }) => (
   </div>
 );
 
-Object.assign(window, { ClientsPage, ClientDrawer, NewClientPage });
+/* ============================================================
+   AGENT CONFIGURATION (renders in the main content area)
+   ============================================================ */
+const AgentConfigPage = ({ agentId, onBack }) => {
+  const [agent, setAgent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("overview");
+  const [form, setForm] = useState({ name: "", role: "", type: "voice", status: "live", description: "" });
+  const [saving, setSaving] = useState(false);
+  const [kb, setKb] = useState("");
+  const [kbDirty, setKbDirty] = useState(false);
+  const [kbSaving, setKbSaving] = useState(false);
+  const toast = useToast();
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetch(`/api/admin/agents/${agentId}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!active) return;
+        if (d && d.id) {
+          setAgent(d);
+          setForm({ name: d.name || "", role: d.role || "", type: d.type || "voice", status: d.status || "live", description: d.description || "" });
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+    fetch(`/api/agents/${agentId}/kb`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) { setKb(d.content || ""); setKbDirty(false); } })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [agentId]);
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/admin/agents/${agentId}`, { method: "PATCH", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify(form) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Save failed");
+      toast("Agent updated", "success");
+      setAgent({ ...agent, ...form });
+    } catch (e) { toast(e.message, "error"); } finally { setSaving(false); }
+  };
+
+  const saveKb = async () => {
+    setKbSaving(true);
+    try {
+      const r = await fetch(`/api/agents/${agentId}/kb`, { method: "PUT", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ content: kb }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Save failed");
+      setKbDirty(false);
+      toast("Knowledge base saved — synced to the client portal", "success");
+    } catch (e) { toast(e.message, "error"); } finally { setKbSaving(false); }
+  };
+
+  if (loading) return <div className="panel" style={{ padding: 30, textAlign: "center", color: "var(--text-3)" }}>Loading agent…</div>;
+  if (!agent) return <EmptyState icon="config" title="Agent not found" description="It may have been removed." />;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button className="btn btn-ghost btn-sm" onClick={onBack}><Icon name="chevron-left" size={14} />Back</button>
+        <div className="avatar lg">{(agent.name[0] || "A").toUpperCase()}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--text-0)" }}>{agent.name}</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{agent.channels} · {agent.type}</div>
+        </div>
+        <StatusDot status={agent.status} />
+      </div>
+
+      <div className="tabs">
+        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["analytics", "Analytics"], ["settings", "Settings"]].map(([k, l]) => (
+          <div key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{l}</div>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <div className="panel" style={{ padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)", marginBottom: 8 }}>About this agent</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{agent.description || "No description yet — add one in Settings."}</div>
+          <div style={{ marginTop: 14 }}>
+            <DataRow label="Role / persona" value={agent.role || "—"} />
+            <DataRow label="Type" value={agent.type} />
+            <DataRow label="Channels" value={agent.channels} />
+            <DataRow label="Status" value={agent.status} />
+          </div>
+        </div>
+      )}
+
+      {tab === "knowledge" && (
+        <div className="panel" style={{ padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>Knowledge base</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2 }}>Same KB the client edits in their portal — changes sync both ways.</div>
+            </div>
+            <button className="btn btn-primary btn-sm" disabled={kbSaving || !kbDirty} onClick={saveKb}>{kbSaving ? "Saving…" : "Save"}</button>
+          </div>
+          <textarea className="input mono" rows={16} value={kb} onChange={(e) => { setKb(e.target.value); setKbDirty(true); }} placeholder="Write what this agent should know — pricing, policies, FAQs… Markdown supported." style={{ width: "100%", resize: "vertical", lineHeight: 1.6 }} />
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6, fontFamily: "var(--ff-mono)" }}>{kb.length.toLocaleString()} characters{kbDirty ? " · unsaved" : ""}</div>
+        </div>
+      )}
+
+      {tab === "analytics" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+            <MiniStat label="Calls this month" value="—" />
+            <MiniStat label="Conversion" value="—" />
+            <MiniStat label="Booked" value="—" />
+            <MiniStat label="Avg duration" value="—" />
+          </div>
+          <div className="panel" style={{ padding: 14, fontSize: 12, color: "var(--text-3)" }}>
+            Per-agent call analytics appear here once call attribution is connected for this workspace.
+          </div>
+        </div>
+      )}
+
+      {tab === "settings" && (
+        <div className="panel" style={{ padding: 16, maxWidth: 620 }}>
+          <Field label="Agent name"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Role / persona (e.g. Sales person, Booking agent)" style={{ marginTop: 12 }}><input className="input" value={form.role} placeholder="Sales person" onChange={(e) => setForm({ ...form, role: e.target.value })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+            <Field label="Type"><select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}><option value="voice">Voice</option><option value="whatsapp">WhatsApp</option><option value="both">Voice + WhatsApp</option></select></Field>
+            <Field label="Status"><select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="live">Live</option><option value="paused">Paused</option><option value="draft">Draft</option></select></Field>
+          </div>
+          <Field label="Description" style={{ marginTop: 12 }}><textarea className="input" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} disabled={saving} onClick={saveSettings}>{saving ? "Saving…" : "Save changes"}</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { ClientsPage, ClientDrawer, NewClientPage, AgentConfigPage });
