@@ -534,11 +534,12 @@ const NewClientPage = () => {
     }
     setBusy(true);
     try {
+      const sel = plans.find((p) => p.id === plan);
       const r = await fetch("/api/admin/clients", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ company: company.trim(), contact: contact.trim(), email: email.trim(), password: password, plan: plan, status: "active" }),
+        body: JSON.stringify({ company: company.trim(), contact: contact.trim(), email: email.trim(), password: password, plan: plan, status: "active", mrr_cents: sel ? sel.price * 100 : undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.message || ("Failed (" + r.status + ")"));
@@ -550,25 +551,6 @@ const NewClientPage = () => {
       setBusy(false);
     }
   };
-
-  if (created) {
-    return (
-      <div style={{ maxWidth: 560, margin: "0 auto" }}>
-        <div className="panel" style={{ padding: 24 }}>
-          <div style={{ fontSize: 18, fontWeight: 600, color: "var(--emerald)" }}>Client created ✓</div>
-          <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 6 }}>Share these credentials — they sign in at the client portal login page:</div>
-          <div className="panel-flat" style={{ padding: 14, marginTop: 14, fontFamily: "var(--ff-mono)", fontSize: 13, lineHeight: 1.9 }}>
-            <div>Email: {created.email}</div>
-            <div>Password: {created.password}</div>
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
-            <button className="btn btn-secondary" onClick={() => { navigator.clipboard && navigator.clipboard.writeText("Email: " + created.email + "\nPassword: " + created.password); toast("Credentials copied", "success"); }}>Copy credentials</button>
-            <button className="btn btn-primary" onClick={() => { setCreated(null); setCompany(""); setContact(""); setEmail(""); setPassword(suggestPassword()); }}>Create another</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const plans = [
     { id: "Starter",    price: 29,   agents: "2",        calls: "500",     storage: "5 GB",   support: "Email",          features: ["Voice agent", "Basic analytics"] },
@@ -599,16 +581,6 @@ const NewClientPage = () => {
           </Field>
           <Field label="Timezone"><select className="input"><option>America/Los_Angeles</option><option>America/New_York</option><option>Europe/London</option><option>Asia/Singapore</option></select></Field>
         </div>
-      </FormSection>
-
-      <FormSection title="Client portal login" subtitle="The client signs in with the email above and this password. Share it with them after creating the account.">
-        <Field label="Password">
-          <div style={{ display: "flex", gap: 8 }}>
-            <input className="input mono" value={password} onChange={(e) => setPassword(e.target.value)} style={{ flex: 1 }} />
-            <button type="button" className="btn btn-secondary" title="Suggest another" onClick={() => setPassword(suggestPassword())}>↻</button>
-            <button type="button" className="btn btn-secondary" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(password); toast("Password copied", "success"); }}>Copy</button>
-          </div>
-        </Field>
       </FormSection>
 
       <FormSection title="Plan selection" subtitle="Pick a starting tier — can be upgraded any time.">
@@ -678,7 +650,14 @@ const NewClientPage = () => {
           <div className={"toggle " + (portal ? "on" : "")} onClick={() => setPortal(!portal)} />
           <span style={{ fontSize: 12.5 }}>Client portal access enabled</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+        <Field label="Portal password (share with the client)" style={{ marginTop: 14, maxWidth: 420 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input className="input mono" value={password} onChange={(e) => setPassword(e.target.value)} style={{ flex: 1 }} />
+            <button type="button" className="btn btn-secondary" title="Suggest another" onClick={() => setPassword(suggestPassword())}>↻</button>
+            <button type="button" className="btn btn-secondary" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(password); toast("Password copied", "success"); }}>Copy</button>
+          </div>
+        </Field>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
           <div className={"toggle " + (api ? "on" : "")} onClick={() => setApi(!api)} />
           <span style={{ fontSize: 12.5 }}>API access enabled</span>
         </div>
@@ -695,9 +674,21 @@ const NewClientPage = () => {
         </div>
       </FormSection>
 
+      {created && (
+        <div className="panel" style={{ padding: 16, borderColor: "var(--emerald)" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--emerald)" }}>Client created ✓</div>
+          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>They can now sign in to the client portal with these credentials:</div>
+          <div style={{ fontFamily: "var(--ff-mono)", fontSize: 13, marginTop: 10, lineHeight: 1.9 }}>
+            <div>Email: {created.email}</div>
+            <div>Password: {created.password}</div>
+          </div>
+        </div>
+      )}
+
       {err && <div style={{ color: "#ff8585", fontSize: 12.5, textAlign: "right" }}>{err}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn btn-ghost" onClick={() => toast("Draft saved", "success")}>Save as draft</button>
         <button className="btn btn-secondary" disabled={busy} onClick={() => createClient(false)}>Create account only</button>
         <button className="btn btn-primary" disabled={busy} onClick={() => createClient(true)}>{busy ? "Creating…" : "Create account & send welcome email"}</button>
       </div>

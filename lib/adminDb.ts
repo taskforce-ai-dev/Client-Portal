@@ -127,16 +127,18 @@ export async function createClient(input: {
   plan?: string;
   status?: string;
   contact?: string;
+  mrrCents?: number;
 }): Promise<DbClient> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
   await ensureSeed(sql);
   const plan = input.plan || "Growth";
+  const mrrCents = typeof input.mrrCents === "number" && input.mrrCents >= 0 ? Math.round(input.mrrCents) : (PLAN_FEES[plan] ?? 0);
   const id = "cli_" + crypto.randomBytes(8).toString("hex");
   const rows = (await sql`
     INSERT INTO sentinel_client (id, company, email, password, password_hash, status, plan, mrr_cents, contact)
     VALUES (${id}, ${input.company}, ${input.email.toLowerCase()}, ${input.password}, ${hashPassword(input.password)},
-            ${input.status || "active"}, ${plan}, ${PLAN_FEES[plan] ?? 0}, ${input.contact ?? "—"})
+            ${input.status || "active"}, ${plan}, ${mrrCents}, ${input.contact ?? "—"})
     RETURNING *`) as DbClient[];
   await sql`INSERT INTO sentinel_audit (id, admin_name, action, type, target, summary)
             VALUES (${"aud_" + crypto.randomBytes(6).toString("hex")}, ${"Admin"}, ${"client.create"}, ${"client"}, ${input.company}, ${"Created client " + input.company})`;

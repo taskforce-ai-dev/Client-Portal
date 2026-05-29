@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (!isDbConfigured()) {
     return NextResponse.json({ message: "Database not connected. Set DATABASE_URL." }, { status: 503 });
   }
-  let body: { company?: string; email?: string; password?: string; plan?: string; status?: string };
+  let body: { company?: string; email?: string; password?: string; plan?: string; status?: string; contact?: string; mrr_cents?: number };
   try {
     body = await req.json();
   } catch {
@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
       password: body.password,
       plan: body.plan,
       status: body.status,
+      contact: body.contact,
+      mrrCents: body.mrr_cents,
     });
     return NextResponse.json({ ok: true, client: { id: client.id, company: client.company, email: client.email } });
   } catch (e) {
