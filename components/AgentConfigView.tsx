@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ArrowLeft, BarChart3, BookOpen, LayoutDashboard, Settings } from "lucide-react";
 import KnowledgeEditor from "@/components/KnowledgeEditor";
 
 type Agent = {
@@ -23,17 +24,16 @@ type Analytics = {
   minutesUsed: number;
 };
 
-const TABS = [
-  ["overview", "Overview"],
-  ["knowledge", "Knowledge Base"],
-  ["analytics", "Analytics"],
-  ["settings", "Settings"],
+const NAV = [
+  ["overview", "Overview", LayoutDashboard],
+  ["knowledge", "Knowledge Base", BookOpen],
+  ["analytics", "Analytics", BarChart3],
+  ["settings", "Settings", Settings],
 ] as const;
 
 export default function AgentConfigView({
   agent,
   clientCompany,
-  clientId,
   analytics,
 }: {
   agent: Agent;
@@ -72,122 +72,135 @@ export default function AgentConfigView({
     }
   }
 
-  return (
-    <div className="min-h-screen" style={{ background: "#05070d", color: "#e7ecf5" }}>
-      <header className="border-b border-white/10 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/admin" className="text-sm text-cyan-400 shrink-0">← Admin</Link>
-            <span className="text-slate-600">/</span>
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-400 to-fuchsia-500 grid place-items-center font-bold text-ink-950 shrink-0">
-              {(agent.name[0] || "A").toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <div className="font-semibold text-white truncate">{agent.name}</div>
-              <div className="text-xs text-slate-400 truncate">{clientCompany} · {agent.channels}</div>
-            </div>
-          </div>
-          <span className={"pill-emerald shrink-0"}>{agent.status}</span>
-        </div>
-      </header>
+  const title = NAV.find(([k]) => k === tab)?.[1] ?? "";
 
-      <div className="max-w-5xl mx-auto px-6">
-        <div className="flex gap-1 border-b border-white/10 mt-4">
-          {TABS.map(([k, label]) => (
+  return (
+    <div className="flex min-h-screen" style={{ background: "#05070d", color: "#e7ecf5" }}>
+      {/* Left sidebar */}
+      <aside className="w-60 shrink-0 border-r border-white/10 flex flex-col" style={{ background: "#070a12" }}>
+        <div className="px-4 py-4 border-b border-white/10">
+          <Link href="/admin" className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200">
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to admin
+          </Link>
+        </div>
+        <div className="px-4 py-4 border-b border-white/10 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-400 to-fuchsia-500 grid place-items-center font-bold text-ink-950 shrink-0">
+            {(agent.name[0] || "A").toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div className="font-semibold text-white text-sm truncate">{agent.name}</div>
+            <div className="text-[11px] text-slate-400 truncate">{clientCompany}</div>
+          </div>
+        </div>
+        <nav className="p-2 flex-1">
+          {NAV.map(([k, label, Icon]) => (
             <button
               key={k}
               onClick={() => setTab(k)}
               className={
-                "px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors " +
-                (tab === k ? "border-cyan-400 text-white" : "border-transparent text-slate-400 hover:text-slate-200")
+                "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm mb-0.5 transition-colors " +
+                (tab === k ? "bg-white/[0.08] text-white" : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]")
               }
             >
-              {label}
+              <Icon className="w-4 h-4" /> {label}
             </button>
           ))}
+        </nav>
+        <div className="px-4 py-3 border-t border-white/10 text-[11px] text-slate-500">
+          <span className="capitalize">{agent.status}</span> · {agent.channels}
         </div>
+      </aside>
 
-        <div className="py-6">
-          {tab === "overview" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Kpi label="Calls today" value={String(analytics.callsToday)} />
-                <Kpi label="Conv. rate" value={`${analytics.convRate}%`} />
-                <Kpi label="Booked" value={String(analytics.booked)} />
-                <Kpi label="Avg duration" value={analytics.avgDuration} />
-              </div>
-              <div className="card p-5">
-                <div className="text-sm font-semibold text-white mb-2">About this agent</div>
-                <p className="text-sm text-slate-300 whitespace-pre-wrap">{agent.description || "No description yet. Add one in Settings."}</p>
-                <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                  <Row label="Role / persona" value={agent.role || "—"} />
-                  <Row label="Type" value={agent.type} />
-                  <Row label="Channels" value={agent.channels} />
-                  <Row label="Status" value={agent.status} />
+      {/* Main */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="h-14 border-b border-white/10 flex items-center px-6 shrink-0">
+          <h1 className="text-base font-semibold text-white">{title}</h1>
+          <span className="ml-2 text-sm text-slate-500">· {agent.name}</span>
+        </header>
+
+        <main className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-4xl">
+            {tab === "overview" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Kpi label="Calls today" value={String(analytics.callsToday)} />
+                  <Kpi label="Conv. rate" value={`${analytics.convRate}%`} />
+                  <Kpi label="Booked" value={String(analytics.booked)} />
+                  <Kpi label="Avg duration" value={analytics.avgDuration} />
+                </div>
+                <div className="card p-5">
+                  <div className="text-sm font-semibold text-white mb-2">About this agent</div>
+                  <p className="text-sm text-slate-300 whitespace-pre-wrap">{agent.description || "No description yet. Add one in Settings."}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <Row label="Role / persona" value={agent.role || "—"} />
+                    <Row label="Type" value={agent.type} />
+                    <Row label="Channels" value={agent.channels} />
+                    <Row label="Status" value={agent.status} />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {tab === "knowledge" && (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-400">
-                Edit what <span className="text-slate-200">{agent.name}</span> knows. This is the same knowledge base the client edits in their portal — changes sync both ways.
-              </p>
-              <KnowledgeEditor endpoint={`/api/agents/${agent.id}/kb`} allowUpload={false} />
-            </div>
-          )}
-
-          {tab === "analytics" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Kpi label="Calls today" value={String(analytics.callsToday)} />
-                <Kpi label="Conversion" value={`${analytics.convRate}%`} />
-                <Kpi label="Booked" value={String(analytics.booked)} />
-                <Kpi label="Minutes used (mo)" value={String(analytics.minutesUsed)} />
+            {tab === "knowledge" && (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-400">
+                  Edit what <span className="text-slate-200">{agent.name}</span> knows. This is the same knowledge base the client edits in their portal — changes sync both ways.
+                </p>
+                <KnowledgeEditor endpoint={`/api/agents/${agent.id}/kb`} allowUpload={false} />
               </div>
-              {!analytics.configured && (
-                <div className="card p-4 text-sm text-amber-300/90">
-                  Live call analytics show once Twilio is connected for this workspace. The numbers above are workspace-wide.
+            )}
+
+            {tab === "analytics" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <Kpi label="Calls today" value={String(analytics.callsToday)} />
+                  <Kpi label="Conversion" value={`${analytics.convRate}%`} />
+                  <Kpi label="Booked" value={String(analytics.booked)} />
+                  <Kpi label="Minutes used (mo)" value={String(analytics.minutesUsed)} />
                 </div>
-              )}
-            </div>
-          )}
+                {!analytics.configured && (
+                  <div className="card p-4 text-sm text-amber-300/90">
+                    Live call analytics show once Twilio is connected for this workspace. The numbers above are workspace-wide.
+                  </div>
+                )}
+              </div>
+            )}
 
-          {tab === "settings" && (
-            <div className="card p-5 max-w-2xl space-y-4">
-              <Field label="Agent name">
-                <input className="input-dark" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              </Field>
-              <Field label="Role / persona (e.g. Sales person, Booking agent)">
-                <input className="input-dark" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="Sales person" />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Type">
-                  <select className="input-dark" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                    <option value="voice">Voice</option>
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="both">Voice + WhatsApp</option>
-                  </select>
+            {tab === "settings" && (
+              <div className="card p-5 max-w-2xl space-y-4">
+                <Field label="Agent name">
+                  <input className="input-dark" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                 </Field>
-                <Field label="Status">
-                  <select className="input-dark" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                    <option value="live">Live</option>
-                    <option value="paused">Paused</option>
-                    <option value="draft">Draft</option>
-                  </select>
+                <Field label="Role / persona (e.g. Sales person, Booking agent)">
+                  <input className="input-dark" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="Sales person" />
                 </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Type">
+                    <select className="input-dark" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                      <option value="voice">Voice</option>
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="both">Voice + WhatsApp</option>
+                    </select>
+                  </Field>
+                  <Field label="Status">
+                    <select className="input-dark" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                      <option value="live">Live</option>
+                      <option value="paused">Paused</option>
+                      <option value="draft">Draft</option>
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Description">
+                  <textarea className="input-dark" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                </Field>
+                <div className="flex items-center gap-3">
+                  <button className="btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+                  {msg && <span className={"text-sm " + (msg.kind === "ok" ? "text-emerald-400" : "text-rose-400")}>{msg.text}</span>}
+                </div>
               </div>
-              <Field label="Description">
-                <textarea className="input-dark" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-              </Field>
-              <div className="flex items-center gap-3">
-                <button className="btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
-                {msg && <span className={"text-sm " + (msg.kind === "ok" ? "text-emerald-400" : "text-rose-400")}>{msg.text}</span>}
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </main>
       </div>
     </div>
   );
