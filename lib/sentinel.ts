@@ -108,6 +108,13 @@ export async function getSentinelBundle() {
       SELECT id, company, email, status, plan, mrr_cents, contact, created_at
       FROM sentinel_client ORDER BY created_at DESC`;
 
+    // Real agent counts per client.
+    const agentCounts: Record<string, number> = {};
+    try {
+      const ac: any[] = await sql`SELECT client_id, COUNT(*)::int AS n FROM sentinel_agent GROUP BY client_id`;
+      for (const r of ac) agentCounts[r.client_id] = Number(r.n);
+    } catch {}
+
     // Best-effort: also surface existing Better Auth organizations (read-only).
     let orgRows: any[] = [];
     let members: Record<string, number> = {};
@@ -130,7 +137,7 @@ export async function getSentinelBundle() {
       status: STATUS_LABEL[c.status] ?? "Active",
       mrr: cents(c.mrr_cents),
       totalPaid: cents(c.mrr_cents),
-      agents: 0,
+      agents: agentCounts[c.id] ?? 0,
       joined: c.created_at ? new Date(c.created_at).toISOString().slice(0, 10) : "—",
       lastActive: c.created_at ? relative(new Date(c.created_at)) : "—",
       phone: "—",

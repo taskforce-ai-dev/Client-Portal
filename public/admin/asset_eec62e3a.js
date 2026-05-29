@@ -141,17 +141,11 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
                       {openMenu === c.id && (
                         <div className="menu" style={{ position: "absolute", right: 14, top: 30, zIndex: 10 }}>
                           <div className="menu-item" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="eye" size={12} />View dashboard</div>
-                          <div className="menu-item"><Icon name="edit" size={12} />Edit account</div>
-                          <div className="menu-item"><Icon name="mail" size={12} />Send message</div>
-                          <div className="menu-item"><Icon name="invoice" size={12} />Send invoice</div>
-                          <div className="menu-item"><Icon name="bell" size={12} />Send reminder</div>
+                          <div className="menu-item" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="edit" size={12} />Edit account</div>
+                          <div className="menu-item" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="config" size={12} />Manage agents</div>
                           <div className="menu-divider" />
-                          <div className="menu-item">Upgrade plan</div>
-                          <div className="menu-item">Downgrade plan</div>
-                          <div className="menu-divider" />
-                          <div className="menu-item danger"><Icon name="block" size={12} />Block account</div>
-                          <div className="menu-item danger">Suspend</div>
-                          <div className="menu-item danger"><Icon name="x" size={12} />Delete account</div>
+                          <div className="menu-item danger" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="block" size={12} />Suspend / Block</div>
+                          <div className="menu-item danger" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="x" size={12} />Delete account</div>
                         </div>
                       )}
                     </td>
@@ -234,6 +228,105 @@ const ClientDrawer = ({ client, onClose }) => {
   const [notes, setNotes] = useState("VIP — quarterly business review scheduled.\nContact prefers async communication via email.");
   const [confirm, setConfirm] = useState(null);
   const toast = useToast();
+  const cid = client ? (client.workspaceId || client.id) : null;
+  const [edit, setEdit] = useState({ company: "", contact: "", email: "", plan: "Growth", status: "Active", mrr: 0 });
+  const [savingClient, setSavingClient] = useState(false);
+  const [pw, setPw] = useState(null);
+  const [agentList, setAgentList] = useState([]);
+  const [agentModal, setAgentModal] = useState(false);
+  const [newAgent, setNewAgent] = useState({ name: "", type: "voice", description: "" });
+  const [busyAgent, setBusyAgent] = useState(false);
+
+  const loadAgents = () =>
+    fetch(`/api/admin/clients/${cid}/agents`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setAgentList(Array.isArray(d) ? d : []))
+      .catch(() => setAgentList([]));
+
+  useEffect(() => {
+    if (!client) return;
+    setEdit({ company: client.company || "", contact: client.contact || "", email: client.email || "", plan: client.plan || "Growth", status: client.status || "Active", mrr: client.mrr || 0 });
+    setPw(null);
+    loadAgents();
+  }, [cid]);
+
+  const refresh = () => { try { window.location.reload(); } catch (e) {} };
+
+  const saveClient = async () => {
+    setSavingClient(true);
+    try {
+      const r = await fetch(`/api/admin/clients/${cid}`, {
+        method: "PATCH", headers: { "content-type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ company: edit.company, contact: edit.contact, email: edit.email, plan: edit.plan, status: edit.status.toLowerCase(), mrr_cents: Math.round((Number(edit.mrr) || 0) * 100) }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Save failed");
+      toast("Client updated", "success");
+      setTimeout(refresh, 700);
+    } catch (e) { toast(e.message, "error"); } finally { setSavingClient(false); }
+  };
+
+  const changeStatus = async (status) => {
+    try {
+      const r = await fetch(`/api/admin/clients/${cid}`, { method: "PATCH", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ status }) });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.message || "Failed"); }
+      toast("Client " + status, status === "active" ? "success" : "warn");
+      setTimeout(refresh, 700);
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  const removeClient = async () => {
+    try {
+      const r = await fetch(`/api/admin/clients/${cid}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.message || "Failed"); }
+      toast("Client deleted", "error");
+      setTimeout(refresh, 700);
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  const revealPw = async () => {
+    try {
+      const r = await fetch(`/api/admin/clients/${cid}/password`, { credentials: "include" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Not available");
+      setPw(d.password);
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  const resetPw = async () => {
+    const np = suggestPassword();
+    try {
+      const r = await fetch(`/api/admin/clients/${cid}/password`, { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ password: np }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      setPw(np);
+      toast("Password reset — share the new one", "success");
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  const addAgent = async () => {
+    if (!newAgent.name.trim()) { toast("Agent name is required", "error"); return; }
+    setBusyAgent(true);
+    try {
+      const r = await fetch(`/api/admin/clients/${cid}/agents`, { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify(newAgent) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      toast("Agent created", "success");
+      setAgentModal(false);
+      setNewAgent({ name: "", type: "voice", description: "" });
+      loadAgents();
+    } catch (e) { toast(e.message, "error"); } finally { setBusyAgent(false); }
+  };
+
+  const delAgent = async (id) => {
+    try {
+      const r = await fetch(`/api/admin/agents/${id}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.message || "Failed"); }
+      toast("Agent removed", "warn");
+      loadAgents();
+    } catch (e) { toast(e.message, "error"); }
+  };
+
   if (!client) return null;
 
   return (
@@ -287,30 +380,35 @@ const ClientDrawer = ({ client, onClose }) => {
           {tab === "profile" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div>
-                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Contact</div>
-                <DataRow label="Contact name" value={client.contact} />
-                <DataRow label="Email" value={client.email} />
-                <DataRow label="Phone" value={client.phone} />
-                <DataRow label="Country" value={client.country} />
-                <DataRow label="Timezone" value={client.timezone} />
+                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Account details</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <Field label="Company"><input className="input" value={edit.company} onChange={(e) => setEdit({ ...edit, company: e.target.value })} /></Field>
+                  <Field label="Contact name"><input className="input" value={edit.contact} onChange={(e) => setEdit({ ...edit, contact: e.target.value })} /></Field>
+                  <Field label="Login email"><input className="input" type="email" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
+                  <Field label="MRR ($/mo)"><input className="input mono" type="number" value={edit.mrr} onChange={(e) => setEdit({ ...edit, mrr: e.target.value })} /></Field>
+                  <Field label="Plan"><select className="input" value={edit.plan} onChange={(e) => setEdit({ ...edit, plan: e.target.value })}>{["Starter", "Growth", "Pro", "Enterprise", "Scale", "Trial"].map((p) => <option key={p}>{p}</option>)}</select></Field>
+                  <Field label="Status"><select className="input" value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>{["Active", "Trial", "Suspended", "Blocked", "Churned"].map((s) => <option key={s}>{s}</option>)}</select></Field>
+                </div>
+                <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} disabled={savingClient} onClick={saveClient}>{savingClient ? "Saving…" : "Save changes"}</button>
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Plan limits</div>
-                <DataRow label="Plan" value={<PlanBadge plan={client.plan} />} />
-                <DataRow label="Agents allowed" value={client.plan === "Enterprise" ? "Unlimited" : client.plan === "Pro" ? "10" : client.plan === "Growth" ? "5" : "2"} />
-                <DataRow label="Calls / month" value={client.plan === "Enterprise" ? "Unlimited" : client.plan === "Pro" ? "10,000" : client.plan === "Growth" ? "3,000" : "500"} />
-                <DataRow label="Storage" value={client.plan === "Enterprise" ? "1 TB" : client.plan === "Pro" ? "100 GB" : client.plan === "Growth" ? "25 GB" : "5 GB"} />
-                <DataRow label="Joined" value={client.joined} />
-                <DataRow label="Last login" value={client.lastActive} />
+                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Client portal password</div>
+                <div className="panel-flat" style={{ padding: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: "var(--ff-mono)", fontSize: 13, color: pw ? "var(--text-0)" : "var(--text-3)" }}>{pw || "••••••••••"}</span>
+                  <div style={{ flex: 1 }} />
+                  {pw && <button className="btn btn-ghost btn-xs" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(pw); toast("Password copied", "success"); }}>Copy</button>}
+                  <button className="btn btn-secondary btn-xs" onClick={revealPw}>Reveal</button>
+                  <button className="btn btn-secondary btn-xs" onClick={resetPw}>Reset</button>
+                </div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Internal notes <span style={{ color: "var(--text-3)", textTransform: "none", letterSpacing: 0 }}>(admin-only)</span></div>
-                <textarea className="input" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
+                <textarea className="input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Account controls</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button className="btn btn-secondary btn-sm">Activate</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => changeStatus("active")}>Activate</button>
                   <button className="btn btn-amber btn-sm" onClick={() => setConfirm("suspend")}>Suspend</button>
                   <button className="btn btn-danger btn-sm" onClick={() => setConfirm("block")}>Block</button>
                   <button className="btn btn-danger btn-sm" onClick={() => setConfirm("delete")}>Delete</button>
@@ -369,30 +467,23 @@ const ClientDrawer = ({ client, onClose }) => {
           {tab === "agents" && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div style={{ fontSize: 12.5, color: "var(--text-1)" }}>{client.agents} agents provisioned</div>
-                <button className="btn btn-primary btn-sm"><Icon name="plus" size={12} />Add agent</button>
+                <div style={{ fontSize: 12.5, color: "var(--text-1)" }}>{agentList.length} {agentList.length === 1 ? "agent" : "agents"} provisioned</div>
+                <button className="btn btn-primary btn-sm" onClick={() => setAgentModal(true)}><Icon name="plus" size={12} />Add agent</button>
               </div>
-              {Array.from({ length: Math.min(client.agents, 5) }, (_, i) => {
-                const types = ["Call Center", "Sales", "Booking", "Cold Call"];
-                const channels = ["Voice", "WhatsApp", "Voice + WhatsApp"];
-                const agentName = `${client.company.split(" ")[0].toLowerCase()}_agent_${String(i + 1).padStart(2, "0")}`;
-                return (
-                  <div key={i} className="panel-flat" style={{ padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>{agentName}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
-                        {types[i % types.length]} · {channels[i % channels.length]}
-                      </div>
+              {agentList.map((a) => (
+                <div key={a.id} className="panel-flat" style={{ padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, color: "var(--text-0)" }}>{a.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
+                      {a.role || "Voice Agent"} · {a.channels}
                     </div>
-                    <div style={{ fontFamily: "var(--ff-mono)", fontSize: 11.5, textAlign: "right" }}>
-                      <div style={{ color: "var(--text-0)" }}>{(820 - i * 140).toLocaleString()} calls</div>
-                      <div style={{ color: "var(--text-3)", fontSize: 10.5 }}>${(280 - i * 40).toLocaleString()} this mo.</div>
-                    </div>
-                    <div className={"toggle " + (i % 4 !== 3 ? "on" : "")} />
+                    {a.description && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>{a.description}</div>}
                   </div>
-                );
-              })}
-              {client.agents === 0 && <EmptyState icon="config" title="No agents provisioned" description="This account has no active agents." />}
+                  <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", textTransform: "uppercase" }}>{a.type}</span>
+                  <button className="btn btn-ghost btn-xs danger" title="Remove agent" onClick={() => delAgent(a.id)}><Icon name="x" size={12} /></button>
+                </div>
+              ))}
+              {agentList.length === 0 && <EmptyState icon="config" title="No agents yet" description="Add the client's first agent — it appears in their portal instantly." />}
             </div>
           )}
 
@@ -476,9 +567,28 @@ const ClientDrawer = ({ client, onClose }) => {
           }
           confirmWord={client.company}
           confirmLabel={confirm === "delete" ? "Delete — irreversible" : confirm === "block" ? "Block account" : "Suspend account"}
-          onConfirm={() => { toast(`${client.company} ${confirm}ed`, confirm === "delete" ? "error" : "warn"); setConfirm(null); onClose(); }}
+          onConfirm={() => { const c = confirm; setConfirm(null); if (c === "delete") removeClient(); else changeStatus(c === "block" ? "blocked" : "suspended"); }}
           onCancel={() => setConfirm(null)}
         />
+      )}
+
+      {agentModal && (
+        <div className="drawer-overlay" style={{ zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setAgentModal(false)}>
+          <div className="panel" style={{ width: 440, maxWidth: "92vw", padding: 20 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-0)" }}>New agent</div>
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4, marginBottom: 14 }}>Provision an agent for {client.company}. It appears in their portal immediately.</div>
+            <Field label="Agent name"><input className="input" placeholder="Front desk assistant" value={newAgent.name} onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })} autoFocus /></Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+              <Field label="Type"><select className="input" value={newAgent.type} onChange={(e) => setNewAgent({ ...newAgent, type: e.target.value })}><option value="voice">Voice</option><option value="whatsapp">WhatsApp</option><option value="both">Voice + WhatsApp</option></select></Field>
+              <Field label="Role"><input className="input" placeholder="Booking Agent" value={newAgent.role || ""} onChange={(e) => setNewAgent({ ...newAgent, role: e.target.value })} /></Field>
+            </div>
+            <Field label="Description" style={{ marginTop: 10 }}><textarea className="input" rows={2} placeholder="What this agent does…" value={newAgent.description} onChange={(e) => setNewAgent({ ...newAgent, description: e.target.value })} /></Field>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setAgentModal(false)}>Cancel</button>
+              <button className="btn btn-primary btn-sm" disabled={busyAgent} onClick={addAgent}>{busyAgent ? "Creating…" : "Create agent"}</button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
