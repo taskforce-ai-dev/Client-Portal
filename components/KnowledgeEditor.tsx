@@ -19,7 +19,13 @@ import clsx from "clsx";
 
 type Imported = { name: string; at: number };
 
-export default function KnowledgeEditor() {
+export default function KnowledgeEditor({
+  endpoint = "/api/kb",
+  allowUpload = true,
+}: {
+  endpoint?: string;
+  allowUpload?: boolean;
+} = {}) {
   const [content, setContent] = useState("");
   const [configured, setConfigured] = useState(false);
   const [source, setSource] = useState<"github" | "local">("local");
@@ -38,7 +44,7 @@ export default function KnowledgeEditor() {
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/kb`)
+    fetch(endpoint)
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error || `Failed to load (${r.status})`);
@@ -48,7 +54,7 @@ export default function KnowledgeEditor() {
         if (!active) return;
         setContent(d.content ?? "");
         setConfigured(!!d.configured);
-        setSource(d.source ?? "local");
+        setSource(allowUpload ? (d.source ?? "local") : "local");
         setTarget(d.target ?? null);
         setLoading(false);
       })
@@ -60,31 +66,31 @@ export default function KnowledgeEditor() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [endpoint, allowUpload]);
 
   const save = useCallback(async () => {
     setSaving(true);
     setError(null);
     setStatus(null);
     try {
-      const res = await fetch(`/api/kb`, {
+      const res = await fetch(endpoint, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
       });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.error || `Save failed (${res.status})`);
+      if (!res.ok) throw new Error(d.error || d.message || `Save failed (${res.status})`);
       setConfigured(!!d.configured);
-      setSource(d.source ?? source);
+      if (allowUpload) setSource(d.source ?? source);
       setDirty(false);
       setLastSaved(new Date());
-      setStatus(d.source === "github" ? "Committed to the agent repo" : "Saved");
+      setStatus(d.source === "github" ? "Committed to the agent repo" : allowUpload ? "Saved" : "Saved & synced to client portal");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
-  }, [content, source]);
+  }, [content, source, endpoint, allowUpload]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -140,7 +146,11 @@ export default function KnowledgeEditor() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          {source === "github" ? (
+          {!allowUpload ? (
+            <span className="pill-emerald" title="Saved to the database and shown in the client portal">
+              <Check className="w-3 h-3" /> Synced with client portal
+            </span>
+          ) : source === "github" ? (
             <span className="pill-emerald" title={target ? `Synced with ${target}` : "Synced with the agent repo"}>
               <Github className="w-3 h-3" /> Synced to agent repo
             </span>
@@ -166,24 +176,28 @@ export default function KnowledgeEditor() {
             <TabButton active={tab === "edit"} onClick={() => setTab("edit")} icon={Pencil} label="Edit" />
             <TabButton active={tab === "preview"} onClick={() => setTab("preview")} icon={Eye} label="Preview" />
           </div>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) uploadFile(f);
-            }}
-          />
-          <button
-            className="btn-ghost"
-            onClick={() => fileInput.current?.click()}
-            disabled={uploading}
-          >
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            {uploading ? "Converting…" : "Upload PDF"}
-          </button>
+          {allowUpload && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadFile(f);
+                }}
+              />
+              <button
+                className="btn-ghost"
+                onClick={() => fileInput.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {uploading ? "Converting…" : "Upload PDF"}
+              </button>
+            </>
+          )}
           <button className="btn-primary" onClick={save} disabled={saving || !dirty}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save
@@ -209,11 +223,13 @@ export default function KnowledgeEditor() {
           dragging && "ring-2 ring-accent-400/50"
         )}
         onDragOver={(e) => {
+          if (!allowUpload) return;
           e.preventDefault();
           setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => {
+          if (!allowUpload) return;
           e.preventDefault();
           setDragging(false);
           const f = e.dataTransfer.files?.[0];
