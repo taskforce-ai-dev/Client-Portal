@@ -1,6 +1,7 @@
 // Builds the Sentinel admin bundle in the exact shape the UI expects.
-// Reads from Postgres (Prisma) when DATABASE_URL is set and seeded;
-// otherwise returns demo data so the dashboard still renders.
+// Reads admin-created clients from sentinel_client (and, best-effort, your
+// Better Auth `organization` rows) when DATABASE_URL is set; otherwise
+// returns demo data so the dashboard always renders.
 
 const STATUS_LABEL: Record<string, string> = {
   trial: "Trial",
@@ -68,7 +69,6 @@ export function sentinelDemo() {
     ],
     ACTIVITY_FEED: [
       { ts: "09:39:06", action: "agent_created", client: "Tree House Chalets", detail: "Reset password · chanya@treehousechalets" },
-      { ts: "09:38:33", action: "agent_created", client: "Tree House Chalets", detail: "Added Chanya to Tree House Chalets" },
       { ts: "08:12:50", action: "plan_upgrade", client: "Winrich Hotel", detail: "Moved to Scale plan" },
       { ts: "07:50:11", action: "payment_received", client: "Tree House Chalets", detail: "$1,990 received" },
       { ts: "06:30:00", action: "signup", client: "Aether Labs", detail: "Started 14-day trial" },
@@ -76,7 +76,6 @@ export function sentinelDemo() {
     PAYMENTS: [
       { id: "P-2041", client: "Tree House Chalets", date: "2026-05-01", amount: 1990, plan: "Growth", method: "—", status: "Paid" },
       { id: "P-2042", client: "Winrich Hotel", date: "2026-05-01", amount: 1480, plan: "Scale", method: "—", status: "Paid" },
-      { id: "P-2043", client: "Flico", date: "2026-05-12", amount: 976, plan: "Starter", method: "—", status: "Pending" },
     ],
     OVERDUE: [],
     TICKETS: [],
@@ -108,104 +107,95 @@ export function sentinelDemo() {
       { kind: "Contraction", value: 0, color: "#f59e0b" },
       { kind: "Churned", value: 0, color: "#f43f5e" },
     ],
-    CLIENT_INVOICES: [
-      { id: "INV-2041", date: "2026-05-01", amount: 1990, status: "Paid" },
-    ],
+    CLIENT_INVOICES: [{ id: "INV-2041", date: "2026-05-01", amount: 1990, status: "Paid" }],
     announcements: [],
   };
 }
 
-// --- Neon serverless driver (HTTP, works on Vercel) -------------------------
-// Reads your existing `organization` rows as clients. Billing/agents/audit
-// live in additive `sentinel_*` tables created with CREATE TABLE IF NOT
-// EXISTS — your Better Auth tables (organization, member, user, …) are only
-// read, never altered.
-
-const DEFAULT_PLANS: Array<{ id: string; name: string; cents: number }> = [
-  { id: "plan_starter", name: "Starter", cents: 97600 },
-  { id: "plan_growth", name: "Growth", cents: 199000 },
-  { id: "plan_scale", name: "Scale", cents: 148000 },
-];
-
-async function ensureSchema(sql: any) {
-  await sql`CREATE TABLE IF NOT EXISTS sentinel_plan (id text PRIMARY KEY, name text NOT NULL, monthly_fee_cents integer NOT NULL DEFAULT 0)`;
-  await sql`CREATE TABLE IF NOT EXISTS sentinel_client (organization_id text PRIMARY KEY, plan_id text, status text NOT NULL DEFAULT 'active', created_at timestamptz NOT NULL DEFAULT now())`;
-  await sql`CREATE TABLE IF NOT EXISTS sentinel_invoice (id text PRIMARY KEY, organization_id text NOT NULL, amount_cents integer NOT NULL DEFAULT 0, status text NOT NULL DEFAULT 'paid', issued_at timestamptz NOT NULL DEFAULT now())`;
-  await sql`CREATE TABLE IF NOT EXISTS sentinel_audit (id text PRIMARY KEY, admin_name text NOT NULL DEFAULT 'System', action text NOT NULL, type text NOT NULL DEFAULT 'system', target text, summary text NOT NULL, occurred_at timestamptz NOT NULL DEFAULT now())`;
-  for (const p of DEFAULT_PLANS) {
-    await sql`INSERT INTO sentinel_plan (id, name, monthly_fee_cents) VALUES (${p.id}, ${p.name}, ${p.cents}) ON CONFLICT (id) DO NOTHING`;
-  }
-  // Bootstrap: give every org without a billing row a default plan so the
-  // dashboard is populated. Admins can change the plan/status later.
-  await sql`INSERT INTO sentinel_client (organization_id, plan_id, status)
-            SELECT o.id, 'plan_growth', 'active' FROM organization o
-            WHERE NOT EXISTS (SELECT 1 FROM sentinel_client sc WHERE sc.organization_id = o.id)`;
-}
+const PLAN_FEE_CENTS: Record<string, number> = { Starter: 97600, Growth: 199000, Scale: 148000, Trial: 0 };
 
 export async function getSentinelBundle() {
   if (!process.env.DATABASE_URL) return sentinelDemo();
   try {
     const { neon } = await import("@neondatabase/serverless");
+    const { ensureSeed } = await import("./adminDb");
     const sql = neon(process.env.DATABASE_URL);
-    await ensureSchema(sql);
-
-    const orgs: any[] = await sql`
-      SELECT o.id, o.name, o.slug, o."createdAt" AS created_at,
-             sc.plan_id, sc.status AS ov_status,
-             p.name AS plan_name, COALESCE(p.monthly_fee_cents, 0) AS fee_cents
-      FROM organization o
-      LEFT JOIN sentinel_client sc ON sc.organization_id = o.id
-      LEFT JOIN sentinel_plan p ON p.id = sc.plan_id
-      ORDER BY o."createdAt" DESC NULLS LAST`;
-
-    if (!orgs.length) return sentinelDemo();
-
-    const memberRows: any[] = await sql`SELECT "organizationId" AS oid, COUNT(*)::int AS c FROM member GROUP BY "organizationId"`;
-    const members: Record<string, number> = {};
-    for (const r of memberRows) members[r.oid] = Number(r.c);
-
-    const invoiceRows: any[] = await sql`SELECT organization_id, amount_cents, status, issued_at FROM sentinel_invoice`;
-    const auditRows: any[] = await sql`SELECT admin_name, action, type, target, summary, occurred_at FROM sentinel_audit ORDER BY occurred_at DESC LIMIT 20`;
+    await ensureSeed(sql as any);
 
     const cents = (n: number) => Math.round(Number(n) || 0) / 100;
-    const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
-    const CLIENTS = orgs.map((o) => {
-      const status = STATUS_LABEL[o.ov_status as string] ?? "Active";
-      const paid = invoiceRows
-        .filter((i) => i.organization_id === o.id && i.status === "paid")
-        .reduce((s, i) => s + Number(i.amount_cents), 0);
-      return {
-        id: String(o.id).slice(0, 8).toUpperCase(),
+    // Admin-created clients (these have logins and appear in the Clients tab).
+    const clientRows: any[] = await sql`
+      SELECT id, company, email, status, plan, mrr_cents, contact, created_at
+      FROM sentinel_client ORDER BY created_at DESC`;
+
+    // Best-effort: also surface existing Better Auth organizations (read-only).
+    let orgRows: any[] = [];
+    let members: Record<string, number> = {};
+    try {
+      orgRows = await sql`SELECT id, name, slug, "createdAt" AS created_at FROM organization ORDER BY "createdAt" DESC NULLS LAST`;
+      const memberRows: any[] = await sql`SELECT "organizationId" AS oid, COUNT(*)::int AS c FROM member GROUP BY "organizationId"`;
+      for (const r of memberRows) members[r.oid] = Number(r.c);
+    } catch {
+      orgRows = [];
+    }
+
+    const fromClients = clientRows.map((c) => ({
+      id: String(c.id).slice(0, 10).toUpperCase(),
+      workspaceId: c.id,
+      company: c.company,
+      contact: c.contact ?? "—",
+      email: c.email,
+      country: "—",
+      plan: c.plan ?? "Custom",
+      status: STATUS_LABEL[c.status] ?? "Active",
+      mrr: cents(c.mrr_cents),
+      totalPaid: cents(c.mrr_cents),
+      agents: 0,
+      joined: c.created_at ? new Date(c.created_at).toISOString().slice(0, 10) : "—",
+      lastActive: c.created_at ? relative(new Date(c.created_at)) : "—",
+      phone: "—",
+      timezone: "UTC",
+    }));
+
+    const clientEmails = new Set(clientRows.map((c) => String(c.email).toLowerCase()));
+    const fromOrgs = orgRows
+      .filter((o) => !clientEmails.has(`${o.slug}`.toLowerCase()))
+      .map((o) => ({
+        id: String(o.id).slice(0, 10).toUpperCase(),
         workspaceId: o.id,
         company: o.name,
         contact: "—",
-        email: o.slug ? `${o.slug}` : "—",
+        email: o.slug ?? "—",
         country: "—",
-        plan: o.plan_name ?? "Custom",
-        status,
-        mrr: cents(o.fee_cents),
-        totalPaid: cents(paid),
+        plan: "Growth",
+        status: "Active",
+        mrr: cents(PLAN_FEE_CENTS.Growth),
+        totalPaid: 0,
         agents: members[o.id] ?? 0,
         joined: o.created_at ? new Date(o.created_at).toISOString().slice(0, 10) : "—",
         lastActive: o.created_at ? relative(new Date(o.created_at)) : "—",
         phone: "—",
         timezone: "UTC",
-      };
-    });
+      }));
 
-    const totalMrrCents = orgs.reduce((s, o) => s + (o.ov_status !== "churned" ? Number(o.fee_cents) : 0), 0);
+    const CLIENTS = [...fromClients, ...fromOrgs];
+    if (CLIENTS.length === 0) return sentinelDemo();
+
+    const auditRows: any[] = await sql`SELECT admin_name, action, type, target, summary, occurred_at FROM sentinel_audit ORDER BY occurred_at DESC LIMIT 20`;
+
+    const totalMrr = CLIENTS.reduce((s, c) => s + (c.status !== "Churned" ? c.mrr : 0), 0);
     const m = months12();
     const REVENUE_TREND = m.map((month, idx) => {
       const factor = Math.min(1, Math.max(0, (idx - 3) / 8));
-      return { month, mrr: Math.round(cents(totalMrrCents) * factor), collected: Math.round(cents(totalMrrCents) * factor * 0.92) };
+      return { month, mrr: Math.round(totalMrr * factor), collected: Math.round(totalMrr * factor * 0.92) };
     });
 
     const countBy = (s: string) => CLIENTS.filter((c) => c.status === s).length;
     const CLIENT_BREAKDOWN = [
       { name: "Active", count: countBy("Active"), color: "#10b981" },
       { name: "Trial", count: countBy("Trial"), color: "#f59e0b" },
-      { name: "Overdue", count: invoiceRows.filter((i) => i.status === "overdue").length, color: "#f43f5e" },
+      { name: "Overdue", count: 0, color: "#f43f5e" },
       { name: "Blocked", count: countBy("Blocked"), color: "#6b7280" },
       { name: "Churned", count: countBy("Churned"), color: "#4b5563" },
     ];
@@ -216,19 +206,6 @@ export async function getSentinelBundle() {
       client: a.target ?? "—",
       detail: a.summary,
     }));
-
-    const PAYMENTS = invoiceRows.slice(0, 14).map((i, idx) => {
-      const org = orgs.find((o) => o.id === i.organization_id);
-      return {
-        id: `P-${idx + 1}`,
-        client: org?.name ?? "—",
-        date: i.issued_at ? new Date(i.issued_at).toISOString().slice(0, 10) : "—",
-        amount: cents(i.amount_cents),
-        plan: org?.plan_name ?? "—",
-        method: "—",
-        status: cap(i.status),
-      };
-    });
 
     const AUDIT_LOG = auditRows.map((a) => ({
       ts: a.occurred_at ? new Date(a.occurred_at).toISOString().slice(0, 19).replace("T", " ") : "—",
@@ -241,11 +218,8 @@ export async function getSentinelBundle() {
     }));
 
     const byPlan: Record<string, number> = {};
-    for (const o of orgs) {
-      const name = o.plan_name ?? "Unassigned";
-      byPlan[name] = (byPlan[name] ?? 0) + (o.ov_status !== "churned" ? Number(o.fee_cents) : 0);
-    }
-    const REVENUE_BY_PLAN = Object.entries(byPlan).map(([plan, c]) => ({ plan, revenue: cents(c) }));
+    for (const c of CLIENTS) byPlan[c.plan] = (byPlan[c.plan] ?? 0) + (c.status !== "Churned" ? c.mrr : 0);
+    const REVENUE_BY_PLAN = Object.entries(byPlan).map(([plan, revenue]) => ({ plan, revenue }));
 
     const demo = sentinelDemo();
     return {
@@ -253,9 +227,9 @@ export async function getSentinelBundle() {
       CLIENTS,
       REVENUE_TREND,
       CLIENT_BREAKDOWN,
-      ACTIVITY_FEED,
-      PAYMENTS,
-      AUDIT_LOG,
+      ACTIVITY_FEED: ACTIVITY_FEED.length ? ACTIVITY_FEED : demo.ACTIVITY_FEED,
+      AUDIT_LOG: AUDIT_LOG.length ? AUDIT_LOG : demo.AUDIT_LOG,
+      PAYMENTS: [],
       REVENUE_BY_PLAN: REVENUE_BY_PLAN.length ? REVENUE_BY_PLAN : demo.REVENUE_BY_PLAN,
       OVERDUE: [],
       TICKETS: [],

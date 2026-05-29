@@ -11,7 +11,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!email || !password) {
@@ -20,12 +20,19 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      window.localStorage.setItem(
-        "portal.session",
-        JSON.stringify({ email, workspace: "Tree House Chalets", at: Date.now() })
-      );
-    } catch {}
-    setTimeout(() => router.push("/select"), 500);
+      const res = await fetch("/api/auth/client/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.message || "Sign in failed");
+      router.push("/select");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign in failed");
+      setLoading(false);
+    }
   }
 
   return (

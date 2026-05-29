@@ -826,4 +826,107 @@
   <script type="text/babel" src="asset_6ef02917.js"></script>
 
 
+<style>
+  #scNewBtn{position:fixed;right:22px;bottom:22px;z-index:9998;display:inline-flex;align-items:center;gap:8px;
+    padding:12px 16px;border:none;border-radius:12px;cursor:pointer;font:600 14px/1 inherit;color:#04070f;
+    background:linear-gradient(135deg,#00d4ff,#4d8bff);box-shadow:0 8px 30px -6px rgba(0,212,255,.6)}
+  #scNewBtn:hover{filter:brightness(1.08)}
+  #scOverlay{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;
+    background:rgba(2,4,10,.66);backdrop-filter:blur(4px)}
+  #scOverlay.on{display:flex}
+  .sc-card{width:100%;max-width:440px;background:#0a1226;border:1px solid rgba(255,255,255,.1);border-radius:16px;
+    padding:24px;color:#f4f7ff;font-family:inherit;box-shadow:0 30px 60px -20px rgba(0,0,0,.7)}
+  .sc-card h2{margin:0 0 4px;font-size:18px}
+  .sc-sub{margin:0 0 18px;color:#8a93ab;font-size:12.5px}
+  .sc-card label{display:block;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8a93ab;margin:14px 0 6px}
+  .sc-card input,.sc-card select{width:100%;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+    border-radius:10px;color:#f4f7ff;font:14px inherit;outline:none}
+  .sc-card input:focus,.sc-card select:focus{border-color:rgba(0,212,255,.5)}
+  .sc-row{display:flex;gap:8px}
+  .sc-pw{display:flex;gap:8px}
+  .sc-pw input{font-family:ui-monospace,monospace}
+  .sc-mini{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);
+    color:#cdd5e6;cursor:pointer;font-size:13px}
+  .sc-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+  .sc-btn{padding:10px 16px;border-radius:10px;border:none;cursor:pointer;font:600 14px inherit}
+  .sc-btn.primary{color:#04070f;background:linear-gradient(135deg,#00d4ff,#4d8bff)}
+  .sc-btn.ghost{background:rgba(255,255,255,.05);color:#cdd5e6;border:1px solid rgba(255,255,255,.12)}
+  .sc-err{color:#ff8585;font-size:12.5px;margin-top:12px;display:none}
+  .sc-ok{display:none;margin-top:14px;padding:14px;border-radius:12px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.3)}
+  .sc-ok code{display:block;font-family:ui-monospace,monospace;color:#fff;margin-top:4px}
+  .sc-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+</style>
+<button id="scNewBtn" type="button">＋ New Client</button>
+<div id="scOverlay">
+  <div class="sc-card" id="scForm">
+    <h2>New client</h2>
+    <p class="sc-sub">Creates a login for the client portal and adds them to your client list.</p>
+    <div id="scFields">
+      <label>Company</label>
+      <input id="scCompany" placeholder="Acme Hotels" />
+      <div class="sc-grid2">
+        <div><label>Login email</label><input id="scEmail" type="email" placeholder="owner@acme.com" /></div>
+        <div><label>Plan</label>
+          <select id="scPlan"><option>Growth</option><option>Scale</option><option>Starter</option><option>Trial</option></select>
+        </div>
+      </div>
+      <label>Password (give this to the client)</label>
+      <div class="sc-pw">
+        <input id="scPw" />
+        <button type="button" class="sc-mini" id="scRegen" title="Suggest another">↻</button>
+        <button type="button" class="sc-mini" id="scCopy" title="Copy">Copy</button>
+      </div>
+      <div class="sc-err" id="scErr"></div>
+      <div class="sc-actions">
+        <button type="button" class="sc-btn ghost" id="scCancel">Cancel</button>
+        <button type="button" class="sc-btn primary" id="scSave">Create client</button>
+      </div>
+    </div>
+    <div class="sc-ok" id="scOk">
+      <div style="font-weight:600;color:#00e5a0">Client created ✓</div>
+      <div style="font-size:12.5px;color:#cdd5e6;margin-top:6px">Share these credentials — they can sign in to the client portal:</div>
+      <code id="scOkEmail"></code><code id="scOkPw"></code>
+      <div class="sc-actions"><button type="button" class="sc-btn primary" id="scDone">Done</button></div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var A=["Cedar","Falcon","Harbor","Aspen","Lumen","Vertex","Cobalt","Onyx","Maple","Solace","Nimbus","Quartz"];
+  var B=["Otter","Comet","Ridge","Delta","Pine","Ember","Lynx","Reef","Sage","Vale","Hawk","Drift"];
+  function rnd(a){return a[Math.floor(Math.random()*a.length)]}
+  function suggest(){return rnd(A)+"-"+rnd(B)+"-"+Math.floor(1000+Math.random()*9000)}
+  var $=function(id){return document.getElementById(id)};
+  function open(){ $("scErr").style.display="none"; $("scOk").style.display="none"; $("scFields").style.display="block";
+    $("scCompany").value=""; $("scEmail").value=""; $("scPw").value=suggest(); $("scOverlay").classList.add("on"); $("scCompany").focus(); }
+  function close(){ $("scOverlay").classList.remove("on"); }
+  document.addEventListener("DOMContentLoaded",function(){
+    $("scNewBtn").addEventListener("click",open);
+    $("scCancel").addEventListener("click",close);
+    $("scDone").addEventListener("click",function(){close();location.reload();});
+    $("scRegen").addEventListener("click",function(){$("scPw").value=suggest();});
+    $("scCopy").addEventListener("click",function(){navigator.clipboard.writeText($("scPw").value);});
+    $("scOverlay").addEventListener("click",function(e){if(e.target.id==="scOverlay")close();});
+    $("scSave").addEventListener("click",async function(){
+      var company=$("scCompany").value.trim(), email=$("scEmail").value.trim(), password=$("scPw").value, plan=$("scPlan").value;
+      if(!company||!email||!password){ $("scErr").textContent="Company, email and password are required."; $("scErr").style.display="block"; return; }
+      $("scSave").textContent="Creating…"; $("scSave").disabled=true; $("scErr").style.display="none";
+      try{
+        var r=await fetch("/api/admin/clients",{method:"POST",headers:{"content-type":"application/json"},credentials:"include",
+          body:JSON.stringify({company:company,email:email,password:password,plan:plan,status:"active"})});
+        var d=await r.json();
+        if(!r.ok) throw new Error(d.message||("Failed ("+r.status+")"));
+        $("scFields").style.display="none"; $("scOkEmail").textContent="Email: "+email; $("scOkPw").textContent="Password: "+password; $("scOk").style.display="block";
+      }catch(e){ $("scErr").textContent=e.message; $("scErr").style.display="block"; }
+      finally{ $("scSave").textContent="Create client"; $("scSave").disabled=false; }
+    });
+    // Best-effort: also open the modal when the bundle's own "New Client" nav is clicked.
+    document.addEventListener("click",function(e){
+      var el=e.target.closest && e.target.closest("a,button,div,li");
+      if(el && (el.textContent||"").trim()==="New Client"){ e.preventDefault(); e.stopPropagation(); open(); }
+    },true);
+  });
+})();
+</script>
+
 </body></html>

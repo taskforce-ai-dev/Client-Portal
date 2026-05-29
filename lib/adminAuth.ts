@@ -38,6 +38,22 @@ export function isAuthed(): boolean {
   return verifyToken(cookies().get(COOKIE)?.value);
 }
 
-export function checkCredentials(email: string, password: string): boolean {
-  return email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD;
+// Verify against the admins table in the DB; fall back to the env bootstrap
+// admin when the DB isn't configured (so you're never locked out locally).
+export async function checkCredentials(email: string, password: string): Promise<boolean> {
+  const e = email.trim().toLowerCase();
+  try {
+    const { findAdminByEmail, isDbConfigured } = await import("./adminDb");
+    if (isDbConfigured()) {
+      const admin = await findAdminByEmail(e);
+      if (admin) {
+        const { verifyPassword } = await import("./passwords");
+        return verifyPassword(password, admin.password_hash);
+      }
+      // DB configured but admin row missing — allow the env bootstrap admin.
+    }
+  } catch {
+    // fall through to env check
+  }
+  return e === ADMIN_EMAIL && password === ADMIN_PASSWORD;
 }
