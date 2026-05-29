@@ -127,6 +127,19 @@ window.__LIVE_ADMIN = (function () {
   };
 })();
 
+// Override the baked demo with live DB-backed data when the API has it.
+// Falls back to the baked data on any error so the console never blanks.
+try {
+  var __xhr = new XMLHttpRequest();
+  __xhr.open("GET", "/api/admin/sentinel-bundle", false);
+  __xhr.withCredentials = true;
+  __xhr.send(null);
+  if (__xhr.status >= 200 && __xhr.status < 300) {
+    var __live = JSON.parse(__xhr.responseText);
+    if (__live && Array.isArray(__live.CLIENTS)) window.__LIVE_ADMIN = __live;
+  }
+} catch (e) {}
+
 const PLATFORM_NAME = "Sentinel";
 const CLIENTS = [];
 const REVENUE_TREND = [];

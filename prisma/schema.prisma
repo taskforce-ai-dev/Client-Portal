@@ -1,0 +1,106 @@
+// Prisma schema for the Sentinel admin portal.
+// Postgres (Neon). Set DATABASE_URL in the environment.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ClientStatus {
+  trial
+  active
+  suspended
+  blocked
+  churned
+}
+
+enum InvoiceStatus {
+  paid
+  pending
+  overdue
+}
+
+enum AdminRole {
+  super_admin
+  support
+  billing
+  operations
+}
+
+model Plan {
+  id                 String   @id @default(cuid())
+  name               String
+  slug               String   @unique
+  monthlyFeeCents    Int      @default(0)
+  description        String?
+  isPublic           Boolean  @default(true)
+  isDefault          Boolean  @default(false)
+  voiceCostPerMinute Float    @default(0)
+  aiCostPerMessage   Float    @default(0)
+  callCostPerMinute  Float    @default(0)
+  createdAt          DateTime @default(now())
+  clients            Client[]
+}
+
+model Client {
+  id        String       @id @default(cuid())
+  company   String
+  contact   String?
+  email     String       @unique
+  // Stored so the admin can hand credentials to the client (internal tool).
+  password  String?
+  country   String?
+  phone     String?
+  timezone  String       @default("UTC")
+  status    ClientStatus @default(trial)
+  plan      Plan?        @relation(fields: [planId], references: [id])
+  planId    String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  agents    Agent[]
+  invoices  Invoice[]
+}
+
+model Agent {
+  id         String   @id @default(cuid())
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId   String
+  name       String
+  role       String   @default("Agent")
+  status     String   @default("draft")
+  createdAt  DateTime @default(now())
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  client     Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId   String
+  amountCents Int          @default(0)
+  status     InvoiceStatus @default(pending)
+  issuedAt   DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model AdminUser {
+  id          String    @id @default(cuid())
+  name        String
+  email       String    @unique
+  passwordHash String?
+  role        AdminRole @default(super_admin)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminName  String   @default("System")
+  action     String
+  type       String   @default("system")
+  target     String?
+  summary    String
+  occurredAt DateTime @default(now())
+}
