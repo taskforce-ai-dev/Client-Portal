@@ -1,7 +1,9 @@
 // Builds the Sentinel admin bundle in the exact shape the UI expects.
-// Reads admin-created clients from sentinel_client (and, best-effort, your
-// Better Auth `organization` rows) when DATABASE_URL is set; otherwise
-// returns demo data so the dashboard always renders.
+// CLIENTS come exclusively from the database (admin-created sentinel_client
+// rows plus, best-effort, your Better Auth `organization` rows). There is no
+// demo/sample client data: when the DB is unreachable or empty the bundle
+// returns an empty-but-valid shape so the console renders without inventing
+// fake clients.
 
 const STATUS_LABEL: Record<string, string> = {
   trial: "Trial",
@@ -41,81 +43,58 @@ function relative(d: Date): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function sentinelDemo() {
+// Platform-level scaffolding that is NOT client data (service health,
+// agent templates) plus empty, correctly-shaped arrays for everything the
+// console derives from clients. Used as the base for both the live bundle
+// and the empty/error fallback — so no sample clients are ever served.
+export function emptyBundle() {
   const m = months12();
-  const curve = [0, 0, 0, 0, 120, 360, 720, 1200, 1850, 2600, 3500, 4446];
-  const REVENUE_TREND = m.map((month, i) => ({ month, mrr: curve[i], collected: Math.round(curve[i] * 0.92) }));
-  const EARNINGS_MONTHLY = m.map((month, i) => {
-    const invoiced = curve[i];
-    const collected = Math.round(curve[i] * 0.92);
-    return { month, clients: Math.min(5, Math.max(0, Math.round((i - 3) * 0.8))), newClients: i >= 8 ? 1 : 0, churned: 0, invoiced, collected, outstanding: invoiced - collected, netMrr: curve[i] };
-  });
   return {
     PLATFORM_NAME: "Sentinel",
-    CLIENTS: [
-      { id: "TH-1042", workspaceId: "ws_treehouse", company: "Tree House Chalets", contact: "Chrys Fernando", email: "hello@treehousechalets.com", country: "LK", plan: "Growth", status: "Active", mrr: 1990, totalPaid: 5970, agents: 1, joined: "2026-03-12", lastActive: "2h ago", phone: "+94 71 707 3529", timezone: "Asia/Colombo" },
-      { id: "WR-1039", workspaceId: "ws_winrich", company: "Winrich Hotel", contact: "Ops Team", email: "ops@winrich.com", country: "LK", plan: "Scale", status: "Active", mrr: 1480, totalPaid: 4440, agents: 2, joined: "2026-02-02", lastActive: "5h ago", phone: "—", timezone: "Asia/Colombo" },
-      { id: "FL-1051", workspaceId: "ws_flico", company: "Flico", contact: "Flico Team", email: "team@flico.io", country: "US", plan: "Starter", status: "Active", mrr: 976, totalPaid: 2928, agents: 1, joined: "2026-04-18", lastActive: "1d ago", phone: "—", timezone: "UTC" },
-      { id: "AE-1063", workspaceId: "ws_aether", company: "Aether Labs", contact: "Founder", email: "founder@aether.ai", country: "US", plan: "Trial", status: "Trial", mrr: 0, totalPaid: 0, agents: 1, joined: "2026-05-20", lastActive: "3h ago", phone: "—", timezone: "UTC" },
-      { id: "NW-1009", workspaceId: "ws_northwind", company: "Northwind Co", contact: "Admin", email: "admin@northwind.co", country: "GB", plan: "Growth", status: "Blocked", mrr: 0, totalPaid: 1990, agents: 0, joined: "2025-11-21", lastActive: "21d ago", phone: "—", timezone: "Europe/London" },
-    ],
-    REVENUE_TREND,
+    CLIENTS: [] as any[],
+    REVENUE_TREND: m.map((month) => ({ month, mrr: 0, collected: 0 })),
     CLIENT_BREAKDOWN: [
-      { name: "Active", count: 3, color: "#10b981" },
-      { name: "Trial", count: 1, color: "#f59e0b" },
+      { name: "Active", count: 0, color: "#10b981" },
+      { name: "Trial", count: 0, color: "#f59e0b" },
       { name: "Overdue", count: 0, color: "#f43f5e" },
-      { name: "Blocked", count: 1, color: "#6b7280" },
+      { name: "Blocked", count: 0, color: "#6b7280" },
       { name: "Churned", count: 0, color: "#4b5563" },
     ],
-    ACTIVITY_FEED: [
-      { ts: "09:39:06", action: "agent_created", client: "Tree House Chalets", detail: "Reset password · chanya@treehousechalets" },
-      { ts: "08:12:50", action: "plan_upgrade", client: "Winrich Hotel", detail: "Moved to Scale plan" },
-      { ts: "07:50:11", action: "payment_received", client: "Tree House Chalets", detail: "$1,990 received" },
-      { ts: "06:30:00", action: "signup", client: "Aether Labs", detail: "Started 14-day trial" },
-    ],
-    PAYMENTS: [
-      { id: "P-2041", client: "Tree House Chalets", date: "2026-05-01", amount: 1990, plan: "Growth", method: "—", status: "Paid" },
-      { id: "P-2042", client: "Winrich Hotel", date: "2026-05-01", amount: 1480, plan: "Scale", method: "—", status: "Paid" },
-    ],
-    OVERDUE: [],
-    TICKETS: [],
-    AUDIT_LOG: [
-      { ts: "2026-05-28 09:39:06", admin: "Maya Reyes", action: "Agent Create", type: "agent", target: "Tree House Chalets", ip: "—", details: "Reset password" },
-    ],
-    ADMIN_USERS: [
-      { name: "Maya Reyes", email: "maya@taskforceai.tech", role: "Super Admin", lastLogin: "Today", status: "Active" },
-      { name: "Chrys Fernando", email: "chrys@taskforceai.tech", role: "Super Admin", lastLogin: "Today", status: "Active" },
-    ],
+    ACTIVITY_FEED: [] as any[],
+    PAYMENTS: [] as any[],
+    OVERDUE: [] as any[],
+    TICKETS: [] as any[],
+    AUDIT_LOG: [] as any[],
+    ADMIN_USERS: [] as any[],
     SERVICES: [
       { name: "API", status: "Operational", uptime: 99.98, latency: 142, lastIncident: "—" },
-      { name: "Voice gateway", status: "Operational", uptime: 99.95, latency: 88, lastIncident: "12d ago" },
+      { name: "Voice gateway", status: "Operational", uptime: 99.95, latency: 88, lastIncident: "—" },
       { name: "Dashboard", status: "Operational", uptime: 100, latency: 60, lastIncident: "—" },
+      { name: "Webhooks", status: "Operational", uptime: 99.92, latency: 210, lastIncident: "—" },
     ],
-    INCIDENTS: [],
+    INCIDENTS: [] as any[],
     AGENT_TEMPLATES: [
       { id: "growth", name: "Booking Agent", description: "Calendar reservations & confirmations", model: "balanced", voice: "Nova", channel: "voice", voiceCost: 0.1, aiCost: 0.002, callCost: 0.12, active: true },
+      { id: "scale", name: "Support Agent", description: "Inbound resolution & customer care", model: "quality", voice: "Aria", channel: "voice", voiceCost: 0.12, aiCost: 0.003, callCost: 0.14, active: true },
+      { id: "starter", name: "Sales Agent", description: "Outbound conversion & pipeline", model: "fast", voice: "Rex", channel: "voice", voiceCost: 0.09, aiCost: 0.002, callCost: 0.1, active: true },
     ],
-    EARNINGS_MONTHLY,
-    REVENUE_BY_PLAN: [
-      { plan: "Growth", revenue: 1990 },
-      { plan: "Scale", revenue: 1480 },
-      { plan: "Starter", revenue: 976 },
-    ],
+    EARNINGS_MONTHLY: m.map((month) => ({ month, clients: 0, newClients: 0, churned: 0, invoiced: 0, collected: 0, outstanding: 0, netMrr: 0 })),
+    REVENUE_BY_PLAN: [] as any[],
     MRR_MOVEMENT: [
-      { kind: "New", value: 976, color: "#10b981" },
-      { kind: "Expansion", value: 490, color: "#34d399" },
+      { kind: "New", value: 0, color: "#10b981" },
+      { kind: "Expansion", value: 0, color: "#34d399" },
       { kind: "Contraction", value: 0, color: "#f59e0b" },
       { kind: "Churned", value: 0, color: "#f43f5e" },
     ],
-    CLIENT_INVOICES: [{ id: "INV-2041", date: "2026-05-01", amount: 1990, status: "Paid" }],
-    announcements: [],
+    CLIENT_INVOICES: [] as any[],
+    announcements: [] as any[],
   };
 }
 
 const PLAN_FEE_CENTS: Record<string, number> = { Starter: 97600, Growth: 199000, Scale: 148000, Trial: 0 };
 
 export async function getSentinelBundle() {
-  if (!process.env.DATABASE_URL) return sentinelDemo();
+  if (!process.env.DATABASE_URL) return emptyBundle();
   try {
     const { neon } = await import("@neondatabase/serverless");
     const { ensureSeed } = await import("./adminDb");
@@ -180,9 +159,9 @@ export async function getSentinelBundle() {
       }));
 
     const CLIENTS = [...fromClients, ...fromOrgs];
-    if (CLIENTS.length === 0) return sentinelDemo();
 
     const auditRows: any[] = await sql`SELECT admin_name, action, type, target, summary, occurred_at FROM sentinel_audit ORDER BY occurred_at DESC LIMIT 20`;
+    const adminRows: any[] = await sql`SELECT name, email, created_at FROM sentinel_admin ORDER BY created_at ASC`;
 
     const totalMrr = CLIENTS.reduce((s, c) => s + (c.status !== "Churned" ? c.mrr : 0), 0);
     const m = months12();
@@ -221,21 +200,26 @@ export async function getSentinelBundle() {
     for (const c of CLIENTS) byPlan[c.plan] = (byPlan[c.plan] ?? 0) + (c.status !== "Churned" ? c.mrr : 0);
     const REVENUE_BY_PLAN = Object.entries(byPlan).map(([plan, revenue]) => ({ plan, revenue }));
 
-    const demo = sentinelDemo();
+    const ADMIN_USERS = adminRows.map((a) => ({
+      name: a.name,
+      email: a.email,
+      role: "Super Admin",
+      lastLogin: "—",
+      status: "Active",
+    }));
+
     return {
-      ...demo,
+      ...emptyBundle(),
       CLIENTS,
       REVENUE_TREND,
       CLIENT_BREAKDOWN,
-      ACTIVITY_FEED: ACTIVITY_FEED.length ? ACTIVITY_FEED : demo.ACTIVITY_FEED,
-      AUDIT_LOG: AUDIT_LOG.length ? AUDIT_LOG : demo.AUDIT_LOG,
-      PAYMENTS: [],
-      REVENUE_BY_PLAN: REVENUE_BY_PLAN.length ? REVENUE_BY_PLAN : demo.REVENUE_BY_PLAN,
-      OVERDUE: [],
-      TICKETS: [],
-      INCIDENTS: [],
+      ACTIVITY_FEED,
+      AUDIT_LOG,
+      REVENUE_BY_PLAN,
+      ADMIN_USERS,
     };
-  } catch {
-    return sentinelDemo();
+  } catch (e) {
+    console.error("getSentinelBundle failed:", e);
+    return emptyBundle();
   }
 }
