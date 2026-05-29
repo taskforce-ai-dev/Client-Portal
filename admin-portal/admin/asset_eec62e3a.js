@@ -11,17 +11,33 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
   const [sortDir, setSortDir] = useState("desc");
   const [view, setView] = useState("table");
   const [selected, setSelected] = useState(new Set());
-  const [openMenu, setOpenMenu] = useState(null);
+  const [menu, setMenu] = useState(null); // { client, top, left, up }
   const toast = useToast();
 
   useEffect(() => { if (filterStatus) setStatusFilter(filterStatus); }, [filterStatus]);
   useEffect(() => {
-    const close = () => setOpenMenu(null);
-    if (openMenu) {
+    const close = () => setMenu(null);
+    if (menu) {
       document.addEventListener("click", close);
-      return () => document.removeEventListener("click", close);
+      window.addEventListener("scroll", close, true);
+      window.addEventListener("resize", close);
+      return () => {
+        document.removeEventListener("click", close);
+        window.removeEventListener("scroll", close, true);
+        window.removeEventListener("resize", close);
+      };
     }
-  }, [openMenu]);
+  }, [menu]);
+
+  const openRowMenu = (e, c) => {
+    e.stopPropagation();
+    if (menu && menu.client === c) { setMenu(null); return; }
+    const r = e.currentTarget.getBoundingClientRect();
+    const up = r.bottom + 230 > window.innerHeight;
+    setMenu({ client: c, top: up ? r.top : r.bottom + 4, left: Math.max(8, r.right - 196), up });
+  };
+
+  const act = (c, opts) => { setMenu(null); onOpenClient({ ...c, ...opts }); };
 
   const filtered = useMemo(() => {
     let list = [...CLIENTS];
@@ -134,20 +150,10 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
                     <td style={{ textAlign: "right" }}>{c.agents}</td>
                     <td style={{ color: "var(--text-2)" }}>{c.lastActive}</td>
                     <td style={{ color: "var(--text-2)" }}>{c.joined}</td>
-                    <td style={{ position: "relative" }} onClick={(e) => e.stopPropagation()}>
-                      <button className="btn btn-ghost btn-xs" style={{ padding: "3px 4px" }} onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === c.id ? null : c.id); }}>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <button className="btn btn-ghost btn-xs" style={{ padding: "3px 4px" }} onClick={(e) => openRowMenu(e, c)}>
                         <Icon name="dots" size={14} />
                       </button>
-                      {openMenu === c.id && (
-                        <div className="menu" style={{ position: "absolute", right: 14, top: 30, zIndex: 10 }}>
-                          <div className="menu-item" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="eye" size={12} />View dashboard</div>
-                          <div className="menu-item" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="edit" size={12} />Edit account</div>
-                          <div className="menu-item" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="config" size={12} />Manage agents</div>
-                          <div className="menu-divider" />
-                          <div className="menu-item danger" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="block" size={12} />Suspend / Block</div>
-                          <div className="menu-item danger" onClick={() => { onOpenClient(c); setOpenMenu(null); }}><Icon name="x" size={12} />Delete account</div>
-                        </div>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -215,6 +221,23 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
           <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())}><Icon name="x" size={12} /></button>
         </div>
       )}
+
+      {menu && (
+        <div
+          className="menu"
+          style={{ position: "fixed", top: menu.up ? undefined : menu.top, bottom: menu.up ? (window.innerHeight - menu.top + 4) : undefined, left: menu.left, width: 196, zIndex: 1000 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="menu-item" onClick={() => act(menu.client, { __tab: "analytics" })}><Icon name="eye" size={12} />View dashboard</div>
+          <div className="menu-item" onClick={() => act(menu.client, { __tab: "profile" })}><Icon name="edit" size={12} />Edit account</div>
+          <div className="menu-item" onClick={() => act(menu.client, { __tab: "agents" })}><Icon name="config" size={12} />Manage agents</div>
+          <div className="menu-item" onClick={() => act(menu.client, { __tab: "financials" })}><Icon name="invoice" size={12} />Billing & invoices</div>
+          <div className="menu-divider" />
+          <div className="menu-item" onClick={() => act(menu.client, { __tab: "profile", __action: "suspend" })}><Icon name="bell" size={12} />Suspend</div>
+          <div className="menu-item danger" onClick={() => act(menu.client, { __tab: "profile", __action: "block" })}><Icon name="block" size={12} />Block account</div>
+          <div className="menu-item danger" onClick={() => act(menu.client, { __tab: "profile", __action: "delete" })}><Icon name="x" size={12} />Delete account</div>
+        </div>
+      )}
     </>
   );
 };
@@ -224,7 +247,7 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
    ============================================================ */
 
 const ClientDrawer = ({ client, onClose }) => {
-  const [tab, setTab] = useState("profile");
+  const [tab, setTab] = useState(client && client.__tab ? client.__tab : "profile");
   const [notes, setNotes] = useState("VIP — quarterly business review scheduled.\nContact prefers async communication via email.");
   const [confirm, setConfirm] = useState(null);
   const toast = useToast();
@@ -247,6 +270,8 @@ const ClientDrawer = ({ client, onClose }) => {
     if (!client) return;
     setEdit({ company: client.company || "", contact: client.contact || "", email: client.email || "", plan: client.plan || "Growth", status: client.status || "Active", mrr: client.mrr || 0 });
     setPw(null);
+    if (client.__tab) setTab(client.__tab);
+    if (client.__action) setConfirm(client.__action);
     loadAgents();
   }, [cid]);
 
@@ -293,14 +318,13 @@ const ClientDrawer = ({ client, onClose }) => {
     } catch (e) { toast(e.message, "error"); }
   };
 
-  const resetPw = async () => {
-    const np = suggestPassword();
+  const savePassword = async () => {
+    if (!pw || pw.length < 6) { toast("Password must be at least 6 characters", "error"); return; }
     try {
-      const r = await fetch(`/api/admin/clients/${cid}/password`, { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ password: np }) });
+      const r = await fetch(`/api/admin/clients/${cid}/password`, { method: "POST", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify({ password: pw }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.message || "Failed");
-      setPw(np);
-      toast("Password reset — share the new one", "success");
+      toast("Password updated — share it with the client", "success");
     } catch (e) { toast(e.message, "error"); }
   };
 
@@ -393,12 +417,14 @@ const ClientDrawer = ({ client, onClose }) => {
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Client portal password</div>
-                <div className="panel-flat" style={{ padding: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontFamily: "var(--ff-mono)", fontSize: 13, color: pw ? "var(--text-0)" : "var(--text-3)" }}>{pw || "••••••••••"}</span>
-                  <div style={{ flex: 1 }} />
-                  {pw && <button className="btn btn-ghost btn-xs" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(pw); toast("Password copied", "success"); }}>Copy</button>}
-                  <button className="btn btn-secondary btn-xs" onClick={revealPw}>Reveal</button>
-                  <button className="btn btn-secondary btn-xs" onClick={resetPw}>Reset</button>
+                <div className="panel-flat" style={{ padding: 12 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input className="input mono" style={{ flex: 1 }} value={pw ?? ""} placeholder="•••••••• — click Reveal to view" onChange={(e) => setPw(e.target.value)} />
+                    <button className="btn btn-secondary btn-xs" onClick={revealPw}>Reveal</button>
+                    <button className="btn btn-secondary btn-xs" onClick={() => setPw(suggestPassword())}>Generate</button>
+                    <button className="btn btn-secondary btn-xs" onClick={() => { if (pw) { navigator.clipboard && navigator.clipboard.writeText(pw); toast("Password copied", "success"); } }}>Copy</button>
+                  </div>
+                  <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={savePassword}>Save password</button>
                 </div>
               </div>
               <div>
