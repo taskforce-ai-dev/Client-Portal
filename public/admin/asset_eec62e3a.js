@@ -259,6 +259,8 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
   const [agentModal, setAgentModal] = useState(false);
   const [newAgent, setNewAgent] = useState({ name: "", type: "voice", description: "" });
   const [busyAgent, setBusyAgent] = useState(false);
+  const [twAn, setTwAn] = useState(null);
+  const [twAnLoading, setTwAnLoading] = useState(false);
 
   const loadAgents = () =>
     fetch(`/api/admin/clients/${cid}/agents`, { credentials: "include" })
@@ -272,8 +274,19 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
     setPw(null);
     if (client.__tab) setTab(client.__tab);
     if (client.__action) setConfirm(client.__action);
+    setTwAn(null);
     loadAgents();
   }, [cid]);
+
+  useEffect(() => {
+    if (tab !== "analytics" || twAn || !agentList.length) return;
+    setTwAnLoading(true);
+    fetch(`/api/admin/agents/${agentList[0].id}/twilio`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setTwAn(d || { configured: false }))
+      .catch(() => setTwAn({ configured: false }))
+      .finally(() => setTwAnLoading(false));
+  }, [tab, agentList]);
 
   const refresh = () => { try { window.location.reload(); } catch (e) {} };
 
@@ -516,46 +529,32 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
 
           {tab === "analytics" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <MiniStat label="Calls this month" value="12,442" delta="+18%" />
-                <MiniStat label="Cost this month" value={"$" + (client.mrr * 0.4 | 0).toLocaleString()} delta="-3%" />
-              </div>
-              <div className="panel-flat" style={{ padding: 12 }}>
-                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Cost breakdown</div>
-                {[
-                  { k: "Voice Agent", v: 2840, c: "var(--red-500)" },
-                  { k: "AI Language", v: 1620, c: "#10b981" },
-                  { k: "Call routing",v: 880,  c: "#38bdf8" },
-                ].map((b) => {
-                  const total = 2840 + 1620 + 880;
-                  return (
-                    <div key={b.k} style={{ marginBottom: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, fontFamily: "var(--ff-mono)", marginBottom: 4 }}>
-                        <span style={{ color: "var(--text-1)" }}>{b.k}</span>
-                        <span style={{ color: "var(--text-0)" }}>${b.v.toLocaleString()}</span>
-                      </div>
-                      <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden" }}>
-                        <div style={{ width: (b.v / total * 100) + "%", height: "100%", background: b.c }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="panel-flat" style={{ padding: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Plan usage</div>
-                  <span style={{ fontFamily: "var(--ff-mono)", fontSize: 11.5, color: "var(--text-0)" }}>62%</span>
+              {!agentList.length && <EmptyState icon="chart" title="No agents yet" description="Add an agent to see call analytics." />}
+              {agentList.length > 0 && twAnLoading && <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading call data…</div>}
+              {agentList.length > 0 && !twAnLoading && twAn && !twAn.configured && (
+                <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-2)" }}>
+                  <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected for {agentList[0].name}.</span> Set its subaccount SID in the agent's Settings.
                 </div>
-                <div style={{ height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 3 }}>
-                  <div style={{ width: "62%", height: "100%", background: "linear-gradient(90deg, #ef4444, #f59e0b)", borderRadius: 3 }} />
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6, fontFamily: "var(--ff-mono)" }}>6,200 / 10,000 calls used</div>
-              </div>
-              <div className="panel-flat" style={{ padding: 12 }}>
-                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Conversion trend (6mo)</div>
-                <Sparkline data={[12, 15, 14, 18, 22, 24]} width={420} height={48} color="#10b981" />
-                <div style={{ fontFamily: "var(--ff-mono)", fontSize: 11.5, color: "var(--text-0)", marginTop: 6 }}>24.1% <span style={{ color: "var(--text-3)" }}>· top agent: {client.company.split(" ")[0].toLowerCase()}_agent_01</span></div>
-              </div>
+              )}
+              {agentList.length > 0 && !twAnLoading && twAn && twAn.configured && (
+                <>
+                  <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Showing live Twilio data for <span style={{ color: "var(--text-1)" }}>{agentList[0].name}</span> — same figures the client sees in their portal.</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                    <MiniStat label="Calls today" value={String(twAn.kpis.callsToday)} />
+                    <MiniStat label="Completed" value={String(twAn.kpis.completed)} />
+                    <MiniStat label="Completion" value={twAn.kpis.completionRate + "%"} />
+                    <MiniStat label="Minutes (mo)" value={String(twAn.kpis.minutesMonth)} />
+                  </div>
+                  <div className="panel-flat" style={{ padding: 12 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Calls by hour</div>
+                    <AgentBars data={twAn.byHour.map((h) => ({ label: h.hour, value: h.calls }))} />
+                  </div>
+                  <div className="panel-flat" style={{ padding: 12 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Outcomes</div>
+                    <AgentOutcomes data={twAn.outcomes} />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -861,28 +860,52 @@ const Field = ({ label, children, style }) => (
 /* ============================================================
    AGENT CONFIGURATION (renders in the main content area)
    ============================================================ */
+const AgentBars = ({ data }) => {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 120, padding: "8px 0" }}>
+      {data.map((d, i) => (
+        <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+          <div title={d.value + " calls"} style={{ width: "100%", maxWidth: 26, height: Math.round((d.value / max) * 92) + 2, background: "linear-gradient(180deg,#ef4444,#f59e0b)", borderRadius: 4 }} />
+          <span style={{ fontSize: 9.5, color: "var(--text-3)" }}>{d.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const AgentOutcomes = ({ data }) => {
+  const total = data.reduce((s, d) => s + d.count, 0) || 1;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {data.map((o, i) => (
+        <div key={i}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, marginBottom: 4, fontFamily: "var(--ff-mono)" }}>
+            <span style={{ color: "var(--text-1)" }}>{o.outcome}</span>
+            <span style={{ color: "var(--text-0)" }}>{o.count}</span>
+          </div>
+          <div style={{ height: 5, background: "rgba(255,255,255,0.05)", borderRadius: 3 }}>
+            <div style={{ width: (o.count / total * 100) + "%", height: "100%", background: o.color, borderRadius: 3 }} />
+          </div>
+        </div>
+      ))}
+      {data.length === 0 && <div style={{ fontSize: 12, color: "var(--text-3)" }}>No calls yet.</div>}
+    </div>
+  );
+};
+
 const AgentConfigPage = ({ agentId, onBack }) => {
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("overview");
-  const [form, setForm] = useState({ name: "", role: "", type: "voice", status: "live", description: "" });
+  const [form, setForm] = useState({ name: "", role: "", type: "voice", status: "live", description: "", twilio_subaccount_sid: "" });
   const [saving, setSaving] = useState(false);
   const [kb, setKb] = useState("");
   const [kbDirty, setKbDirty] = useState(false);
   const [kbSaving, setKbSaving] = useState(false);
   const [tw, setTw] = useState(null);
-  const [twLoading, setTwLoading] = useState(false);
+  const [twLoading, setTwLoading] = useState(true);
   const toast = useToast();
-
-  useEffect(() => {
-    if (tab !== "analytics" || tw) return;
-    setTwLoading(true);
-    fetch(`/api/admin/twilio`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((d) => setTw(d || { configured: false }))
-      .catch(() => setTw({ configured: false }))
-      .finally(() => setTwLoading(false));
-  }, [tab]);
 
   useEffect(() => {
     let active = true;
@@ -893,7 +916,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
         if (!active) return;
         if (d && d.id) {
           setAgent(d);
-          setForm({ name: d.name || "", role: d.role || "", type: d.type || "voice", status: d.status || "live", description: d.description || "" });
+          setForm({ name: d.name || "", role: d.role || "", type: d.type || "voice", status: d.status || "live", description: d.description || "", twilio_subaccount_sid: d.twilio_subaccount_sid || "" });
         }
         setLoading(false);
       })
@@ -902,6 +925,12 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       .then((r) => r.json())
       .then((d) => { if (active) { setKb(d.content || ""); setKbDirty(false); } })
       .catch(() => {});
+    setTwLoading(true);
+    fetch(`/api/admin/agents/${agentId}/twilio`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setTw(d || { configured: false }); })
+      .catch(() => { if (active) setTw({ configured: false }); })
+      .finally(() => { if (active) setTwLoading(false); });
     return () => { active = false; };
   }, [agentId]);
 
@@ -949,14 +978,42 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       </div>
 
       {tab === "overview" && (
-        <div className="panel" style={{ padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)", marginBottom: 8 }}>About this agent</div>
-          <div style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{agent.description || "No description yet — add one in Settings."}</div>
-          <div style={{ marginTop: 14 }}>
-            <DataRow label="Role / persona" value={agent.role || "—"} />
-            <DataRow label="Type" value={agent.type} />
-            <DataRow label="Channels" value={agent.channels} />
-            <DataRow label="Status" value={agent.status} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {tw && tw.configured && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                <MiniStat label="Calls today" value={String(tw.kpis.callsToday)} />
+                <MiniStat label="Completed" value={String(tw.kpis.completed)} />
+                <MiniStat label="Completion" value={tw.kpis.completionRate + "%"} />
+                <MiniStat label="Avg duration" value={tw.kpis.avgDuration} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 12 }}>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Calls by hour (today)</div>
+                  <AgentBars data={tw.byHour.map((h) => ({ label: h.hour, value: h.calls }))} />
+                </div>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Call outcomes</div>
+                  <AgentOutcomes data={tw.outcomes} />
+                </div>
+              </div>
+            </>
+          )}
+          {tw && !tw.configured && (
+            <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-2)" }}>
+              <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected for this agent.</span> Add its subaccount SID in <b>Settings</b> (and set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN in Vercel).
+            </div>
+          )}
+          <div className="panel" style={{ padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)", marginBottom: 8 }}>About this agent</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{agent.description || "No description yet — add one in Settings."}</div>
+            <div style={{ marginTop: 14 }}>
+              <DataRow label="Role / persona" value={agent.role || "—"} />
+              <DataRow label="Type" value={agent.type} />
+              <DataRow label="Channels" value={agent.channels} />
+              <DataRow label="Status" value={agent.status} />
+              <DataRow label="Twilio subaccount" value={agent.twilio_subaccount_sid || "—"} />
+            </div>
           </div>
         </div>
       )}
@@ -987,18 +1044,28 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <StatusDot status={tw.error ? "Overdue" : "Active"} />
-                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{tw.error ? ("Twilio error: " + tw.error) : "Twilio connected · workspace-wide"}</span>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{tw.error ? ("Twilio error: " + tw.error) : "Twilio connected · subaccount " + (tw.subaccount || "").slice(0, 10) + "…"}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 <MiniStat label="Calls today" value={String(tw.kpis.callsToday)} />
-                <MiniStat label="Conversion" value={tw.kpis.convRate + "%"} />
-                <MiniStat label="Booked" value={String(tw.kpis.booked)} />
+                <MiniStat label="Completed" value={String(tw.kpis.completed)} />
+                <MiniStat label="Completion" value={tw.kpis.completionRate + "%"} />
                 <MiniStat label="Minutes (mo)" value={String(tw.kpis.minutesMonth)} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 12 }}>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Calls by hour</div>
+                  <AgentBars data={tw.byHour.map((h) => ({ label: h.hour, value: h.calls }))} />
+                </div>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Outcomes</div>
+                  <AgentOutcomes data={tw.outcomes} />
+                </div>
               </div>
               <div className="panel">
                 <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 12.5, fontWeight: 600, color: "var(--text-0)" }}>Recent calls</div>
                 <table className="data-table">
-                  <thead><tr><th>Caller</th><th>Direction</th><th>When</th><th>Duration</th><th>Outcome</th></tr></thead>
+                  <thead><tr><th>Caller</th><th>Direction</th><th>When</th><th>Duration</th><th>Status</th></tr></thead>
                   <tbody>
                     {tw.calls.map((c) => (
                       <tr key={c.id}>
@@ -1006,14 +1073,13 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                         <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
                         <td style={{ color: "var(--text-2)" }}>{c.startedAt}</td>
                         <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
-                        <td><StatusDot status={c.outcome} /></td>
+                        <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 {tw.calls.length === 0 && <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>No calls in this account yet.</div>}
               </div>
-              <div style={{ fontSize: 11, color: "var(--text-3)" }}>Note: figures are workspace-wide for now (one Twilio account), not split per agent.</div>
             </>
           )}
         </div>
@@ -1028,6 +1094,10 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <Field label="Status"><select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="live">Live</option><option value="paused">Paused</option><option value="draft">Draft</option></select></Field>
           </div>
           <Field label="Description" style={{ marginTop: 12 }}><textarea className="input" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          <Field label="Twilio subaccount SID (this agent's call data)" style={{ marginTop: 12 }}>
+            <input className="input mono" value={form.twilio_subaccount_sid} placeholder="ACxxxxxxxx…" onChange={(e) => setForm({ ...form, twilio_subaccount_sid: e.target.value })} />
+          </Field>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Calls & analytics for this agent are read from this Twilio subaccount.</div>
           <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} disabled={saving} onClick={saveSettings}>{saving ? "Saving…" : "Save changes"}</button>
         </div>
       )}

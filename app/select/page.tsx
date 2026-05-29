@@ -146,7 +146,7 @@ export default async function SelectAgentPage() {
 
                 <div className="mt-5 grid grid-cols-3 gap-2">
                   <Stat label="Calls today" value={String(today.length)} />
-                  <Stat label="Conv. rate" value={`${stats.convRate}%`} />
+                  <Stat label="Completion" value={`${stats.completionRate}%`} />
                   <Stat label="Avg dur." value={stats.avgDuration} />
                 </div>
 

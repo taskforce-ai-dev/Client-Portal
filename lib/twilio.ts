@@ -8,7 +8,7 @@ export type DisplayCall = {
   startedAtIso: string;
   duration: string;
   durationSec: number;
-  outcome: "Booked" | "Follow-up" | "Voicemail" | "No answer" | "Cancelled";
+  outcome: string; // real Twilio call status, prettified (e.g. "Completed", "No answer")
   sentiment: "positive" | "neutral" | "negative";
   direction: "inbound" | "outbound";
   recordingUrl?: string | null;
@@ -28,12 +28,13 @@ export type UsageResult = {
   error?: string;
 };
 
+// Auth (parent account) is enough to query any subaccount under it.
+export function isTwilioAuthConfigured() {
+  return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
+}
+
 export function isTwilioConfigured() {
-  return !!(
-    process.env.TWILIO_ACCOUNT_SID &&
-    process.env.TWILIO_AUTH_TOKEN &&
-    process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID
-  );
+  return isTwilioAuthConfigured() && !!process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID;
 }
 
 function authHeader() {
@@ -82,21 +83,20 @@ function relativeTime(iso: string) {
   return d.toLocaleDateString();
 }
 
-function mapStatusToOutcome(status: string): DisplayCall["outcome"] {
-  switch (status) {
-    case "completed":
-      return "Booked";
-    case "no-answer":
-    case "busy":
-      return "No answer";
-    case "failed":
-    case "canceled":
-      return "Cancelled";
-    case "voicemail":
-      return "Voicemail";
-    default:
-      return "Follow-up";
-  }
+const STATUS_LABELS: Record<string, string> = {
+  completed: "Completed",
+  "no-answer": "No answer",
+  busy: "Busy",
+  failed: "Failed",
+  canceled: "Canceled",
+  "in-progress": "In progress",
+  ringing: "Ringing",
+  queued: "Queued",
+};
+
+function prettyStatus(status: string): string {
+  if (!status) return "Unknown";
+  return STATUS_LABELS[status] || status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 type TwilioCall = {
@@ -123,36 +123,41 @@ function mapCall(c: TwilioCall): DisplayCall {
     startedAtIso: c.start_time,
     duration: formatDuration(dur),
     durationSec: dur,
-    outcome: mapStatusToOutcome(c.status),
+    outcome: prettyStatus(c.status),
     sentiment: "neutral",
     direction,
   };
 }
 
+// Default (workspace) subaccount used by the client-portal pages.
+function defaultSub() {
+  return process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
+}
+
 export async function getCalls(limit = 50): Promise<CallsResult> {
-  if (!isTwilioConfigured()) {
-    return { calls: [], configured: false };
-  }
+  return getCallsForSubaccount(defaultSub(), limit);
+}
+
+export async function getCallsForSubaccount(sub: string, limit = 50): Promise<CallsResult> {
+  if (!isTwilioAuthConfigured() || !sub) return { calls: [], configured: false };
   try {
-    const sub = process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID!;
     const data = await twilioGet(`/Accounts/${sub}/Calls.json?PageSize=${limit}`);
     const raw = (data.calls ?? []) as TwilioCall[];
     return { calls: raw.map(mapCall), configured: true };
   } catch (e) {
-    return {
-      calls: [],
-      configured: true,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    return { calls: [], configured: true, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
 export async function getUsageThisMonth(): Promise<UsageResult> {
-  if (!isTwilioConfigured()) {
+  return getUsageForSubaccount(defaultSub());
+}
+
+export async function getUsageForSubaccount(sub: string): Promise<UsageResult> {
+  if (!isTwilioAuthConfigured() || !sub) {
     return { configured: false, totalCalls: 0, totalMinutes: 0, totalPrice: 0 };
   }
   try {
-    const sub = process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID!;
     const data = await twilioGet(
       `/Accounts/${sub}/Usage/Records/ThisMonth.json?Category=calls`
     );
@@ -228,21 +233,22 @@ export function bucketCallsByDay(calls: DisplayCall[]) {
 }
 
 export function bucketOutcomes(calls: DisplayCall[]) {
-  const colors: Record<DisplayCall["outcome"], string> = {
-    Booked: "#34D399",
-    "Follow-up": "#22D3EE",
-    Voicemail: "#FBBF24",
+  const colors: Record<string, string> = {
+    Completed: "#34D399",
+    "In progress": "#22D3EE",
+    Busy: "#FBBF24",
     "No answer": "#94A3B8",
-    Cancelled: "#FB7185",
+    Failed: "#FB7185",
+    Canceled: "#FB7185",
   };
-  const counts = new Map<DisplayCall["outcome"], number>();
+  const counts = new Map<string, number>();
   for (const c of calls) {
     counts.set(c.outcome, (counts.get(c.outcome) ?? 0) + 1);
   }
   return Array.from(counts.entries()).map(([outcome, count]) => ({
     outcome,
     count,
-    color: colors[outcome],
+    color: colors[outcome] ?? "#22D3EE",
   }));
 }
 
@@ -258,9 +264,9 @@ export function callsToday(calls: DisplayCall[]) {
 
 export function callStats(calls: DisplayCall[]) {
   const total = calls.length;
-  const booked = calls.filter((c) => c.outcome === "Booked").length;
-  const convRate = total ? Math.round((booked / total) * 1000) / 10 : 0;
+  const completed = calls.filter((c) => c.outcome === "Completed").length;
+  const completionRate = total ? Math.round((completed / total) * 1000) / 10 : 0;
   const avgSec = total ? Math.round(calls.reduce((s, c) => s + c.durationSec, 0) / total) : 0;
   const avgDuration = `${Math.floor(avgSec / 60)}:${String(avgSec % 60).padStart(2, "0")}`;
-  return { total, booked, convRate, avgSec, avgDuration };
+  return { total, completed, completionRate, avgSec, avgDuration };
 }

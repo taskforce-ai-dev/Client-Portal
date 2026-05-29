@@ -18,7 +18,7 @@ export const revalidate = 30;
 export default async function AnalyticsPage() {
   const { calls, configured, error } = await getCalls(200);
 
-  const { total, booked, convRate, avgDuration } = callStats(calls);
+  const { total, completed, completionRate, avgDuration } = callStats(calls);
 
   const byDay = bucketCallsByDay(calls);
   const byHour = bucketCallsByHour(calls);
@@ -64,7 +64,7 @@ export default async function AnalyticsPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Total calls" value={String(total)} delta={0} hint="In window" />
-        <KpiCard label="Bookings" value={String(booked)} delta={0} hint={`${convRate}% conv. rate`} />
+        <KpiCard label="Completed" value={String(completed)} delta={0} hint={`${completionRate}% completion rate`} />
         <KpiCard label="Avg duration" value={avgDuration} delta={0} hint="All outcomes" />
         <KpiCard label="Peak hour" value={peak.hour} delta={0} hint={`${peak.calls} calls / hour`} />
       </div>

@@ -43,7 +43,7 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
   ]);
 
   const today = callsToday(calls);
-  const { convRate, booked, avgDuration } = callStats(today);
+  const { completionRate, completed, avgDuration } = callStats(today);
   const minutesPct = Math.round((usage.totalMinutes / workspace.minutesLimit) * 100);
 
   const hourly = bucketCallsByHour(today.length ? today : calls);
@@ -82,7 +82,7 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Calls today" value={String(today.length)} delta={0} hint="From Twilio" />
-        <KpiCard label="Conv. rate" value={`${convRate}%`} delta={0} hint={`${booked} booked today`} />
+        <KpiCard label="Completion rate" value={`${completionRate}%`} delta={0} hint={`${completed} completed today`} />
         <KpiCard label="Avg duration" value={avgDuration} delta={0} hint="Today" />
         <KpiCard
           label="Minutes this month"

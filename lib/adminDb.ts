@@ -73,6 +73,7 @@ export async function ensureSchema(sql: Sql) {
     initial text NOT NULL DEFAULT 'A', created_at timestamptz NOT NULL DEFAULT now())`;
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'voice'`;
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS description text`;
+  await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS twilio_subaccount_sid text`;
   // Per-agent knowledge base (one markdown/text document per agent), shared
   // by the admin agent-config page and the client portal knowledge page.
   await sql`CREATE TABLE IF NOT EXISTS sentinel_kb (
@@ -117,6 +118,11 @@ export async function ensureSeed(sql: Sql) {
     await sql`INSERT INTO sentinel_agent (id, client_id, name, role, status, channels, gradient, initial)
               VALUES (${"kavya"}, ${th[0].id}, ${"Kavya"}, ${"Booking Agent"}, ${"live"}, ${"Voice Call,WhatsApp"}, ${"from-violet-400 to-fuchsia-500"}, ${"K"})
               ON CONFLICT (id) DO NOTHING`;
+    // Tree House agent maps to the Tree House Twilio subaccount.
+    if (process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID) {
+      await sql`UPDATE sentinel_agent SET twilio_subaccount_sid = ${process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID}
+                WHERE id = ${"kavya"} AND (twilio_subaccount_sid IS NULL OR twilio_subaccount_sid = '')`;
+    }
   }
   ensured = true;
 }
@@ -156,6 +162,7 @@ export type DbAgent = {
   initial: string;
   type: string; // 'voice' | 'whatsapp' | 'both'
   description: string | null;
+  twilio_subaccount_sid: string | null;
   created_at: string;
 };
 
@@ -203,6 +210,7 @@ export async function createAgent(input: {
   type?: string;
   description?: string;
   channels?: string;
+  twilioSubaccountSid?: string;
 }): Promise<DbAgent> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
@@ -214,9 +222,9 @@ export async function createAgent(input: {
   const count = (await sql`SELECT count(*)::int AS n FROM sentinel_agent WHERE client_id = ${input.clientId}`) as { n: number }[];
   const gradient = AGENT_GRADIENTS[(count[0]?.n ?? 0) % AGENT_GRADIENTS.length];
   const rows = (await sql`
-    INSERT INTO sentinel_agent (id, client_id, name, role, status, channels, gradient, initial, type, description)
+    INSERT INTO sentinel_agent (id, client_id, name, role, status, channels, gradient, initial, type, description, twilio_subaccount_sid)
     VALUES (${id}, ${input.clientId}, ${input.name}, ${input.role || "Voice Agent"}, ${"live"},
-            ${channels}, ${gradient}, ${initial}, ${type}, ${input.description ?? null})
+            ${channels}, ${gradient}, ${initial}, ${type}, ${input.description ?? null}, ${input.twilioSubaccountSid?.trim() || null})
     RETURNING *`) as DbAgent[];
   await sql`INSERT INTO sentinel_kb (agent_id, client_id, content) VALUES (${id}, ${input.clientId}, ${""}) ON CONFLICT (agent_id) DO NOTHING`;
   await audit(sql, "agent.create", "agent", input.name, "Created agent " + input.name);
@@ -229,6 +237,7 @@ export async function updateAgent(agentId: string, fields: {
   status?: string;
   type?: string;
   description?: string;
+  twilioSubaccountSid?: string;
 }): Promise<DbAgent | null> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
@@ -241,10 +250,11 @@ export async function updateAgent(agentId: string, fields: {
   const type = ["voice", "whatsapp", "both"].includes(fields.type || "") ? fields.type! : current.type;
   const channels = channelsForType(type);
   const description = fields.description !== undefined ? fields.description : current.description;
+  const twilioSub = fields.twilioSubaccountSid !== undefined ? (fields.twilioSubaccountSid.trim() || null) : current.twilio_subaccount_sid;
   const initial = (name[0] || "A").toUpperCase();
   const rows = (await sql`
     UPDATE sentinel_agent
-    SET name = ${name}, role = ${role}, status = ${status}, type = ${type}, channels = ${channels}, description = ${description}, initial = ${initial}
+    SET name = ${name}, role = ${role}, status = ${status}, type = ${type}, channels = ${channels}, description = ${description}, initial = ${initial}, twilio_subaccount_sid = ${twilioSub}
     WHERE id = ${agentId} RETURNING *`) as DbAgent[];
   await audit(sql, "agent.update", "agent", name, "Updated agent " + name);
   return rows[0] ?? null;
