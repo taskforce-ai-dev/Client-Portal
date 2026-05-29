@@ -1,14 +1,11 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import AgentSidebar from "@/components/AgentSidebar";
 import AgentTopbar from "@/components/AgentTopbar";
-import { agents } from "@/lib/data";
+import { getClientSession } from "@/lib/clientAuth";
+import { findAgentForClient } from "@/lib/adminDb";
 import { getUsageThisMonth } from "@/lib/twilio";
 
-export const revalidate = 60;
-
-export function generateStaticParams() {
-  return agents.map((a) => ({ id: a.id }));
-}
+export const dynamic = "force-dynamic";
 
 export default async function AgentLayout({
   children,
@@ -17,8 +14,20 @@ export default async function AgentLayout({
   children: React.ReactNode;
   params: { id: string };
 }) {
-  const agent = agents.find((a) => a.id === params.id);
-  if (!agent) notFound();
+  const session = getClientSession();
+  if (!session) redirect("/login");
+  const dbAgent = await findAgentForClient(params.id, session.clientId);
+  if (!dbAgent) redirect("/select");
+
+  const agent = {
+    id: dbAgent.id,
+    name: dbAgent.name,
+    role: dbAgent.role,
+    status: dbAgent.status as "live" | "paused" | "draft",
+    channels: dbAgent.channels.split(",").map((c) => c.trim()).filter(Boolean) as ("Voice Call" | "WhatsApp" | "SMS")[],
+    gradient: dbAgent.gradient,
+    initial: dbAgent.initial,
+  };
 
   const usage = await getUsageThisMonth();
 

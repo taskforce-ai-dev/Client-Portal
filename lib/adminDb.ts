@@ -64,6 +64,11 @@ export async function ensureSchema(sql: Sql) {
     id text PRIMARY KEY, admin_name text NOT NULL DEFAULT 'System', action text NOT NULL,
     type text NOT NULL DEFAULT 'system', target text, summary text NOT NULL,
     occurred_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`CREATE TABLE IF NOT EXISTS sentinel_agent (
+    id text PRIMARY KEY, client_id text NOT NULL, name text NOT NULL,
+    role text NOT NULL DEFAULT 'Voice Agent', status text NOT NULL DEFAULT 'live',
+    channels text NOT NULL DEFAULT 'Voice Call', gradient text NOT NULL DEFAULT 'from-violet-400 to-fuchsia-500',
+    initial text NOT NULL DEFAULT 'A', created_at timestamptz NOT NULL DEFAULT now())`;
 }
 
 export async function ensureSeed(sql: Sql) {
@@ -84,6 +89,14 @@ export async function ensureSeed(sql: Sql) {
     await sql`INSERT INTO sentinel_client (id, company, email, password, password_hash, status, plan, mrr_cents, contact)
               VALUES (${"cli_" + crypto.randomBytes(6).toString("hex")}, ${c.company}, ${c.email.toLowerCase()}, ${c.password}, ${hashPassword(c.password)}, ${c.status}, ${c.plan}, ${c.mrr}, ${"—"})
               ON CONFLICT (email) DO NOTHING`;
+  }
+  // Give the starter Tree House client one agent (id "kavya" matches the
+  // portal's existing detail pages) so its experience is unchanged.
+  const th = (await sql`SELECT id FROM sentinel_client WHERE email = ${"hello@treehousechalets.com"} LIMIT 1`) as { id: string }[];
+  if (th[0]) {
+    await sql`INSERT INTO sentinel_agent (id, client_id, name, role, status, channels, gradient, initial)
+              VALUES (${"kavya"}, ${th[0].id}, ${"Kavya"}, ${"Booking Agent"}, ${"live"}, ${"Voice Call,WhatsApp"}, ${"from-violet-400 to-fuchsia-500"}, ${"K"})
+              ON CONFLICT (id) DO NOTHING`;
   }
   ensured = true;
 }
@@ -107,8 +120,55 @@ export async function findClientByEmail(email: string): Promise<DbClient | null>
 export async function findClientById(id: string): Promise<DbClient | null> {
   const sql = getSql();
   if (!sql) return null;
+  await ensureSeed(sql);
   const rows = (await sql`SELECT * FROM sentinel_client WHERE id = ${id} LIMIT 1`) as DbClient[];
   return rows[0] ?? null;
+}
+
+export type DbAgent = {
+  id: string;
+  client_id: string;
+  name: string;
+  role: string;
+  status: string;
+  channels: string;
+  gradient: string;
+  initial: string;
+  created_at: string;
+};
+
+export async function listAgentsByClient(clientId: string): Promise<DbAgent[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureSeed(sql);
+  return (await sql`SELECT * FROM sentinel_agent WHERE client_id = ${clientId} ORDER BY created_at ASC`) as DbAgent[];
+}
+
+export async function findAgentForClient(agentId: string, clientId: string): Promise<DbAgent | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  await ensureSeed(sql);
+  const rows = (await sql`SELECT * FROM sentinel_agent WHERE id = ${agentId} AND client_id = ${clientId} LIMIT 1`) as DbAgent[];
+  return rows[0] ?? null;
+}
+
+export async function createAgent(input: {
+  clientId: string;
+  name: string;
+  role?: string;
+  channels?: string;
+}): Promise<DbAgent> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const id = "agt_" + crypto.randomBytes(8).toString("hex");
+  const initial = (input.name.trim()[0] || "A").toUpperCase();
+  const rows = (await sql`
+    INSERT INTO sentinel_agent (id, client_id, name, role, status, channels, gradient, initial)
+    VALUES (${id}, ${input.clientId}, ${input.name}, ${input.role || "Voice Agent"}, ${"live"},
+            ${input.channels || "Voice Call"}, ${"from-violet-400 to-fuchsia-500"}, ${initial})
+    RETURNING *`) as DbAgent[];
+  return rows[0];
 }
 
 export async function listClients(): Promise<DbClient[]> {

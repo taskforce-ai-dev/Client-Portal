@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import KpiCard from "@/components/KpiCard";
 import StatusBadge from "@/components/StatusBadge";
 import CallsChart from "@/components/CallsChart";
@@ -8,7 +8,9 @@ import SourceBadge from "@/components/SourceBadge";
 import AutoRefresh from "@/components/AutoRefresh";
 import TwilioNotice from "@/components/TwilioNotice";
 import { Phone } from "lucide-react";
-import { agents, workspace } from "@/lib/data";
+import { workspace } from "@/lib/data";
+import { getClientSession } from "@/lib/clientAuth";
+import { findAgentForClient } from "@/lib/adminDb";
 import {
   bucketCallsByHour,
   bucketOutcomes,
@@ -18,11 +20,22 @@ import {
   getUsageThisMonth,
 } from "@/lib/twilio";
 
-export const revalidate = 15;
+export const dynamic = "force-dynamic";
 
 export default async function AgentOverviewPage({ params }: { params: { id: string } }) {
-  const agent = agents.find((a) => a.id === params.id);
-  if (!agent) notFound();
+  const session = getClientSession();
+  if (!session) redirect("/login");
+  const agentDb = await findAgentForClient(params.id, session.clientId);
+  if (!agentDb) redirect("/select");
+  const agent = {
+    id: agentDb.id,
+    name: agentDb.name,
+    role: agentDb.role,
+    status: agentDb.status as "live" | "paused" | "draft",
+    channels: agentDb.channels.split(",").map((c) => c.trim()).filter(Boolean) as ("Voice Call" | "WhatsApp" | "SMS")[],
+    gradient: agentDb.gradient,
+    initial: agentDb.initial,
+  };
 
   const [{ calls, configured, error }, usage] = await Promise.all([
     getCalls(200),

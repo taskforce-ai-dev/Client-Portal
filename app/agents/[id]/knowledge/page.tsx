@@ -1,10 +1,15 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import KnowledgeEditor from "@/components/KnowledgeEditor";
-import { agents } from "@/lib/data";
+import { getClientSession } from "@/lib/clientAuth";
+import { findAgentForClient } from "@/lib/adminDb";
 
-export default function KnowledgeBasePage({ params }: { params: { id: string } }) {
-  const agent = agents.find((a) => a.id === params.id);
-  if (!agent) notFound();
+export const dynamic = "force-dynamic";
+
+export default async function KnowledgeBasePage({ params }: { params: { id: string } }) {
+  const session = getClientSession();
+  if (!session) redirect("/login");
+  const agent = await findAgentForClient(params.id, session.clientId);
+  if (!agent) redirect("/select");
 
   return (
     <div className="space-y-6">

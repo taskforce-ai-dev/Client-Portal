@@ -1,15 +1,34 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Bell, ChevronDown, Hexagon, Phone, Search } from "lucide-react";
-import { agents, workspace } from "@/lib/data";
+import { getClientSession } from "@/lib/clientAuth";
+import { findClientById, listAgentsByClient } from "@/lib/adminDb";
 import { callStats, callsToday, getCalls } from "@/lib/twilio";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 const channelIcon: Record<string, React.ComponentType<{ className?: string }>> = {
   "Voice Call": Phone,
 };
 
 export default async function SelectAgentPage() {
+  const session = getClientSession();
+  if (!session) redirect("/login");
+  const client = await findClientById(session.clientId);
+  if (!client) redirect("/login");
+
+  const agentRows = await listAgentsByClient(client.id);
+  const agents = agentRows.map((a) => ({
+    id: a.id,
+    name: a.name,
+    role: a.role,
+    status: a.status,
+    channels: a.channels.split(",").map((c) => c.trim()).filter(Boolean),
+    gradient: a.gradient,
+    initial: a.initial,
+  }));
+  const workspace = { name: client.company };
+
   const { calls } = await getCalls(200);
   const today = callsToday(calls);
   const stats = callStats(today);
@@ -29,7 +48,7 @@ export default async function SelectAgentPage() {
           <span className="text-slate-700">/</span>
           <button className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl bg-white/[0.03] ring-1 ring-white/10 hover:bg-white/[0.06]">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-xs">
-              T
+              {workspace.name.charAt(0).toUpperCase()}
             </div>
             <span className="text-sm font-medium text-slate-200">{workspace.name}</span>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -46,7 +65,7 @@ export default async function SelectAgentPage() {
             <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-rose-400 shadow-[0_0_8px_0_rgba(251,113,133,0.8)]" />
           </button>
           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs">
-            TC
+            {workspace.name.split(/\s+/).slice(0, 2).map((w) => w.charAt(0)).join("").toUpperCase() || "C"}
           </div>
         </div>
       </header>
@@ -68,6 +87,24 @@ export default async function SelectAgentPage() {
               <input placeholder="Search agents…" className="input-dark" />
             </div>
           </div>
+
+          {agents.length === 0 && (
+            <div className="card p-10 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-accent-500/15 text-accent-300 grid place-items-center mx-auto mb-4">
+                <Phone className="w-5 h-5" />
+              </div>
+              <div className="text-lg font-semibold text-white">No agents yet</div>
+              <div className="text-sm text-slate-400 mt-1.5 max-w-md mx-auto">
+                Your workspace is set up. Agents are provisioned by the TaskforceAI team — reach out and we&apos;ll add your first one.
+              </div>
+              <a
+                href="mailto:hello@taskforceai.tech?subject=Request%20a%20new%20agent"
+                className="btn-ghost text-xs inline-flex mt-5"
+              >
+                Contact us
+              </a>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {agents.map((a) => (

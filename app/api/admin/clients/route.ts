@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthed } from "@/lib/adminAuth";
-import { createClient, isDbConfigured, listClients } from "@/lib/adminDb";
+import { createAgent, createClient, isDbConfigured, listClients } from "@/lib/adminDb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
   if (!isDbConfigured()) {
     return NextResponse.json({ message: "Database not connected. Set DATABASE_URL." }, { status: 503 });
   }
-  let body: { company?: string; email?: string; password?: string; plan?: string; status?: string; contact?: string; mrr_cents?: number };
+  let body: {
+    company?: string; email?: string; password?: string; plan?: string; status?: string; contact?: string; mrr_cents?: number;
+    provisionAgent?: boolean; agentName?: string; agentRole?: string; agentChannels?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -42,6 +45,14 @@ export async function POST(req: NextRequest) {
       contact: body.contact,
       mrrCents: body.mrr_cents,
     });
+    if (body.provisionAgent && body.agentName) {
+      await createAgent({
+        clientId: client.id,
+        name: body.agentName,
+        role: body.agentRole,
+        channels: body.agentChannels,
+      });
+    }
     return NextResponse.json({ ok: true, client: { id: client.id, company: client.company, email: client.email } });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";

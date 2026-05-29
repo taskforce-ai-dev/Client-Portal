@@ -1,9 +1,14 @@
-import { notFound } from "next/navigation";
-import { agents } from "@/lib/data";
+import { redirect } from "next/navigation";
+import { getClientSession } from "@/lib/clientAuth";
+import { findAgentForClient } from "@/lib/adminDb";
 
-export default function AgentSettingsPage({ params }: { params: { id: string } }) {
-  const agent = agents.find((a) => a.id === params.id);
-  if (!agent) notFound();
+export const dynamic = "force-dynamic";
+
+export default async function AgentSettingsPage({ params }: { params: { id: string } }) {
+  const session = getClientSession();
+  if (!session) redirect("/login");
+  const agent = await findAgentForClient(params.id, session.clientId);
+  if (!agent) redirect("/select");
 
   return (
     <div className="space-y-6 max-w-3xl">

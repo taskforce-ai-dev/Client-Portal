@@ -513,6 +513,9 @@ const NewClientPage = () => {
   const [plan, setPlan] = useState("Growth");
   const [cycle, setCycle] = useState("Monthly");
   const [addAgent, setAddAgent] = useState(false);
+  const [agentName, setAgentName] = useState("");
+  const [agentType, setAgentType] = useState("Booking");
+  const [agentChannel, setAgentChannel] = useState("Voice");
   const [portal, setPortal] = useState(true);
   const [api, setApi] = useState(false);
   const [features, setFeatures] = useState({ Analytics: true, "Knowledge Base": true, Transcripts: true, "Billing View": true, "Team Members": false });
@@ -535,11 +538,19 @@ const NewClientPage = () => {
     setBusy(true);
     try {
       const sel = plans.find((p) => p.id === plan);
+      const channelMap = { "Voice": "Voice Call", "WhatsApp": "WhatsApp", "Voice + WhatsApp": "Voice Call,WhatsApp" };
       const r = await fetch("/api/admin/clients", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ company: company.trim(), contact: contact.trim(), email: email.trim(), password: password, plan: plan, status: "active", mrr_cents: sel ? sel.price * 100 : undefined }),
+        body: JSON.stringify({
+          company: company.trim(), contact: contact.trim(), email: email.trim(), password: password,
+          plan: plan, status: "active", mrr_cents: sel ? sel.price * 100 : undefined,
+          provisionAgent: addAgent && !!agentName.trim(),
+          agentName: agentName.trim(),
+          agentRole: agentType === "Call Center" ? "Call Center Agent" : agentType + " Agent",
+          agentChannels: channelMap[agentChannel] || "Voice Call",
+        }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.message || ("Failed (" + r.status + ")"));
@@ -616,9 +627,9 @@ const NewClientPage = () => {
         </div>
         {addAgent && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            <Field label="Agent name"><input className="input mono" placeholder="acme_agent_01" /></Field>
-            <Field label="Type"><select className="input"><option>Call Center</option><option>Sales</option><option>Booking</option><option>Cold Call</option></select></Field>
-            <Field label="Channel"><select className="input"><option>Voice</option><option>WhatsApp</option><option>Voice + WhatsApp</option></select></Field>
+            <Field label="Agent name"><input className="input mono" placeholder="acme_agent_01" value={agentName} onChange={(e) => setAgentName(e.target.value)} /></Field>
+            <Field label="Type"><select className="input" value={agentType} onChange={(e) => setAgentType(e.target.value)}><option>Call Center</option><option>Sales</option><option>Booking</option><option>Cold Call</option></select></Field>
+            <Field label="Channel"><select className="input" value={agentChannel} onChange={(e) => setAgentChannel(e.target.value)}><option>Voice</option><option>WhatsApp</option><option>Voice + WhatsApp</option></select></Field>
           </div>
         )}
       </FormSection>
