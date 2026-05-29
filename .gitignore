@@ -18,3 +18,4 @@ kb-service/data
 *.pyc
 
 .env
+tsconfig.tsbuildinfo
