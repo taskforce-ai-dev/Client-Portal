@@ -540,14 +540,14 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                 <>
                   <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Showing live Twilio data for <span style={{ color: "var(--text-1)" }}>{agentList[0].name}</span> — same figures the client sees in their portal.</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                    <MiniStat label="Calls today" value={String(twAn.kpis.callsToday)} />
+                    <MiniStat label="Calls today" value={String(twAn.kpis.calls)} />
                     <MiniStat label="Completed" value={String(twAn.kpis.completed)} />
                     <MiniStat label="Completion" value={twAn.kpis.completionRate + "%"} />
-                    <MiniStat label="Minutes (mo)" value={String(twAn.kpis.minutesMonth)} />
+                    <MiniStat label="Minutes" value={String(twAn.kpis.minutes)} />
                   </div>
                   <div className="panel-flat" style={{ padding: 12 }}>
                     <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Calls by hour</div>
-                    <AgentBars data={twAn.byHour.map((h) => ({ label: h.hour, value: h.calls }))} />
+                    <AgentBars data={twAn.series} />
                   </div>
                   <div className="panel-flat" style={{ padding: 12 }}>
                     <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Outcomes</div>
@@ -905,6 +905,11 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [kbSaving, setKbSaving] = useState(false);
   const [tw, setTw] = useState(null);
   const [twLoading, setTwLoading] = useState(true);
+  const [twA, setTwA] = useState(null);
+  const [twALoading, setTwALoading] = useState(false);
+  const [range, setRange] = useState("month");
+  const [cStart, setCStart] = useState("");
+  const [cEnd, setCEnd] = useState("");
   const toast = useToast();
 
   useEffect(() => {
@@ -926,13 +931,27 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       .then((d) => { if (active) { setKb(d.content || ""); setKbDirty(false); } })
       .catch(() => {});
     setTwLoading(true);
-    fetch(`/api/admin/agents/${agentId}/twilio`, { credentials: "include" })
+    fetch(`/api/admin/agents/${agentId}/twilio?range=today`, { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { if (active) setTw(d || { configured: false }); })
       .catch(() => { if (active) setTw({ configured: false }); })
       .finally(() => { if (active) setTwLoading(false); });
     return () => { active = false; };
   }, [agentId]);
+
+  useEffect(() => {
+    if (tab !== "analytics") return;
+    if (range === "custom" && (!cStart || !cEnd)) return;
+    let active = true;
+    setTwALoading(true);
+    const qs = range === "custom" ? `range=custom&start=${cStart}&end=${cEnd}` : `range=${range}`;
+    fetch(`/api/admin/agents/${agentId}/twilio?${qs}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setTwA(d || { configured: false }); })
+      .catch(() => { if (active) setTwA({ configured: false }); })
+      .finally(() => { if (active) setTwALoading(false); });
+    return () => { active = false; };
+  }, [tab, range, cStart, cEnd, agentId]);
 
   const saveSettings = async () => {
     setSaving(true);
@@ -982,7 +1001,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           {tw && tw.configured && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                <MiniStat label="Calls today" value={String(tw.kpis.callsToday)} />
+                <MiniStat label="Calls today" value={String(tw.kpis.calls)} />
                 <MiniStat label="Completed" value={String(tw.kpis.completed)} />
                 <MiniStat label="Completion" value={tw.kpis.completionRate + "%"} />
                 <MiniStat label="Avg duration" value={tw.kpis.avgDuration} />
@@ -990,7 +1009,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 12 }}>
                 <div className="panel" style={{ padding: 14 }}>
                   <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Calls by hour (today)</div>
-                  <AgentBars data={tw.byHour.map((h) => ({ label: h.hour, value: h.calls }))} />
+                  <AgentBars data={tw.series} />
                 </div>
                 <div className="panel" style={{ padding: 14 }}>
                   <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Call outcomes</div>
@@ -1034,51 +1053,71 @@ const AgentConfigPage = ({ agentId, onBack }) => {
 
       {tab === "analytics" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {twLoading && <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading call data…</div>}
-          {!twLoading && tw && !tw.configured && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
+              {[["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
+                <button key={k} className={"btn btn-xs " + (range === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: range === k ? "var(--border-strong)" : "transparent" }} onClick={() => setRange(k)}>{l}</button>
+              ))}
+            </div>
+            {range === "custom" && (
+              <>
+                <input type="date" className="input" style={{ width: 150 }} value={cStart} onChange={(e) => setCStart(e.target.value)} />
+                <span style={{ color: "var(--text-3)", fontSize: 12 }}>to</span>
+                <input type="date" className="input" style={{ width: 150 }} value={cEnd} onChange={(e) => setCEnd(e.target.value)} />
+              </>
+            )}
+          </div>
+
+          {twALoading && <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading call data…</div>}
+          {!twALoading && range === "custom" && (!cStart || !cEnd) && <div className="panel" style={{ padding: 16, fontSize: 12.5, color: "var(--text-3)" }}>Pick a start and end date.</div>}
+          {!twALoading && twA && !twA.configured && (
             <div className="panel" style={{ padding: 16, fontSize: 12.5, color: "var(--text-2)" }}>
-              <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected.</span> Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_TREEHOUSE_SUBACCOUNT_SID in Vercel and redeploy.
+              <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected for this agent.</span> Add its subaccount SID in Settings.
             </div>
           )}
-          {!twLoading && tw && tw.configured && (
+          {!twALoading && twA && twA.configured && (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <StatusDot status={tw.error ? "Overdue" : "Active"} />
-                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{tw.error ? ("Twilio error: " + tw.error) : "Twilio connected · subaccount " + (tw.subaccount || "").slice(0, 10) + "…"}</span>
+                <StatusDot status={twA.error ? "Overdue" : "Active"} />
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{twA.error ? ("Twilio error: " + twA.error) : (twA.start + " → " + twA.end + " · subaccount " + (twA.subaccount || "").slice(0, 10) + "…")}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                <MiniStat label="Calls today" value={String(tw.kpis.callsToday)} />
-                <MiniStat label="Completed" value={String(tw.kpis.completed)} />
-                <MiniStat label="Completion" value={tw.kpis.completionRate + "%"} />
-                <MiniStat label="Minutes (mo)" value={String(tw.kpis.minutesMonth)} />
+                <MiniStat label="Calls" value={String(twA.kpis.calls)} />
+                <MiniStat label="Completed" value={String(twA.kpis.completed)} />
+                <MiniStat label="Completion" value={twA.kpis.completionRate + "%"} />
+                <MiniStat label="Minutes" value={String(twA.kpis.minutes)} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 12 }}>
                 <div className="panel" style={{ padding: 14 }}>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Calls by hour</div>
-                  <AgentBars data={tw.byHour.map((h) => ({ label: h.hour, value: h.calls }))} />
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{twA.seriesLabel}</div>
+                  <AgentBars data={twA.series} />
                 </div>
                 <div className="panel" style={{ padding: 14 }}>
                   <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Outcomes</div>
-                  <AgentOutcomes data={tw.outcomes} />
+                  <AgentOutcomes data={twA.outcomes} />
                 </div>
               </div>
               <div className="panel">
-                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 12.5, fontWeight: 600, color: "var(--text-0)" }}>Recent calls</div>
-                <table className="data-table">
-                  <thead><tr><th>Caller</th><th>Direction</th><th>When</th><th>Duration</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {tw.calls.map((c) => (
-                      <tr key={c.id}>
-                        <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>{c.caller}</td>
-                        <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
-                        <td style={{ color: "var(--text-2)" }}>{c.startedAt}</td>
-                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
-                        <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {tw.calls.length === 0 && <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>No calls in this account yet.</div>}
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 12.5, fontWeight: 600, color: "var(--text-0)", display: "flex", justifyContent: "space-between" }}>
+                  <span>Call log</span><span style={{ color: "var(--text-3)", fontWeight: 400 }}>{twA.calls.length} calls</span>
+                </div>
+                <div style={{ maxHeight: 460, overflowY: "auto" }}>
+                  <table className="data-table">
+                    <thead><tr><th>Caller</th><th>Direction</th><th>When</th><th>Duration</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {twA.calls.map((c) => (
+                        <tr key={c.id}>
+                          <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>{c.caller}</td>
+                          <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
+                          <td style={{ color: "var(--text-2)" }}>{c.startedAt}</td>
+                          <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
+                          <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {twA.calls.length === 0 && <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>No calls in this period.</div>}
               </div>
             </>
           )}

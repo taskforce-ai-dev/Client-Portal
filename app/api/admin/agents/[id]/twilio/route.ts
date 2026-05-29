@@ -1,21 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { isAuthed } from "@/lib/adminAuth";
 import { findAgentById, isDbConfigured } from "@/lib/adminDb";
 import {
+  bucketCallsByDayRange,
   bucketCallsByHour,
   bucketOutcomes,
   callStats,
-  callsToday,
-  getCallsForSubaccount,
-  getUsageForSubaccount,
+  getAllCallsForSubaccount,
   isTwilioAuthConfigured,
 } from "@/lib/twilio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Per-agent Twilio snapshot (uses the agent's own subaccount SID).
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+function ymd(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+// Per-agent Twilio snapshot for a selected time window.
+// Query: ?range=today|week|month|custom (&start=YYYY-MM-DD&end=YYYY-MM-DD)
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isAuthed()) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   if (!isDbConfigured()) return NextResponse.json({ configured: false });
   const agent = await findAgentById(params.id);
@@ -26,28 +30,55 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ configured: false, hasSub: !!sub });
   }
 
-  const [{ calls, error }, usage] = await Promise.all([
-    getCallsForSubaccount(sub, 50),
-    getUsageForSubaccount(sub),
-  ]);
-  const today = callsToday(calls);
-  const stats = callStats(today.length ? today : calls);
+  const sp = req.nextUrl.searchParams;
+  let range = sp.get("range") || "today";
+  const now = new Date();
+  let start = new Date(now);
+  if (range === "custom" && sp.get("start")) {
+    start = new Date(sp.get("start") + "T00:00:00Z");
+  } else if (range === "week") {
+    start.setDate(now.getDate() - 6);
+  } else if (range === "month") {
+    start.setDate(now.getDate() - 29);
+  } else {
+    range = "today";
+  }
+  start.setHours(0, 0, 0, 0);
+  const endDate = range === "custom" && sp.get("end") ? new Date(sp.get("end") + "T00:00:00Z") : now;
+  // Twilio's StartTime<= is GMT-day based; add a day so the end day is inclusive.
+  const endFilter = new Date(endDate.getTime() + 86400000);
+
+  const { calls, error } = await getAllCallsForSubaccount(sub, {
+    max: 1000,
+    startDate: ymd(start),
+    endDate: ymd(endFilter),
+  });
+
+  const stats = callStats(calls);
+  const minutes = Math.round(calls.reduce((s, c) => s + c.durationSec, 0) / 60);
+  const series =
+    range === "today"
+      ? bucketCallsByHour(calls).map((h) => ({ label: h.hour, value: h.calls }))
+      : bucketCallsByDayRange(calls, start.getTime(), endDate.getTime());
+
   return NextResponse.json({
     configured: true,
-    error: error || usage.error || null,
+    error: error || null,
     subaccount: sub,
+    range,
+    start: ymd(start),
+    end: ymd(endDate),
     kpis: {
-      callsToday: today.length,
-      callsTotal: calls.length,
+      calls: calls.length,
       completed: stats.completed,
       completionRate: stats.completionRate,
       avgDuration: stats.avgDuration,
-      minutesMonth: Math.round(usage.totalMinutes),
-      spendMonth: usage.totalPrice,
+      minutes,
     },
-    byHour: bucketCallsByHour(today.length ? today : calls),
+    seriesLabel: range === "today" ? "Calls by hour" : "Calls by day",
+    series,
     outcomes: bucketOutcomes(calls),
-    calls: calls.slice(0, 20).map((c) => ({
+    calls: calls.slice(0, 500).map((c) => ({
       id: c.id,
       caller: c.caller,
       direction: c.direction,

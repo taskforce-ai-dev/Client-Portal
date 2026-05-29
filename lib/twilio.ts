@@ -1,4 +1,5 @@
-const TWILIO_BASE = "https://api.twilio.com/2010-04-01";
+const TWILIO_HOST = "https://api.twilio.com";
+const TWILIO_BASE = TWILIO_HOST + "/2010-04-01";
 
 export type DisplayCall = {
   id: string;
@@ -43,8 +44,8 @@ function authHeader() {
   return "Basic " + Buffer.from(`${sid}:${token}`).toString("base64");
 }
 
-async function twilioGet(path: string) {
-  const res = await fetch(`${TWILIO_BASE}${path}`, {
+async function twilioGetUrl(url: string) {
+  const res = await fetch(url, {
     headers: {
       Authorization: authHeader(),
       Accept: "application/json",
@@ -56,6 +57,10 @@ async function twilioGet(path: string) {
     throw new Error(`Twilio ${res.status}: ${body.slice(0, 240)}`);
   }
   return res.json();
+}
+
+function twilioGet(path: string) {
+  return twilioGetUrl(`${TWILIO_BASE}${path}`);
 }
 
 function formatDuration(seconds: number) {
@@ -147,6 +152,56 @@ export async function getCallsForSubaccount(sub: string, limit = 50): Promise<Ca
   } catch (e) {
     return { calls: [], configured: true, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// Paginated fetch (follows next_page_uri) with optional StartTime range.
+// Dates are YYYY-MM-DD (GMT). Caps total at `max` to bound payloads.
+export async function getAllCallsForSubaccount(
+  sub: string,
+  opts: { max?: number; startDate?: string; endDate?: string } = {}
+): Promise<CallsResult> {
+  if (!isTwilioAuthConfigured() || !sub) return { calls: [], configured: false };
+  const max = opts.max ?? 1000;
+  let path = `/Accounts/${sub}/Calls.json?PageSize=200`;
+  if (opts.startDate) path += `&StartTime>=${opts.startDate}`;
+  if (opts.endDate) path += `&StartTime<=${opts.endDate}`;
+  let url: string | null = TWILIO_BASE + path;
+  const out: DisplayCall[] = [];
+  try {
+    while (url && out.length < max) {
+      const data = await twilioGetUrl(url);
+      const raw = (data.calls ?? []) as TwilioCall[];
+      for (const c of raw) {
+        out.push(mapCall(c));
+        if (out.length >= max) break;
+      }
+      url = data.next_page_uri ? TWILIO_HOST + data.next_page_uri : null;
+    }
+    return { calls: out, configured: true };
+  } catch (e) {
+    return { calls: out, configured: true, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Calls bucketed per day across an explicit [startMs, endMs] window.
+export function bucketCallsByDayRange(calls: DisplayCall[], startMs: number, endMs: number) {
+  const dayMs = 86400000;
+  const start = new Date(startMs);
+  start.setHours(0, 0, 0, 0);
+  const buckets: { key: string; label: string; value: number }[] = [];
+  for (let t = start.getTime(); t <= endMs && buckets.length < 120; t += dayMs) {
+    const d = new Date(t);
+    buckets.push({ key: d.toDateString(), label: `${d.getMonth() + 1}/${d.getDate()}`, value: 0 });
+  }
+  const map = new Map(buckets.map((b) => [b.key, b]));
+  for (const c of calls) {
+    if (!c.startedAtIso) continue;
+    const d = new Date(c.startedAtIso);
+    if (isNaN(d.getTime())) continue;
+    const b = map.get(new Date(d.getFullYear(), d.getMonth(), d.getDate()).toDateString());
+    if (b) b.value++;
+  }
+  return buckets.map((b) => ({ label: b.label, value: b.value }));
 }
 
 export async function getUsageThisMonth(): Promise<UsageResult> {
