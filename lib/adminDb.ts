@@ -43,6 +43,17 @@ export async function ensureSchema(sql: Sql) {
   await sql`CREATE TABLE IF NOT EXISTS sentinel_admin (
     id text PRIMARY KEY, name text NOT NULL DEFAULT 'Admin', email text UNIQUE NOT NULL,
     password_hash text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`;
+  // One-time migration: an earlier build created sentinel_client with a
+  // different (org-overlay) shape that lacks the `id` column. If we detect
+  // that legacy shape, drop it so the correct table is (re)created below.
+  // Safe — that legacy table held only bootstrap rows, never real clients.
+  const hasId = (await sql`SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'sentinel_client' AND column_name = 'id' LIMIT 1`) as unknown[];
+  const tableExists = (await sql`SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'sentinel_client' LIMIT 1`) as unknown[];
+  if (tableExists.length > 0 && hasId.length === 0) {
+    await sql`DROP TABLE sentinel_client`;
+  }
   await sql`CREATE TABLE IF NOT EXISTS sentinel_client (
     id text PRIMARY KEY, company text NOT NULL, email text UNIQUE NOT NULL,
     password text NOT NULL DEFAULT '', password_hash text NOT NULL,
