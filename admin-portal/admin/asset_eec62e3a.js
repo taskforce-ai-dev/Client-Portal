@@ -870,7 +870,19 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [kb, setKb] = useState("");
   const [kbDirty, setKbDirty] = useState(false);
   const [kbSaving, setKbSaving] = useState(false);
+  const [tw, setTw] = useState(null);
+  const [twLoading, setTwLoading] = useState(false);
   const toast = useToast();
+
+  useEffect(() => {
+    if (tab !== "analytics" || tw) return;
+    setTwLoading(true);
+    fetch(`/api/admin/twilio`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setTw(d || { configured: false }))
+      .catch(() => setTw({ configured: false }))
+      .finally(() => setTwLoading(false));
+  }, [tab]);
 
   useEffect(() => {
     let active = true;
@@ -965,15 +977,45 @@ const AgentConfigPage = ({ agentId, onBack }) => {
 
       {tab === "analytics" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-            <MiniStat label="Calls this month" value="—" />
-            <MiniStat label="Conversion" value="—" />
-            <MiniStat label="Booked" value="—" />
-            <MiniStat label="Avg duration" value="—" />
-          </div>
-          <div className="panel" style={{ padding: 14, fontSize: 12, color: "var(--text-3)" }}>
-            Per-agent call analytics appear here once call attribution is connected for this workspace.
-          </div>
+          {twLoading && <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading call data…</div>}
+          {!twLoading && tw && !tw.configured && (
+            <div className="panel" style={{ padding: 16, fontSize: 12.5, color: "var(--text-2)" }}>
+              <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected.</span> Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_TREEHOUSE_SUBACCOUNT_SID in Vercel and redeploy.
+            </div>
+          )}
+          {!twLoading && tw && tw.configured && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <StatusDot status={tw.error ? "Overdue" : "Active"} />
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{tw.error ? ("Twilio error: " + tw.error) : "Twilio connected · workspace-wide"}</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                <MiniStat label="Calls today" value={String(tw.kpis.callsToday)} />
+                <MiniStat label="Conversion" value={tw.kpis.convRate + "%"} />
+                <MiniStat label="Booked" value={String(tw.kpis.booked)} />
+                <MiniStat label="Minutes (mo)" value={String(tw.kpis.minutesMonth)} />
+              </div>
+              <div className="panel">
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 12.5, fontWeight: 600, color: "var(--text-0)" }}>Recent calls</div>
+                <table className="data-table">
+                  <thead><tr><th>Caller</th><th>Direction</th><th>When</th><th>Duration</th><th>Outcome</th></tr></thead>
+                  <tbody>
+                    {tw.calls.map((c) => (
+                      <tr key={c.id}>
+                        <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>{c.caller}</td>
+                        <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
+                        <td style={{ color: "var(--text-2)" }}>{c.startedAt}</td>
+                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
+                        <td><StatusDot status={c.outcome} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {tw.calls.length === 0 && <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>No calls in this account yet.</div>}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-3)" }}>Note: figures are workspace-wide for now (one Twilio account), not split per agent.</div>
+            </>
+          )}
         </div>
       )}
 
