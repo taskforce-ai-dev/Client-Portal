@@ -498,7 +498,7 @@ const ClientDrawer = ({ client, onClose }) => {
               </div>
               {agentList.map((a) => (
                 <div key={a.id} className="panel-flat" style={{ padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => { window.location.href = "/admin/agents/" + a.id; }} title="Open agent configuration">
                     <div style={{ fontSize: 12.5, color: "var(--text-0)" }}>{a.name}</div>
                     <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2 }}>
                       {a.role || "Voice Agent"} · {a.channels}
@@ -506,6 +506,7 @@ const ClientDrawer = ({ client, onClose }) => {
                     {a.description && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>{a.description}</div>}
                   </div>
                   <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", textTransform: "uppercase" }}>{a.type}</span>
+                  <button className="btn btn-secondary btn-xs" onClick={() => { window.location.href = "/admin/agents/" + a.id; }}>Configure</button>
                   <button className="btn btn-ghost btn-xs danger" title="Remove agent" onClick={() => delAgent(a.id)}><Icon name="x" size={12} /></button>
                 </div>
               ))}
