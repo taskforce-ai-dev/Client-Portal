@@ -16,3 +16,5 @@ kb-service/__pycache__
 kb-service/kb_store
 kb-service/data
 *.pyc
+
+.env
