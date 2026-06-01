@@ -3,7 +3,7 @@ import AgentSidebar from "@/components/AgentSidebar";
 import AgentTopbar from "@/components/AgentTopbar";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient } from "@/lib/adminDb";
-import { getUsageThisMonth } from "@/lib/twilio";
+import { getUsageForSubaccount } from "@/lib/twilio";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +29,8 @@ export default async function AgentLayout({
     initial: dbAgent.initial,
   };
 
-  const usage = await getUsageThisMonth();
+  const sub = dbAgent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
+  const usage = await getUsageForSubaccount(sub);
 
   return (
     <div className="flex min-h-screen">

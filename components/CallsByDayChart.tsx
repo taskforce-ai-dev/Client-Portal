@@ -16,16 +16,18 @@ type Point = { day: string; calls: number };
 export default function CallsByDayChart({
   data,
   total,
+  subtitle = "last 7 days",
 }: {
   data: Point[];
   total: number;
+  subtitle?: string;
 }) {
   return (
     <div className="card p-5">
       <div className="mb-4">
         <div className="stat-label">Calls per day</div>
         <div className="text-xl font-semibold tracking-tight text-white">
-          {total} last 7 days
+          {total} {subtitle}
         </div>
       </div>
       <div className="h-64">

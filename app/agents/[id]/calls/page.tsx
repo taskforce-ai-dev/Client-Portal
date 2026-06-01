@@ -1,17 +1,21 @@
+import { redirect } from "next/navigation";
 import { Download, Filter, Play, Search } from "lucide-react";
 import SourceBadge from "@/components/SourceBadge";
 import AutoRefresh from "@/components/AutoRefresh";
 import TwilioNotice from "@/components/TwilioNotice";
-import { getCalls } from "@/lib/twilio";
+import { getClientSession } from "@/lib/clientAuth";
+import { findAgentForClient } from "@/lib/adminDb";
+import { getAllCallsForSubaccount, isTwilioAuthConfigured } from "@/lib/twilio";
 
-export const revalidate = 15;
+export const dynamic = "force-dynamic";
 
 const outcomePill: Record<string, string> = {
-  Booked: "pill-emerald",
-  "Follow-up": "pill-accent",
-  Voicemail: "pill-amber",
+  Completed: "pill-emerald",
+  "In progress": "pill-accent",
+  Busy: "pill-amber",
   "No answer": "pill-slate",
-  Cancelled: "pill-rose",
+  Failed: "pill-rose",
+  Canceled: "pill-rose",
 };
 
 const sentimentColor: Record<string, string> = {
@@ -20,8 +24,17 @@ const sentimentColor: Record<string, string> = {
   negative: "text-rose-400",
 };
 
-export default async function CallLogsPage() {
-  const { calls, configured, error } = await getCalls(200);
+export default async function CallLogsPage({ params }: { params: { id: string } }) {
+  const session = getClientSession();
+  if (!session) redirect("/login");
+  const agent = await findAgentForClient(params.id, session.clientId);
+  if (!agent) redirect("/select");
+
+  const sub = agent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
+  const configuredAuth = isTwilioAuthConfigured() && !!sub;
+  const { calls, configured, error } = configuredAuth
+    ? await getAllCallsForSubaccount(sub, { max: 1000 })
+    : { calls: [] as any[], configured: false, error: undefined as string | undefined };
 
   return (
     <div className="space-y-6">

@@ -15,10 +15,12 @@ import {
   bucketCallsByHour,
   bucketOutcomes,
   callStats,
-  callsToday,
-  getCalls,
-  getUsageThisMonth,
+  getAllCallsForSubaccount,
+  getUsageForSubaccount,
+  isTwilioAuthConfigured,
 } from "@/lib/twilio";
+
+function ymdLocal(d: Date) { return d.toISOString().slice(0, 10); }
 
 export const dynamic = "force-dynamic";
 
@@ -37,16 +39,22 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
     initial: agentDb.initial,
   };
 
-  const [{ calls, configured, error }, usage] = await Promise.all([
-    getCalls(200),
-    getUsageThisMonth(),
+  const sub = agentDb.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
+  const configuredAuth = isTwilioAuthConfigured() && !!sub;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const endFilter = new Date(todayStart.getTime() + 2 * 86400000);
+  const [{ calls: today, configured, error }, usage] = await Promise.all([
+    configuredAuth
+      ? getAllCallsForSubaccount(sub, { max: 1000, startDate: ymdLocal(todayStart), endDate: ymdLocal(endFilter) })
+      : Promise.resolve({ calls: [] as any[], configured: false, error: undefined as string | undefined }),
+    configuredAuth ? getUsageForSubaccount(sub) : Promise.resolve({ configured: false, totalCalls: 0, totalMinutes: 0, totalPrice: 0, error: undefined as string | undefined }),
   ]);
 
-  const today = callsToday(calls);
+  const calls = today;
   const { completionRate, completed, avgDuration } = callStats(today);
   const minutesPct = Math.round((usage.totalMinutes / workspace.minutesLimit) * 100);
 
-  const hourly = bucketCallsByHour(today.length ? today : calls);
+  const hourly = bucketCallsByHour(today);
   const outcomes = bucketOutcomes(calls);
   const recentCalls = calls.slice(0, 5);
 
