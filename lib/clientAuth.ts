@@ -23,11 +23,19 @@ export function createClientToken(clientId: string): string {
 export function verifyClientToken(token: string | undefined): { clientId: string } | null {
   if (!token) return null;
   const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [clientId, exp, sig] = parts;
+  if (parts.length < 3) return null;
+  // Subject (clientId) may contain dots — anchor on the last two parts.
+  const sig = parts[parts.length - 1];
+  const exp = parts[parts.length - 2];
+  const clientId = parts.slice(0, -2).join(".");
+  if (!clientId || !exp || !sig) return null;
   const expected = sign(`${clientId}.${exp}`);
   if (sig.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  } catch {
+    return null;
+  }
   if (Date.now() > Number(exp)) return null;
   return { clientId };
 }

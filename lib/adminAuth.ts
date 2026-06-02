@@ -23,15 +23,30 @@ export function createToken(subject = "admin") {
   return `${payload}.${sign(payload)}`;
 }
 
-export function verifyToken(token: string | undefined): boolean {
-  if (!token) return false;
+// Parse a token of the form `${subject}.${exp}.${sig}`. The subject can
+// contain dots (e.g. email addresses), so we anchor on the LAST two parts.
+function parseToken(token: string | undefined): { sub: string; exp: string; sig: string } | null {
+  if (!token) return null;
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
-  const [sub, exp, sig] = parts;
-  const expected = sign(`${sub}.${exp}`);
-  if (sig.length !== expected.length) return false;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
-  return Date.now() <= Number(exp);
+  if (parts.length < 3) return null;
+  const sig = parts[parts.length - 1];
+  const exp = parts[parts.length - 2];
+  const sub = parts.slice(0, -2).join(".");
+  if (!sub || !exp || !sig) return null;
+  return { sub, exp, sig };
+}
+
+export function verifyToken(token: string | undefined): boolean {
+  const p = parseToken(token);
+  if (!p) return false;
+  const expected = sign(`${p.sub}.${p.exp}`);
+  if (p.sig.length !== expected.length) return false;
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(p.sig), Buffer.from(expected))) return false;
+  } catch {
+    return false;
+  }
+  return Date.now() <= Number(p.exp);
 }
 
 export function isAuthed(): boolean {
@@ -42,19 +57,17 @@ export function isAuthed(): boolean {
 // for the bootstrap/env admin and legacy sessions). null if not signed in.
 export function getAdminSubject(): string | null {
   const token = cookies().get(COOKIE)?.value;
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [sub, exp, sig] = parts;
-  const expected = sign(`${sub}.${exp}`);
-  if (sig.length !== expected.length) return null;
+  const p = parseToken(token);
+  if (!p) return null;
+  const expected = sign(`${p.sub}.${p.exp}`);
+  if (p.sig.length !== expected.length) return null;
   try {
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+    if (!crypto.timingSafeEqual(Buffer.from(p.sig), Buffer.from(expected))) return null;
   } catch {
     return null;
   }
-  if (Date.now() > Number(exp)) return null;
-  return sub;
+  if (Date.now() > Number(p.exp)) return null;
+  return p.sub;
 }
 
 // Verify against the admins table in the DB; fall back to the env bootstrap
