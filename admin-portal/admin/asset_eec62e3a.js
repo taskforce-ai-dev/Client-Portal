@@ -261,6 +261,9 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
   const [busyAgent, setBusyAgent] = useState(false);
   const [twAn, setTwAn] = useState(null);
   const [twAnLoading, setTwAnLoading] = useState(false);
+  const [cRange, setCRange] = useState("total");
+  const [cStart, setCStart] = useState("");
+  const [cEnd, setCEnd] = useState("");
 
   const loadAgents = () =>
     fetch(`/api/admin/clients/${cid}/agents`, { credentials: "include" })
@@ -275,18 +278,25 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
     if (client.__tab) setTab(client.__tab);
     if (client.__action) setConfirm(client.__action);
     setTwAn(null);
+    setCRange("total");
+    setCStart("");
+    setCEnd("");
     loadAgents();
   }, [cid]);
 
   useEffect(() => {
-    if (tab !== "analytics" || twAn || !agentList.length) return;
+    if (tab !== "analytics" || !cid) return;
+    if (cRange === "custom" && (!cStart || !cEnd)) return;
+    let active = true;
     setTwAnLoading(true);
-    fetch(`/api/admin/agents/${agentList[0].id}/twilio`, { credentials: "include" })
+    const qs = cRange === "custom" ? `range=custom&start=${cStart}&end=${cEnd}` : `range=${cRange}`;
+    fetch(`/api/admin/clients/${cid}/twilio?${qs}`, { credentials: "include" })
       .then((r) => r.json())
-      .then((d) => setTwAn(d || { configured: false }))
-      .catch(() => setTwAn({ configured: false }))
-      .finally(() => setTwAnLoading(false));
-  }, [tab, agentList]);
+      .then((d) => { if (active) setTwAn(d || { configured: false }); })
+      .catch(() => { if (active) setTwAn({ configured: false }); })
+      .finally(() => { if (active) setTwAnLoading(false); });
+    return () => { active = false; };
+  }, [tab, cRange, cStart, cEnd, cid]);
 
   const refresh = () => { try { window.location.reload(); } catch (e) {} };
 
@@ -529,24 +539,47 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
 
           {tab === "analytics" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {!agentList.length && <EmptyState icon="chart" title="No agents yet" description="Add an agent to see call analytics." />}
-              {agentList.length > 0 && twAnLoading && <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading call data…</div>}
-              {agentList.length > 0 && !twAnLoading && twAn && !twAn.configured && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
+                  {[["total", "Total"], ["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
+                    <button key={k} className={"btn btn-xs " + (cRange === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: cRange === k ? "var(--border-strong)" : "transparent" }} onClick={() => setCRange(k)}>{l}</button>
+                  ))}
+                </div>
+                {cRange === "custom" && (
+                  <>
+                    <input type="date" className="input" style={{ width: 140 }} value={cStart} onChange={(e) => setCStart(e.target.value)} />
+                    <span style={{ color: "var(--text-3)", fontSize: 12 }}>→</span>
+                    <input type="date" className="input" style={{ width: 140 }} value={cEnd} onChange={(e) => setCEnd(e.target.value)} />
+                  </>
+                )}
+              </div>
+
+              {twAnLoading && <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading call data…</div>}
+              {!twAnLoading && cRange === "custom" && (!cStart || !cEnd) && (
+                <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-3)" }}>Pick a start and end date.</div>
+              )}
+              {!twAnLoading && twAn && !twAn.configured && (
                 <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-2)" }}>
-                  <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected for {agentList[0].name}.</span> Set its subaccount SID in the agent's Settings.
+                  <span className="mono" style={{ color: "#f59e0b" }}>No Twilio data for this client yet.</span>{" "}
+                  {twAn.agentsTotal ? `${twAn.agentsTotal} agent${twAn.agentsTotal === 1 ? "" : "s"} but none have a Twilio subaccount SID set in Settings.` : "Add an agent first."}
                 </div>
               )}
-              {agentList.length > 0 && !twAnLoading && twAn && twAn.configured && (
+              {!twAnLoading && twAn && twAn.configured && (
                 <>
-                  <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Showing live Twilio data for <span style={{ color: "var(--text-1)" }}>{agentList[0].name}</span> — same figures the client sees in their portal.</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                    <MiniStat label="Calls today" value={String(twAn.kpis.calls)} />
+                  <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                    Aggregated across <span style={{ color: "var(--text-1)" }}>{twAn.agentsLinked}</span> agent{twAn.agentsLinked === 1 ? "" : "s"}
+                    {twAn.range !== "total" && twAn.start && twAn.end ? <> · <span className="mono">{twAn.start} → {twAn.end}</span></> : <> · <span className="mono">all-time</span></>}
+                    {twAn.error && <span style={{ color: "#fb7185", marginLeft: 8 }}>· {twAn.error}</span>}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+                    <MiniStat label="Calls" value={String(twAn.kpis.calls)} />
                     <MiniStat label="Completed" value={String(twAn.kpis.completed)} />
                     <MiniStat label="Completion" value={twAn.kpis.completionRate + "%"} />
+                    <MiniStat label="Avg duration" value={twAn.kpis.avgDuration} />
                     <MiniStat label="Minutes" value={String(twAn.kpis.minutes)} />
                   </div>
                   <div className="panel-flat" style={{ padding: 12 }}>
-                    <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Calls by hour</div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{twAn.seriesLabel}</div>
                     <AgentBars data={twAn.series} />
                   </div>
                   <div className="panel-flat" style={{ padding: 12 }}>
