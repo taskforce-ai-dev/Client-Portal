@@ -1178,121 +1178,70 @@ const AgentConfigPage = ({ agentId, onBack }) => {
 };
 
 /* ============================================================
-   GLOBAL KNOWLEDGE BASE (every agent's KB in one place)
+   GLOBAL KNOWLEDGE BASE (every agent's KB — read-only viewer)
    ============================================================ */
 const KnowledgeBasePage = () => {
   const [data, setData] = useState(null);
   const [sel, setSel] = useState(null);
-  const [drafts, setDrafts] = useState({});
-  const [saving, setSaving] = useState(false);
-  const toast = useToast();
 
   useEffect(() => {
     let active = true;
     fetch("/api/admin/kb", { credentials: "include" })
       .then((r) => r.json())
-      .then((d) => {
-        if (!active) return;
-        setData(d);
-        const first = (d.clients || []).find((c) => c.agents.length)?.agents[0];
-        if (first) setSel(first.id);
-      })
-      .catch(() => setData({ clients: [] }));
+      .then((d) => { if (active) setData(d); })
+      .catch(() => { if (active) setData({ clients: [] }); });
     return () => { active = false; };
   }, []);
 
   const allAgents = (data?.clients || []).flatMap((c) => c.agents.map((a) => ({ ...a, company: c.company })));
   const current = allAgents.find((a) => a.id === sel) || null;
-  const draft = current ? drafts[current.id] : undefined;
-  const content = current ? (draft !== undefined ? draft : current.content) : "";
-  const dirty = current && draft !== undefined && draft !== current.content;
-
-  const save = async () => {
-    if (!current) return;
-    setSaving(true);
-    try {
-      const r = await fetch(`/api/agents/${current.id}/kb`, {
-        method: "PUT", headers: { "content-type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ content }),
-      });
-      if (!r.ok) { const d = await r.json(); throw new Error(d.message || "Save failed"); }
-      setData((prev) => ({
-        clients: (prev.clients || []).map((c) => ({
-          ...c,
-          agents: c.agents.map((a) => (a.id === current.id ? { ...a, content } : a)),
-        })),
-      }));
-      setDrafts((d) => { const x = { ...d }; delete x[current.id]; return x; });
-      toast("Saved — synced to the client portal", "success");
-    } catch (e) { toast(e.message, "error"); }
-    finally { setSaving(false); }
-  };
 
   if (!data) return <div className="panel" style={{ padding: 30, textAlign: "center", color: "var(--text-3)" }}>Loading knowledge bases…</div>;
   if (!allAgents.length) return <EmptyState icon="config" title="No agents yet" description="Once you add agents to clients, their knowledge bases will appear here." />;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 14, alignItems: "start" }}>
-      <div className="panel" style={{ padding: 0, maxHeight: "72vh", overflowY: "auto" }}>
-        {data.clients.map((c) => (
-          <div key={c.id} style={{ borderBottom: "1px solid var(--border)" }}>
-            <div style={{ padding: "10px 12px 6px", fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{c.company}</div>
-            {c.agents.length === 0 ? (
-              <div style={{ padding: "0 12px 10px", fontSize: 11.5, color: "var(--text-3)" }}>No agents</div>
-            ) : (
-              c.agents.map((a) => (
-                <div
-                  key={a.id}
-                  onClick={() => setSel(a.id)}
-                  style={{
-                    padding: "8px 12px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    background: sel === a.id ? "rgba(255,255,255,0.04)" : "transparent",
-                    borderLeft: sel === a.id ? "2px solid var(--red-500)" : "2px solid transparent",
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, color: "var(--text-0)" }}>{a.name}</div>
-                    <div style={{ fontSize: 11, color: "var(--text-3)" }}>{a.role || "Agent"} · {a.type}</div>
-                  </div>
-                  {drafts[a.id] !== undefined && drafts[a.id] !== a.content && (
-                    <span title="Unsaved changes" style={{ width: 6, height: 6, borderRadius: 3, background: "#f59e0b" }} />
-                  )}
-                  <span style={{ fontSize: 10.5, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{(drafts[a.id] !== undefined ? drafts[a.id].length : (a.content || "").length).toLocaleString()}</span>
-                </div>
-              ))
-            )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="panel" style={{ padding: 0 }}>
+        {allAgents.map((a) => (
+          <div
+            key={a.id}
+            onClick={() => setSel(sel === a.id ? null : a.id)}
+            style={{
+              padding: "12px 14px",
+              borderBottom: "1px solid var(--border)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              background: sel === a.id ? "rgba(255,255,255,0.03)" : "transparent",
+            }}
+          >
+            <div className="avatar">{(a.name[0] || "A").toUpperCase()}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: "var(--text-0)" }}>{a.name}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.company} · {a.role || "Agent"} · {a.type}</div>
+            </div>
+            <span style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{(a.content || "").length.toLocaleString()} ch</span>
+            <Icon name={sel === a.id ? "chevron-up" : "chevron-down"} size={14} style={{ color: "var(--text-3)" }} />
           </div>
         ))}
       </div>
 
-      <div className="panel" style={{ padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>{current ? current.name : "Select an agent"}</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{current ? `${current.company} · ${current.role || "Agent"}` : "Pick an agent on the left to edit its knowledge base."}</div>
-          </div>
-          {current && <button className="btn btn-primary btn-sm" disabled={saving || !dirty} onClick={save}>{saving ? "Saving…" : "Save"}</button>}
-        </div>
-        {current && (
-          <>
-            <textarea
-              className="input mono"
-              rows={20}
-              value={content}
-              onChange={(e) => setDrafts((d) => ({ ...d, [current.id]: e.target.value }))}
-              placeholder="Write what this agent should know — pricing, policies, FAQs… Markdown supported."
-              style={{ width: "100%", resize: "vertical", lineHeight: 1.6 }}
-            />
-            <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6, fontFamily: "var(--ff-mono)" }}>
-              {content.length.toLocaleString()} characters{dirty ? " · unsaved" : " · synced with client portal"}
+      {current && (
+        <div className="panel" style={{ padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>{current.name} — Knowledge base</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{current.company} · read-only · edit in Agent configuration</div>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+          {current.content ? (
+            <pre style={{ whiteSpace: "pre-wrap", fontFamily: "var(--ff-mono)", fontSize: 12.5, color: "var(--text-1)", background: "rgba(0,0,0,0.25)", padding: 14, borderRadius: 8, maxHeight: 540, overflowY: "auto", margin: 0 }}>{current.content}</pre>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--text-3)" }}>No knowledge base content yet for this agent.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
