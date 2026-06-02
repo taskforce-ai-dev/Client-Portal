@@ -41,17 +41,20 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
 
   const sub = agentDb.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
   const configuredAuth = isTwilioAuthConfigured() && !!sub;
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const endFilter = new Date(todayStart.getTime() + 2 * 86400000);
-  const [{ calls: today, configured, error }, usage] = await Promise.all([
+  const [{ calls, configured, error }, usage] = await Promise.all([
     configuredAuth
-      ? getAllCallsForSubaccount(sub, { max: 1000, startDate: ymdLocal(todayStart), endDate: ymdLocal(endFilter) })
+      ? getAllCallsForSubaccount(sub, { max: 1000 })
       : Promise.resolve({ calls: [] as any[], configured: false, error: undefined as string | undefined }),
     configuredAuth ? getUsageForSubaccount(sub) : Promise.resolve({ configured: false, totalCalls: 0, totalMinutes: 0, totalPrice: 0, error: undefined as string | undefined }),
   ]);
 
-  const calls = today;
-  const { completionRate, completed, avgDuration } = callStats(today);
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const today = calls.filter((c) => {
+    if (!c.startedAtIso) return false;
+    const d = new Date(c.startedAtIso);
+    return !isNaN(d.getTime()) && d >= todayStart;
+  });
+  const { total, completionRate, completed, avgDuration } = callStats(calls);
   const minutesPct = Math.round((usage.totalMinutes / workspace.minutesLimit) * 100);
 
   const hourly = bucketCallsByHour(today);
@@ -89,9 +92,9 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
       <TwilioNotice configured={configured} error={error} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Calls today" value={String(today.length)} delta={0} hint="From Twilio" />
-        <KpiCard label="Completion rate" value={`${completionRate}%`} delta={0} hint={`${completed} completed today`} />
-        <KpiCard label="Avg duration" value={avgDuration} delta={0} hint="Today" />
+        <KpiCard label="Total calls" value={String(total)} delta={0} hint={`${today.length} today`} />
+        <KpiCard label="Completion rate" value={`${completionRate}%`} delta={0} hint={`${completed} completed`} />
+        <KpiCard label="Avg duration" value={avgDuration} delta={0} hint="All calls" />
         <KpiCard
           label="Minutes this month"
           value={Math.round(usage.totalMinutes).toLocaleString()}

@@ -24,7 +24,7 @@ const RANGES = [
   ["today", "Today"],
   ["week", "7 days"],
   ["month", "30 days"],
-  ["quarter", "90 days"],
+  ["custom", "Custom"],
 ] as const;
 
 function ymd(d: Date) {
@@ -36,7 +36,7 @@ export default async function AnalyticsPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { range?: string };
+  searchParams: { range?: string; start?: string; end?: string };
 }) {
   const session = getClientSession();
   if (!session) redirect("/login");
@@ -46,28 +46,38 @@ export default async function AnalyticsPage({
   const sub = agent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
   const configured = isTwilioAuthConfigured() && !!sub;
 
-  // Compute window from ?range
+  // Compute window from ?range (+ ?start/?end for custom)
   let range = (searchParams.range as string) || "month";
-  if (!["today", "week", "month", "quarter"].includes(range)) range = "month";
+  if (!["today", "week", "month", "custom"].includes(range)) range = "month";
   const now = new Date();
-  const start = new Date(now);
+  let start = new Date(now);
   start.setHours(0, 0, 0, 0);
-  if (range === "week") start.setDate(now.getDate() - 6);
+  let endDate = now;
+  let customMissing = false;
+  if (range === "custom") {
+    if (searchParams.start && searchParams.end) {
+      start = new Date(searchParams.start + "T00:00:00Z");
+      endDate = new Date(searchParams.end + "T00:00:00Z");
+    } else {
+      customMissing = true;
+      start.setDate(now.getDate() - 29); // sensible default until user picks
+    }
+  } else if (range === "week") start.setDate(now.getDate() - 6);
   else if (range === "month") start.setDate(now.getDate() - 29);
-  else if (range === "quarter") start.setDate(now.getDate() - 89);
-  const endFilter = new Date(now.getTime() + 86400000);
+  const endFilter = new Date(endDate.getTime() + 86400000);
 
-  const { calls, error } = configured
+  const { calls, error } = configured && !customMissing
     ? await getAllCallsForSubaccount(sub, { max: 1000, startDate: ymd(start), endDate: ymd(endFilter) })
     : { calls: [] as any[], error: undefined as string | undefined };
 
   const { total, completed, completionRate, avgDuration } = callStats(calls);
   const byHour = bucketCallsByHour(calls);
-  const byDay = bucketCallsByDayRange(calls, start.getTime(), now.getTime()).map((d) => ({ day: d.label, calls: d.value }));
+  const byDay = bucketCallsByDayRange(calls, start.getTime(), endDate.getTime()).map((d) => ({ day: d.label, calls: d.value }));
   const outcomes = bucketOutcomes(calls);
   const peak = byHour.reduce((m, h) => (h.calls > m.calls ? h : m), byHour[0] ?? { hour: "—", calls: 0 });
-  const rangeLabel = RANGES.find(([k]) => k === range)?.[1] ?? "30 days";
-  const periodSubtitle = range === "today" ? "today" : `last ${rangeLabel.toLowerCase()}`;
+  const periodSubtitle = range === "today" ? "today" : range === "custom"
+    ? (customMissing ? "pick a range" : `${ymd(start)} → ${ymd(endDate)}`)
+    : `last ${RANGES.find(([k]) => k === range)?.[1].toLowerCase()}`;
 
   return (
     <div className="space-y-6">
@@ -83,7 +93,7 @@ export default async function AnalyticsPage({
         </div>
         <div className="flex items-center gap-3">
           <AutoRefresh intervalMs={30000} />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {RANGES.map(([k, label]) => (
               <Link
                 key={k}
@@ -101,6 +111,21 @@ export default async function AnalyticsPage({
           </div>
         </div>
       </div>
+
+      {range === "custom" && (
+        <form method="GET" className="card p-3 flex items-end gap-2 flex-wrap">
+          <input type="hidden" name="range" value="custom" />
+          <div>
+            <div className="stat-label mb-1">From</div>
+            <input type="date" name="start" defaultValue={searchParams.start || ymd(start)} className="input-dark" />
+          </div>
+          <div>
+            <div className="stat-label mb-1">To</div>
+            <input type="date" name="end" defaultValue={searchParams.end || ymd(endDate)} className="input-dark" />
+          </div>
+          <button type="submit" className="btn-primary">Apply</button>
+        </form>
+      )}
 
       <TwilioNotice configured={configured} error={error} />
 
