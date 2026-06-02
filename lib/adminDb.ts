@@ -127,6 +127,58 @@ export async function ensureSeed(sql: Sql) {
   ensured = true;
 }
 
+export async function listAdmins(): Promise<DbAdmin[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureSeed(sql);
+  return (await sql`SELECT id, name, email, password_hash, created_at FROM sentinel_admin ORDER BY created_at ASC`) as DbAdmin[];
+}
+
+export async function findAdminById(id: string): Promise<DbAdmin | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  await ensureSeed(sql);
+  const rows = (await sql`SELECT * FROM sentinel_admin WHERE id = ${id} LIMIT 1`) as DbAdmin[];
+  return rows[0] ?? null;
+}
+
+export async function createAdmin(input: { name?: string; email: string; password: string }): Promise<DbAdmin> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const id = "adm_" + crypto.randomBytes(8).toString("hex");
+  const email = input.email.trim().toLowerCase();
+  const name = (input.name || email.split("@")[0]).trim();
+  const rows = (await sql`
+    INSERT INTO sentinel_admin (id, name, email, password_hash)
+    VALUES (${id}, ${name}, ${email}, ${hashPassword(input.password)})
+    RETURNING *`) as DbAdmin[];
+  await audit(sql, "admin.create", "admin", email, "Invited admin " + email);
+  return rows[0];
+}
+
+export async function setAdminPassword(id: string, newPassword: string): Promise<boolean> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const rows = (await sql`UPDATE sentinel_admin SET password_hash = ${hashPassword(newPassword)} WHERE id = ${id} RETURNING email`) as { email: string }[];
+  if (rows[0]) await audit(sql, "admin.password_reset", "admin", rows[0].email, "Reset password for " + rows[0].email);
+  return !!rows[0];
+}
+
+export async function deleteAdmin(id: string): Promise<{ ok: boolean; reason?: string }> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const current = await findAdminById(id);
+  if (!current) return { ok: false, reason: "not_found" };
+  const count = (await sql`SELECT count(*)::int AS n FROM sentinel_admin`) as { n: number }[];
+  if ((count[0]?.n ?? 0) <= 1) return { ok: false, reason: "last_admin" };
+  await sql`DELETE FROM sentinel_admin WHERE id = ${id}`;
+  await audit(sql, "admin.delete", "admin", current.email, "Revoked admin " + current.email);
+  return { ok: true };
+}
+
 export async function findAdminByEmail(email: string): Promise<DbAdmin | null> {
   const sql = getSql();
   if (!sql) return null;

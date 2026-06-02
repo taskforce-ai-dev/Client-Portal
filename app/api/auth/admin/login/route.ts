@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Invalid email or password" }, { status: 401 });
   }
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SENTINEL_COOKIE, createToken(), {
+  res.cookies.set(SENTINEL_COOKIE, createToken(body.email.trim().toLowerCase()), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

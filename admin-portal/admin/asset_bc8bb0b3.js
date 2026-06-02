@@ -120,12 +120,82 @@ const AuditLogPage = () => {
    ADMIN USERS + PLATFORM CONFIG
    ============================================================ */
 
+const adminPwWordsA = ["Cedar", "Falcon", "Harbor", "Aspen", "Lumen", "Vertex", "Cobalt", "Onyx", "Maple", "Nimbus"];
+const adminPwWordsB = ["Otter", "Comet", "Ridge", "Delta", "Pine", "Ember", "Lynx", "Reef", "Sage", "Hawk"];
+const suggestAdminPassword = () => {
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  return pick(adminPwWordsA) + "-" + pick(adminPwWordsB) + "-" + Math.floor(1000 + Math.random() * 9000);
+};
+const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e || "").trim());
+
 const AdminUsersPage = () => {
+  const [admins, setAdmins] = useState(null);
   const [inviting, setInviting] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("Operations");
+  const [form, setForm] = useState({ name: "", email: "", password: suggestAdminPassword() });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [created, setCreated] = useState(null);
+  const [confirm, setConfirm] = useState(null);
   const [reminders, setReminders] = useState({ pre3: true, due: true, post3: true, post7: false });
   const toast = useToast();
+
+  const refresh = () =>
+    fetch("/api/admin/admins", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setAdmins(Array.isArray(d) ? d : []))
+      .catch(() => setAdmins([]));
+
+  useEffect(() => { refresh(); }, []);
+
+  const startInvite = () => {
+    setForm({ name: "", email: "", password: suggestAdminPassword() });
+    setErr(""); setCreated(null); setInviting(true);
+  };
+
+  const sendInvite = async () => {
+    setErr("");
+    if (!isValidEmail(form.email)) { setErr("Enter a valid email address."); return; }
+    if (!form.password || form.password.length < 8) { setErr("Password must be at least 8 characters."); return; }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/admins", {
+        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
+        body: JSON.stringify(form),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      setCreated({ email: form.email.trim().toLowerCase(), password: form.password });
+      setInviting(false);
+      refresh();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  const revoke = async (a) => {
+    try {
+      const r = await fetch(`/api/admin/admins/${a.id}`, { method: "DELETE", credentials: "include" });
+      const d = r.ok ? { ok: true } : await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      toast("Revoked " + a.email, "warn");
+      setConfirm(null);
+      refresh();
+    } catch (e) { toast(e.message, "error"); setConfirm(null); }
+  };
+
+  const resetPw = async (a) => {
+    const np = suggestAdminPassword();
+    try {
+      const r = await fetch(`/api/admin/admins/${a.id}/password`, {
+        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ password: np }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      setCreated({ email: a.email, password: np });
+      toast("Password reset for " + a.email, "success");
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  const list = admins || [];
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1.05fr 1fr", gap: 14 }}>
@@ -133,19 +203,42 @@ const AdminUsersPage = () => {
       <div className="panel">
         <SectionHeader
           title="Admin users"
-          subtitle={`${ADMIN_USERS.filter(u => u.status === "Active").length} active admins · ${ADMIN_USERS.length} total`}
-          action={<button className="btn btn-primary btn-sm" onClick={() => setInviting(!inviting)}><Icon name="plus" size={12} />Invite admin</button>}
+          subtitle={admins === null ? "Loading…" : `${list.length} ${list.length === 1 ? "admin" : "admins"}`}
+          action={<button className="btn btn-primary btn-sm" onClick={startInvite}><Icon name="plus" size={12} />Invite admin</button>}
         />
 
         {inviting && (
-          <div style={{ padding: 14, borderBottom: "1px solid var(--border)", background: "rgba(239,68,68,0.04)" }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="input" placeholder="admin@sentinel.ops" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} style={{ flex: 1 }} />
-              <select className="input" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={{ width: 150 }}>
-                <option>Super Admin</option><option>Operations</option><option>Finance</option><option>Support</option>
-              </select>
-              <button className="btn btn-primary btn-sm" onClick={() => { toast("Invite sent to " + inviteEmail, "success"); setInviting(false); setInviteEmail(""); }}>Send invite</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setInviting(false)}><Icon name="x" size={12} /></button>
+          <div style={{ padding: 14, borderBottom: "1px solid var(--border)", background: "rgba(239,68,68,0.04)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <Field label="Name (optional)"><input className="input" placeholder="Jane Doe" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+              <Field label="Email"><input className="input mono" type="email" placeholder="admin@taskforceai.tech" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+            </div>
+            <Field label="Password (min 8 chars · stored hashed)">
+              <div style={{ display: "flex", gap: 8 }}>
+                <input className="input mono" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={{ flex: 1 }} />
+                <button type="button" className="btn btn-secondary btn-sm" title="Suggest another" onClick={() => setForm({ ...form, password: suggestAdminPassword() })}>↻</button>
+                <button type="button" className="btn btn-secondary btn-sm" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(form.password); toast("Password copied", "success"); }}>Copy</button>
+              </div>
+            </Field>
+            {err && <div style={{ color: "#ff8585", fontSize: 12.5 }}>{err}</div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setInviting(false)}>Cancel</button>
+              <button className="btn btn-primary btn-sm" disabled={busy} onClick={sendInvite}>{busy ? "Creating…" : "Create admin"}</button>
+            </div>
+          </div>
+        )}
+
+        {created && (
+          <div style={{ padding: 14, borderBottom: "1px solid var(--border)", background: "rgba(0,229,160,0.06)" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--emerald)" }}>Admin credentials ready ✓</div>
+            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>Share these with the admin — they sign in at /admin/login.</div>
+            <div style={{ fontFamily: "var(--ff-mono)", fontSize: 12.5, marginTop: 8, lineHeight: 1.9 }}>
+              <div>Email: {created.email}</div>
+              <div>Password: {created.password}</div>
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <button className="btn btn-secondary btn-xs" onClick={() => { navigator.clipboard && navigator.clipboard.writeText("Email: " + created.email + "\nPassword: " + created.password); toast("Credentials copied", "success"); }}>Copy credentials</button>
+              <button className="btn btn-ghost btn-xs" onClick={() => setCreated(null)}>Dismiss</button>
             </div>
           </div>
         )}
@@ -154,47 +247,49 @@ const AdminUsersPage = () => {
           <thead>
             <tr>
               <th>Name</th>
-              <th>Role</th>
-              <th>Last login</th>
-              <th>Status</th>
-              <th style={{ width: 140 }}>Actions</th>
+              <th>Email</th>
+              <th>Created</th>
+              <th style={{ width: 180 }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {ADMIN_USERS.map((u) => (
-              <tr key={u.email}>
+            {admins === null && (
+              <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "var(--text-3)" }}>Loading…</td></tr>
+            )}
+            {admins !== null && list.length === 0 && (
+              <tr><td colSpan={4} style={{ padding: 16, textAlign: "center", color: "var(--text-3)" }}>No admins yet — invite the first one above.</td></tr>
+            )}
+            {list.map((a) => (
+              <tr key={a.id}>
                 <td>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div className="avatar" style={{ width: 22, height: 22, fontSize: 9.5 }}>{u.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}</div>
-                    <div>
-                      <div style={{ color: "var(--text-0)", fontFamily: "var(--ff-sans)" }}>{u.name}</div>
-                      <div style={{ color: "var(--text-3)", fontSize: 10.5 }}>{u.email}</div>
-                    </div>
+                    <div className="avatar" style={{ width: 22, height: 22, fontSize: 9.5 }}>{(a.name || a.email).split(/[\s.@]+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}</div>
+                    <div style={{ color: "var(--text-0)", fontFamily: "var(--ff-sans)" }}>{a.name || "—"}</div>
                   </div>
                 </td>
-                <td>
-                  <span style={{
-                    fontSize: 10.5, fontFamily: "var(--ff-mono)", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase", letterSpacing: "0.04em",
-                    background: u.role === "Super Admin" ? "rgba(239,68,68,0.14)" : u.role === "Finance" ? "rgba(245,158,11,0.14)" : u.role === "Support" ? "rgba(56,189,248,0.14)" : "rgba(107,114,128,0.14)",
-                    color:      u.role === "Super Admin" ? "#fca5a5" :              u.role === "Finance" ? "#fcd34d" :                u.role === "Support" ? "#7dd3fc" :                "#d1d5db",
-                    border: "1px solid currentColor", borderColor: u.role === "Super Admin" ? "rgba(239,68,68,0.3)" : u.role === "Finance" ? "rgba(245,158,11,0.3)" : u.role === "Support" ? "rgba(56,189,248,0.3)" : "rgba(107,114,128,0.3)"
-                  }}>{u.role}</span>
-                </td>
-                <td style={{ color: "var(--text-2)" }}>{u.lastLogin}</td>
-                <td>
-                  <StatusDot status={u.status === "Active" ? "Active" : "Blocked"} />
-                </td>
+                <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", fontSize: 11.5 }}>{a.email}</td>
+                <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", fontSize: 11.5 }}>{a.created_at ? new Date(a.created_at).toISOString().slice(0, 10) : "—"}</td>
                 <td>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button className="btn btn-ghost btn-xs">Edit</button>
-                    <button className="btn btn-ghost btn-xs">Reset pw</button>
-                    {u.status === "Active" && <button className="btn btn-danger btn-xs">Revoke</button>}
+                    <button className="btn btn-ghost btn-xs" onClick={() => resetPw(a)}>Reset password</button>
+                    <button className="btn btn-danger btn-xs" onClick={() => setConfirm(a)}>Revoke</button>
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        {confirm && (
+          <ConfirmDialog
+            title={`Revoke ${confirm.email}?`}
+            description="This admin will lose access immediately. They won't be able to sign in. You can re-invite them later."
+            confirmWord={confirm.email}
+            confirmLabel="Revoke admin"
+            onConfirm={() => revoke(confirm)}
+            onCancel={() => setConfirm(null)}
+          />
+        )}
       </div>
 
       {/* RIGHT: Platform config */}

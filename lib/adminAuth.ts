@@ -17,9 +17,9 @@ function sign(value: string) {
   return crypto.createHmac("sha256", secret()).update(value).digest("hex");
 }
 
-export function createToken() {
+export function createToken(subject = "admin") {
   const exp = Date.now() + MAX_AGE * 1000;
-  const payload = `admin.${exp}`;
+  const payload = `${subject}.${exp}`;
   return `${payload}.${sign(payload)}`;
 }
 
@@ -36,6 +36,25 @@ export function verifyToken(token: string | undefined): boolean {
 
 export function isAuthed(): boolean {
   return verifyToken(cookies().get(COOKIE)?.value);
+}
+
+// Returns the signed-in admin's subject (email for real DB admins, or "admin"
+// for the bootstrap/env admin and legacy sessions). null if not signed in.
+export function getAdminSubject(): string | null {
+  const token = cookies().get(COOKIE)?.value;
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [sub, exp, sig] = parts;
+  const expected = sign(`${sub}.${exp}`);
+  if (sig.length !== expected.length) return null;
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  } catch {
+    return null;
+  }
+  if (Date.now() > Number(exp)) return null;
+  return sub;
 }
 
 // Verify against the admins table in the DB; fall back to the env bootstrap
