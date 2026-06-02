@@ -32,42 +32,64 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const sp = req.nextUrl.searchParams;
   let range = sp.get("range") || "today";
+  if (!["total", "today", "week", "month", "custom"].includes(range)) range = "today";
   const now = new Date();
   let start = new Date(now);
-  if (range === "custom" && sp.get("start")) {
-    start = new Date(sp.get("start") + "T00:00:00Z");
+  start.setHours(0, 0, 0, 0);
+  let endDate = now;
+  let useDateFilter = true;
+  let customMissing = false;
+  if (range === "total") {
+    useDateFilter = false;
+    start.setDate(now.getDate() - 29); // chart window only; KPIs stay all-time
+  } else if (range === "today") {
+    // start = today
   } else if (range === "week") {
     start.setDate(now.getDate() - 6);
   } else if (range === "month") {
     start.setDate(now.getDate() - 29);
-  } else {
-    range = "today";
+  } else if (range === "custom") {
+    if (sp.get("start") && sp.get("end")) {
+      start = new Date(sp.get("start") + "T00:00:00Z");
+      endDate = new Date(sp.get("end") + "T00:00:00Z");
+    } else {
+      customMissing = true;
+      start.setDate(now.getDate() - 29);
+    }
   }
-  start.setHours(0, 0, 0, 0);
-  const endDate = range === "custom" && sp.get("end") ? new Date(sp.get("end") + "T00:00:00Z") : now;
   // Twilio's StartTime<= is GMT-day based; add a day so the end day is inclusive.
   const endFilter = new Date(endDate.getTime() + 86400000);
 
   const { calls, error } = await getAllCallsForSubaccount(sub, {
     max: 1000,
-    startDate: ymd(start),
-    endDate: ymd(endFilter),
+    ...(useDateFilter && !customMissing
+      ? { startDate: ymd(start), endDate: ymd(endFilter) }
+      : {}),
   });
 
   const stats = callStats(calls);
   const minutes = Math.round(calls.reduce((s, c) => s + c.durationSec, 0) / 60);
-  const series =
-    range === "today"
-      ? bucketCallsByHour(calls).map((h) => ({ label: h.hour, value: h.calls }))
-      : bucketCallsByDayRange(calls, start.getTime(), endDate.getTime());
+
+  let series: { label: string; value: number }[];
+  let seriesLabel: string;
+  if (range === "today") {
+    series = bucketCallsByHour(calls).map((h) => ({ label: h.hour, value: h.calls }));
+    seriesLabel = "Calls by hour";
+  } else if (range === "total") {
+    series = bucketCallsByDayRange(calls, start.getTime(), endDate.getTime());
+    seriesLabel = "Calls by day (last 30 days)";
+  } else {
+    series = bucketCallsByDayRange(calls, start.getTime(), endDate.getTime());
+    seriesLabel = "Calls by day";
+  }
 
   return NextResponse.json({
     configured: true,
     error: error || null,
     subaccount: sub,
     range,
-    start: ymd(start),
-    end: ymd(endDate),
+    start: range === "total" ? null : ymd(start),
+    end: range === "total" ? null : ymd(endDate),
     kpis: {
       calls: calls.length,
       completed: stats.completed,
@@ -75,7 +97,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       avgDuration: stats.avgDuration,
       minutes,
     },
-    seriesLabel: range === "today" ? "Calls by hour" : "Calls by day",
+    seriesLabel,
     series,
     outcomes: bucketOutcomes(calls),
     calls: calls.slice(0, 500).map((c) => ({

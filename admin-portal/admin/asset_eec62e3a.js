@@ -940,7 +940,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [twLoading, setTwLoading] = useState(true);
   const [twA, setTwA] = useState(null);
   const [twALoading, setTwALoading] = useState(false);
-  const [range, setRange] = useState("month");
+  const [range, setRange] = useState("total");
   const [cStart, setCStart] = useState("");
   const [cEnd, setCEnd] = useState("");
   const toast = useToast();
@@ -964,7 +964,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       .then((d) => { if (active) { setKb(d.content || ""); setKbDirty(false); } })
       .catch(() => {});
     setTwLoading(true);
-    fetch(`/api/admin/agents/${agentId}/twilio?range=today`, { credentials: "include" })
+    fetch(`/api/admin/agents/${agentId}/twilio?range=total`, { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { if (active) setTw(d || { configured: false }); })
       .catch(() => { if (active) setTw({ configured: false }); })
@@ -1034,14 +1034,14 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           {tw && tw.configured && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                <MiniStat label="Calls today" value={String(tw.kpis.calls)} />
+                <MiniStat label="Total calls" value={String(tw.kpis.calls)} />
                 <MiniStat label="Completed" value={String(tw.kpis.completed)} />
                 <MiniStat label="Completion" value={tw.kpis.completionRate + "%"} />
                 <MiniStat label="Avg duration" value={tw.kpis.avgDuration} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 12 }}>
                 <div className="panel" style={{ padding: 14 }}>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Calls by hour (today)</div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{tw.seriesLabel || "Calls by day"}</div>
                   <AgentBars data={tw.series} />
                 </div>
                 <div className="panel" style={{ padding: 14 }}>
@@ -1088,7 +1088,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
-              {[["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
+              {[["total", "Total"], ["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
                 <button key={k} className={"btn btn-xs " + (range === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: range === k ? "var(--border-strong)" : "transparent" }} onClick={() => setRange(k)}>{l}</button>
               ))}
             </div>
@@ -1112,7 +1112,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <StatusDot status={twA.error ? "Overdue" : "Active"} />
-                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{twA.error ? ("Twilio error: " + twA.error) : (twA.start + " → " + twA.end + " · subaccount " + (twA.subaccount || "").slice(0, 10) + "…")}</span>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{twA.error ? ("Twilio error: " + twA.error) : ((twA.start && twA.end ? (twA.start + " → " + twA.end) : "all-time") + " · subaccount " + (twA.subaccount || "").slice(0, 10) + "…")}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 <MiniStat label="Calls" value={String(twA.kpis.calls)} />
