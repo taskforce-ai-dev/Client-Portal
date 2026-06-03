@@ -59,9 +59,9 @@ const StatusDot = ({ status }) => {
     Active:    { cls: "emerald", label: "Active" },
     Trial:     { cls: "amber",   label: "Trial" },
     Overdue:   { cls: "rose pulse", label: "Overdue" },
-    Blocked:   { cls: "gray",    label: "Blocked" },
+    Blocked:   { cls: "rose",    label: "Blocked" },
     Churned:   { cls: "gray",    label: "Churned" },
-    Suspended: { cls: "gray",    label: "Suspended" },
+    Suspended: { cls: "amber",   label: "Suspended" },
     Paid:      { cls: "emerald", label: "Paid" },
     Pending:   { cls: "amber",   label: "Pending" },
     Failed:    { cls: "rose",    label: "Failed" },
@@ -75,6 +75,15 @@ const StatusDot = ({ status }) => {
     Resolved:    { cls: "emerald", label: "Resolved" },
     Closed:      { cls: "gray",    label: "Closed" },
     Ongoing:     { cls: "rose pulse", label: "Ongoing" },
+    // Agent statuses (lowercase, as stored in sentinel_agent)
+    live:       { cls: "emerald", label: "Live" },
+    paused:     { cls: "amber",   label: "Paused" },
+    draft:      { cls: "gray",    label: "Draft" },
+    blocked:    { cls: "rose",    label: "Blocked" },
+    active:     { cls: "emerald", label: "Active" },
+    suspended:  { cls: "amber",   label: "Suspended" },
+    trial:      { cls: "amber",   label: "Trial" },
+    churned:    { cls: "gray",    label: "Churned" },
   };
   const s = map[status] || { cls: "gray", label: status };
   return (

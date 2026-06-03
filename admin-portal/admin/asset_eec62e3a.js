@@ -528,6 +528,7 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                     </div>
                     {a.description && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 3 }}>{a.description}</div>}
                   </div>
+                  <StatusDot status={a.status} />
                   <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)", textTransform: "uppercase" }}>{a.type}</span>
                   <button className="btn btn-secondary btn-xs" onClick={() => onConfigureAgent && onConfigureAgent(a.id)}>Configure</button>
                   <button className="btn btn-ghost btn-xs danger" title="Remove agent" onClick={() => delAgent(a.id)}><Icon name="x" size={12} /></button>
@@ -1576,6 +1577,7 @@ const KnowledgeBasePage = () => {
               <div style={{ fontSize: 13, color: "var(--text-0)" }}>{a.name}</div>
               <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.company} · {a.role || "Agent"} · {a.type}</div>
             </div>
+            <StatusDot status={a.status} />
             <span style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{(a.content || "").length.toLocaleString()} ch</span>
             <Icon name={sel === a.id ? "chevron-up" : "chevron-down"} size={14} style={{ color: "var(--text-3)" }} />
           </div>

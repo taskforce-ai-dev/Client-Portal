@@ -22,6 +22,7 @@ export async function GET() {
           name: a.name,
           role: a.role,
           type: a.type,
+          status: a.status,
           content: await getAgentKb(a.id),
         }))
       );
