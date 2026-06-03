@@ -1058,7 +1058,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       </div>
 
       <div className="tabs">
-        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["analytics", "Analytics"], ["billing", "Billing"], ["settings", "Settings"], ["commissioner", "Commissioner"]].map(([k, l]) => (
+        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["analytics", "Analytics"], ["billing", "Billing"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
           <div key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
