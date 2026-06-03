@@ -685,6 +685,7 @@ const NewClientPage = () => {
   const [agentName, setAgentName] = useState("");
   const [agentType, setAgentType] = useState("Booking");
   const [agentChannel, setAgentChannel] = useState("Voice");
+  const [agentSub, setAgentSub] = useState("");
   const [portal, setPortal] = useState(true);
   const [api, setApi] = useState(false);
   const [features, setFeatures] = useState({ Analytics: true, "Knowledge Base": true, Transcripts: true, "Billing View": true, "Team Members": false });
@@ -719,6 +720,7 @@ const NewClientPage = () => {
           agentName: agentName.trim(),
           agentRole: agentType === "Call Center" ? "Call Center Agent" : agentType + " Agent",
           agentChannels: channelMap[agentChannel] || "Voice Call",
+          agentTwilioSubaccountSid: agentSub.trim(),
         }),
       });
       const d = await r.json();
@@ -795,11 +797,16 @@ const NewClientPage = () => {
           <span style={{ fontSize: 12.5 }}>Provision a starter agent for this client</span>
         </div>
         {addAgent && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            <Field label="Agent name"><input className="input mono" placeholder="acme_agent_01" value={agentName} onChange={(e) => setAgentName(e.target.value)} /></Field>
-            <Field label="Type"><select className="input" value={agentType} onChange={(e) => setAgentType(e.target.value)}><option>Call Center</option><option>Sales</option><option>Booking</option><option>Cold Call</option></select></Field>
-            <Field label="Channel"><select className="input" value={agentChannel} onChange={(e) => setAgentChannel(e.target.value)}><option>Voice</option><option>WhatsApp</option><option>Voice + WhatsApp</option></select></Field>
-          </div>
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              <Field label="Agent name"><input className="input mono" placeholder="acme_agent_01" value={agentName} onChange={(e) => setAgentName(e.target.value)} /></Field>
+              <Field label="Type"><select className="input" value={agentType} onChange={(e) => setAgentType(e.target.value)}><option>Call Center</option><option>Sales</option><option>Booking</option><option>Cold Call</option></select></Field>
+              <Field label="Channel"><select className="input" value={agentChannel} onChange={(e) => setAgentChannel(e.target.value)}><option>Voice</option><option>WhatsApp</option><option>Voice + WhatsApp</option></select></Field>
+            </div>
+            <Field label="Twilio subaccount SID (optional — paste this agent's AC… SID for live call analytics)" style={{ marginTop: 12 }}>
+              <input className="input mono" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value={agentSub} onChange={(e) => setAgentSub(e.target.value)} />
+            </Field>
+          </>
         )}
       </FormSection>
 

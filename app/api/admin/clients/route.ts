@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
   let body: {
     company?: string; email?: string; password?: string; plan?: string; status?: string; contact?: string; mrr_cents?: number;
-    provisionAgent?: boolean; agentName?: string; agentRole?: string; agentChannels?: string;
+    provisionAgent?: boolean; agentName?: string; agentRole?: string; agentChannels?: string; agentTwilioSubaccountSid?: string;
   };
   try {
     body = await req.json();
@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
         name: body.agentName,
         role: body.agentRole,
         channels: body.agentChannels,
+        twilioSubaccountSid: body.agentTwilioSubaccountSid,
       });
     }
     return NextResponse.json({ ok: true, client: { id: client.id, company: client.company, email: client.email } });
