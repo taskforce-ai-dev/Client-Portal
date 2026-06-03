@@ -74,11 +74,29 @@ export async function ensureSchema(sql: Sql) {
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'voice'`;
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS description text`;
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS twilio_subaccount_sid text`;
+  // Ingest API key — your custom backend uses this to POST Anthropic token
+  // usage for each Claude call so we can show per-agent token analytics.
+  await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS ingest_key text`;
   // Per-agent knowledge base (one markdown/text document per agent), shared
   // by the admin agent-config page and the client portal knowledge page.
   await sql`CREATE TABLE IF NOT EXISTS sentinel_kb (
     agent_id text PRIMARY KEY, client_id text NOT NULL,
     content text NOT NULL DEFAULT '', updated_at timestamptz NOT NULL DEFAULT now())`;
+  // Token usage records: one row per LLM completion, posted by the agent's
+  // backend. cost_usd_micros = USD * 1_000_000 (precise int arithmetic).
+  await sql`CREATE TABLE IF NOT EXISTS sentinel_token_usage (
+    id text PRIMARY KEY,
+    agent_id text NOT NULL,
+    client_id text NOT NULL,
+    model text NOT NULL DEFAULT '',
+    input_tokens integer NOT NULL DEFAULT 0,
+    output_tokens integer NOT NULL DEFAULT 0,
+    cache_creation_tokens integer NOT NULL DEFAULT 0,
+    cache_read_tokens integer NOT NULL DEFAULT 0,
+    cost_usd_micros bigint NOT NULL DEFAULT 0,
+    twilio_call_sid text,
+    occurred_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`CREATE INDEX IF NOT EXISTS sentinel_token_usage_agent_at_idx ON sentinel_token_usage (agent_id, occurred_at DESC)`;
 }
 
 // Migrate any legacy plaintext passwords into the encrypted column, then blank
@@ -111,6 +129,11 @@ export async function ensureSeed(sql: Sql) {
               ON CONFLICT (email) DO NOTHING`;
   }
   await migratePlaintextPasswords(sql);
+  // Backfill an ingest API key for any agent missing one.
+  const noKey = (await sql`SELECT id FROM sentinel_agent WHERE ingest_key IS NULL OR ingest_key = ''`) as { id: string }[];
+  for (const r of noKey) {
+    await sql`UPDATE sentinel_agent SET ingest_key = ${"ingest_" + crypto.randomBytes(20).toString("hex")} WHERE id = ${r.id}`;
+  }
   // Give the starter Tree House client one agent (id "kavya" matches the
   // portal's existing detail pages) so its experience is unchanged.
   const th = (await sql`SELECT id FROM sentinel_client WHERE email = ${"hello@treehousechalets.com"} LIMIT 1`) as { id: string }[];
@@ -215,6 +238,7 @@ export type DbAgent = {
   type: string; // 'voice' | 'whatsapp' | 'both'
   description: string | null;
   twilio_subaccount_sid: string | null;
+  ingest_key: string | null;
   created_at: string;
 };
 
@@ -273,10 +297,11 @@ export async function createAgent(input: {
   const channels = input.channels || channelsForType(type);
   const count = (await sql`SELECT count(*)::int AS n FROM sentinel_agent WHERE client_id = ${input.clientId}`) as { n: number }[];
   const gradient = AGENT_GRADIENTS[(count[0]?.n ?? 0) % AGENT_GRADIENTS.length];
+  const ingestKey = "ingest_" + crypto.randomBytes(20).toString("hex");
   const rows = (await sql`
-    INSERT INTO sentinel_agent (id, client_id, name, role, status, channels, gradient, initial, type, description, twilio_subaccount_sid)
+    INSERT INTO sentinel_agent (id, client_id, name, role, status, channels, gradient, initial, type, description, twilio_subaccount_sid, ingest_key)
     VALUES (${id}, ${input.clientId}, ${input.name}, ${input.role || "Voice Agent"}, ${"live"},
-            ${channels}, ${gradient}, ${initial}, ${type}, ${input.description ?? null}, ${input.twilioSubaccountSid?.trim() || null})
+            ${channels}, ${gradient}, ${initial}, ${type}, ${input.description ?? null}, ${input.twilioSubaccountSid?.trim() || null}, ${ingestKey})
     RETURNING *`) as DbAgent[];
   await sql`INSERT INTO sentinel_kb (agent_id, client_id, content) VALUES (${id}, ${input.clientId}, ${""}) ON CONFLICT (agent_id) DO NOTHING`;
   await audit(sql, "agent.create", "agent", input.name, "Created agent " + input.name);
@@ -344,6 +369,84 @@ export async function getDbSnapshot(): Promise<DbSnapshot> {
     sql`SELECT admin_name, action, type, target, summary, occurred_at FROM sentinel_audit ORDER BY occurred_at DESC LIMIT 100`,
   ]);
   return { clients, agents, admins, audit } as DbSnapshot;
+}
+
+export async function regenerateAgentIngestKey(agentId: string): Promise<string | null> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const key = "ingest_" + crypto.randomBytes(20).toString("hex");
+  const rows = (await sql`UPDATE sentinel_agent SET ingest_key = ${key} WHERE id = ${agentId} RETURNING name`) as { name: string }[];
+  if (!rows[0]) return null;
+  await audit(sql, "agent.ingest_key.rotate", "agent", rows[0].name, "Rotated ingest API key for " + rows[0].name);
+  return key;
+}
+
+export async function findAgentByIngestKey(key: string): Promise<DbAgent | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  await ensureSeed(sql);
+  const rows = (await sql`SELECT * FROM sentinel_agent WHERE ingest_key = ${key} LIMIT 1`) as DbAgent[];
+  return rows[0] ?? null;
+}
+
+export type DbTokenUsage = {
+  id: string;
+  agent_id: string;
+  client_id: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  cost_usd_micros: number;
+  twilio_call_sid: string | null;
+  occurred_at: string;
+};
+
+export async function recordTokenUsage(input: {
+  id: string;
+  agentId: string;
+  clientId: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+  costMicros: number;
+  twilioCallSid?: string | null;
+  occurredAt?: Date | null;
+}): Promise<{ inserted: boolean }> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const rows = (await sql`
+    INSERT INTO sentinel_token_usage
+      (id, agent_id, client_id, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cost_usd_micros, twilio_call_sid, occurred_at)
+    VALUES (${input.id}, ${input.agentId}, ${input.clientId}, ${input.model},
+            ${input.inputTokens | 0}, ${input.outputTokens | 0},
+            ${(input.cacheCreationTokens || 0) | 0}, ${(input.cacheReadTokens || 0) | 0},
+            ${input.costMicros}, ${input.twilioCallSid ?? null}, ${input.occurredAt ? input.occurredAt.toISOString() : new Date().toISOString()})
+    ON CONFLICT (id) DO NOTHING
+    RETURNING id`) as { id: string }[];
+  return { inserted: rows.length > 0 };
+}
+
+export async function listTokenUsage(agentId: string, opts: { startIso?: string; endIso?: string; limit?: number } = {}): Promise<DbTokenUsage[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureSeed(sql);
+  const limit = Math.min(opts.limit ?? 1000, 5000);
+  if (opts.startIso && opts.endIso) {
+    return (await sql`
+      SELECT * FROM sentinel_token_usage
+      WHERE agent_id = ${agentId} AND occurred_at >= ${opts.startIso} AND occurred_at < ${opts.endIso}
+      ORDER BY occurred_at DESC LIMIT ${limit}`) as DbTokenUsage[];
+  }
+  return (await sql`
+    SELECT * FROM sentinel_token_usage
+    WHERE agent_id = ${agentId}
+    ORDER BY occurred_at DESC LIMIT ${limit}`) as DbTokenUsage[];
 }
 
 export async function getAgentKb(agentId: string): Promise<string> {

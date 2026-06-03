@@ -957,6 +957,12 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [billRange, setBillRange] = useState("total");
   const [billCStart, setBillCStart] = useState("");
   const [billCEnd, setBillCEnd] = useState("");
+  const [tok, setTok] = useState(null);
+  const [tokA, setTokA] = useState(null);
+  const [tokLoading, setTokLoading] = useState(true);
+  const [tokALoading, setTokALoading] = useState(false);
+  const [ingestKey, setIngestKey] = useState(null);
+  const [ingestRevealed, setIngestRevealed] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -989,8 +995,49 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       .then((d) => { if (active) setBill(d || { configured: false }); })
       .catch(() => { if (active) setBill({ configured: false }); })
       .finally(() => { if (active) setBillLoading(false); });
+    setTokLoading(true);
+    fetch(`/api/admin/agents/${agentId}/tokens?range=total`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setTok(d || { configured: false }); })
+      .catch(() => { if (active) setTok({ configured: false }); })
+      .finally(() => { if (active) setTokLoading(false); });
+    setIngestKey(null); setIngestRevealed(false);
     return () => { active = false; };
   }, [agentId]);
+
+  useEffect(() => {
+    if (tab !== "analytics") return;
+    if (range === "custom" && (!cStart || !cEnd)) return;
+    let active = true;
+    setTokALoading(true);
+    const qs = range === "custom" ? `range=custom&start=${cStart}&end=${cEnd}` : `range=${range}`;
+    fetch(`/api/admin/agents/${agentId}/tokens?${qs}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setTokA(d || { configured: false }); })
+      .catch(() => { if (active) setTokA({ configured: false }); })
+      .finally(() => { if (active) setTokALoading(false); });
+    return () => { active = false; };
+  }, [tab, range, cStart, cEnd, agentId]);
+
+  const revealIngestKey = async () => {
+    try {
+      const r = await fetch(`/api/admin/agents/${agentId}/ingest-key`, { credentials: "include" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      setIngestKey(d.ingestKey);
+      setIngestRevealed(true);
+    } catch (e) { toast(e.message, "error"); }
+  };
+  const regenIngestKey = async () => {
+    try {
+      const r = await fetch(`/api/admin/agents/${agentId}/ingest-key`, { method: "POST", credentials: "include" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      setIngestKey(d.ingestKey);
+      setIngestRevealed(true);
+      toast("New ingest key generated — update your backend", "success");
+    } catch (e) { toast(e.message, "error"); }
+  };
 
   useEffect(() => {
     if (tab !== "billing") return;
@@ -1124,6 +1171,38 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               </div>
             )}
           </div>
+
+          {/* AI token usage summary (Anthropic / Claude) */}
+          <div className="panel" style={{ padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>AI token usage <span style={{ color: "var(--text-3)", fontWeight: 400, fontSize: 11.5 }}>· Anthropic / Claude</span></div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>All-time tokens consumed by this agent (posted by your backend after each Claude call)</div>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => setTab("analytics")}>Open analytics →</button>
+            </div>
+            {tokLoading && <div style={{ fontSize: 12, color: "var(--text-3)" }}>Loading token usage…</div>}
+            {!tokLoading && tok && (tok.kpis?.records ?? 0) === 0 && (
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                No token usage recorded yet. Hook up your backend to <span className="mono">POST /api/agents/{agent.id}/usage</span> — there's a sample in <b>Settings → Ingest API key</b>.
+              </div>
+            )}
+            {!tokLoading && tok && tok.kpis && tok.kpis.records > 0 && (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                  <MiniStat label="Total tokens" value={(tok.kpis.totalTokens || 0).toLocaleString()} />
+                  <MiniStat label="Input" value={(tok.kpis.inputTokens || 0).toLocaleString()} />
+                  <MiniStat label="Output" value={(tok.kpis.outputTokens || 0).toLocaleString()} />
+                  <MiniStat label="Total cost" value={"$ " + (tok.kpis.costUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} />
+                </div>
+                {tok.byModel && tok.byModel.length > 0 && (
+                  <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--text-3)" }}>
+                    Top models: {tok.byModel.slice(0, 3).map((m) => `${m.model} (${m.calls} calls · $${m.costUsd.toFixed(4)})`).join(" · ")}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -1209,6 +1288,71 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </div>
                 {twA.calls.length === 0 && <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>No calls in this period.</div>}
               </div>
+            </>
+          )}
+
+          {/* AI token analytics (Anthropic) — uses the same range selector */}
+          <div style={{ height: 1, background: "var(--border)", margin: "10px 0" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>AI token usage</div>
+            <span style={{ fontSize: 11, color: "var(--text-3)" }}>· Anthropic / Claude · same range as above</span>
+          </div>
+          {tokALoading && <div className="panel" style={{ padding: 16, textAlign: "center", color: "var(--text-3)" }}>Loading token usage…</div>}
+          {!tokALoading && tokA && tokA.kpis && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+                <MiniStat label="Records" value={String(tokA.kpis.records)} />
+                <MiniStat label="Input tokens" value={(tokA.kpis.inputTokens || 0).toLocaleString()} />
+                <MiniStat label="Output tokens" value={(tokA.kpis.outputTokens || 0).toLocaleString()} />
+                <MiniStat label="Total tokens" value={(tokA.kpis.totalTokens || 0).toLocaleString()} />
+                <MiniStat label="Cost (USD)" value={"$ " + (tokA.kpis.costUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 12 }}>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{tokA.seriesLabel || "Cost by day ($)"}</div>
+                  <AgentBars data={tokA.series} />
+                </div>
+                <div className="panel" style={{ padding: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>By model</div>
+                  {(tokA.byModel || []).length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--text-3)" }}>No token usage in this period.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {tokA.byModel.map((m) => (
+                        <div key={m.model}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, fontFamily: "var(--ff-mono)", marginBottom: 4 }}>
+                            <span style={{ color: "var(--text-1)" }}>{m.model}</span>
+                            <span style={{ color: "var(--text-0)" }}>${m.costUsd.toFixed(4)}</span>
+                          </div>
+                          <div style={{ fontSize: 10.5, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{m.calls} calls · {(m.input + m.output).toLocaleString()} tokens</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {tokA.recent && tokA.recent.length > 0 && (
+                <div className="panel">
+                  <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 12.5, fontWeight: 600, color: "var(--text-0)" }}>Recent LLM calls</div>
+                  <div style={{ maxHeight: 360, overflowY: "auto" }}>
+                    <table className="data-table">
+                      <thead><tr><th>When</th><th>Model</th><th style={{ textAlign: "right" }}>Input</th><th style={{ textAlign: "right" }}>Output</th><th style={{ textAlign: "right" }}>Cost</th><th>Call SID</th></tr></thead>
+                      <tbody>
+                        {tokA.recent.map((r) => (
+                          <tr key={r.id}>
+                            <td style={{ color: "var(--text-2)" }}>{r.at ? new Date(r.at).toISOString().slice(0, 19).replace("T", " ") : "—"}</td>
+                            <td style={{ color: "var(--text-1)", fontFamily: "var(--ff-mono)", fontSize: 11 }}>{r.model}</td>
+                            <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{r.input.toLocaleString()}</td>
+                            <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{r.output.toLocaleString()}</td>
+                            <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>${r.costUsd.toFixed(4)}</td>
+                            <td style={{ color: "var(--text-3)", fontFamily: "var(--ff-mono)", fontSize: 10.5 }}>{r.twilio_call_sid || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1347,6 +1491,37 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           </Field>
           <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Calls & analytics for this agent are read from this Twilio subaccount.</div>
           <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} disabled={saving} onClick={saveSettings}>{saving ? "Saving…" : "Save changes"}</button>
+
+          {/* Ingest API key for posting Claude/Anthropic token usage */}
+          <div style={{ height: 1, background: "var(--border)", margin: "20px 0 16px" }} />
+          <Field label="Token-usage ingest API key (Anthropic / Claude)">
+            <div style={{ display: "flex", gap: 8 }}>
+              <input className="input mono" readOnly value={ingestRevealed ? (ingestKey || "") : "••••••••••••••••••••••••••••••••••••••••"} style={{ flex: 1 }} />
+              <button type="button" className="btn btn-secondary btn-sm" onClick={revealIngestKey}>Reveal</button>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={!ingestRevealed || !ingestKey} onClick={() => { if (ingestKey) { navigator.clipboard && navigator.clipboard.writeText(ingestKey); toast("Key copied", "success"); } }}>Copy</button>
+              <button type="button" className="btn btn-amber btn-sm" onClick={regenIngestKey}>Regenerate</button>
+            </div>
+          </Field>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Your backend POSTs each Claude API call's usage here. Treat this key as a secret. Regenerating invalidates the old one.</div>
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Example: POST after each Anthropic call</div>
+            <pre style={{ whiteSpace: "pre-wrap", fontFamily: "var(--ff-mono)", fontSize: 11.5, background: "rgba(0,0,0,0.3)", padding: 12, borderRadius: 8, color: "var(--text-1)", lineHeight: 1.55, margin: 0 }}>{`curl -X POST https://client-portal-pi-fawn.vercel.app/api/agents/${agent.id}/usage \\
+  -H "x-api-key: ${ingestRevealed && ingestKey ? ingestKey : "<your-ingest-key>"}" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "input_tokens":  1234,
+    "output_tokens": 567,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "twilio_call_sid": "CAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "request_id": "msg_xxxxxxxxxxxxxxxxxxxxxx"
+  }'`}</pre>
+            <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>
+              <span className="mono">model</span> = the Claude model you called. <span className="mono">input_tokens</span>/<span className="mono">output_tokens</span> come from the Anthropic response's <span className="mono">usage</span> object. <span className="mono">request_id</span> (Anthropic's <span className="mono">id</span>) makes the call idempotent.
+            </div>
+          </div>
         </div>
       )}
 
