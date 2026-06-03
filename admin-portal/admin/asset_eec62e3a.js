@@ -950,6 +950,13 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [range, setRange] = useState("total");
   const [cStart, setCStart] = useState("");
   const [cEnd, setCEnd] = useState("");
+  const [bill, setBill] = useState(null);
+  const [billA, setBillA] = useState(null);
+  const [billLoading, setBillLoading] = useState(true);
+  const [billALoading, setBillALoading] = useState(false);
+  const [billRange, setBillRange] = useState("total");
+  const [billCStart, setBillCStart] = useState("");
+  const [billCEnd, setBillCEnd] = useState("");
   const toast = useToast();
 
   useEffect(() => {
@@ -976,8 +983,28 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       .then((d) => { if (active) setTw(d || { configured: false }); })
       .catch(() => { if (active) setTw({ configured: false }); })
       .finally(() => { if (active) setTwLoading(false); });
+    setBillLoading(true);
+    fetch(`/api/admin/agents/${agentId}/billing?range=total`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setBill(d || { configured: false }); })
+      .catch(() => { if (active) setBill({ configured: false }); })
+      .finally(() => { if (active) setBillLoading(false); });
     return () => { active = false; };
   }, [agentId]);
+
+  useEffect(() => {
+    if (tab !== "billing") return;
+    if (billRange === "custom" && (!billCStart || !billCEnd)) return;
+    let active = true;
+    setBillALoading(true);
+    const qs = billRange === "custom" ? `range=custom&start=${billCStart}&end=${billCEnd}` : `range=${billRange}`;
+    fetch(`/api/admin/agents/${agentId}/billing?${qs}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setBillA(d || { configured: false }); })
+      .catch(() => { if (active) setBillA({ configured: false }); })
+      .finally(() => { if (active) setBillALoading(false); });
+    return () => { active = false; };
+  }, [tab, billRange, billCStart, billCEnd, agentId]);
 
   useEffect(() => {
     if (tab !== "analytics") return;
@@ -1031,7 +1058,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       </div>
 
       <div className="tabs">
-        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["analytics", "Analytics"], ["settings", "Settings"]].map(([k, l]) => (
+        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["analytics", "Analytics"], ["billing", "Billing"], ["settings", "Settings"], ["commissioner", "Commissioner"]].map(([k, l]) => (
           <div key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -1073,6 +1100,29 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               <DataRow label="Status" value={agent.status} />
               <DataRow label="Twilio subaccount" value={agent.twilio_subaccount_sid || "—"} />
             </div>
+          </div>
+
+          {/* Billing summary */}
+          <div className="panel" style={{ padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>Billing summary</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Rate <span className="mono">{bill?.rate?.currency || "Rs."} {(bill?.rate?.perMinute ?? 3).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> / billable minute · per-call rounded up</div>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => setTab("billing")}>Open billing →</button>
+            </div>
+            {billLoading && <div style={{ fontSize: 12, color: "var(--text-3)" }}>Loading billing…</div>}
+            {!billLoading && bill && !bill.configured && (
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>Add a Twilio subaccount SID in Settings to see billing.</div>
+            )}
+            {!billLoading && bill && bill.configured && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                <MiniStat label="Total cost" value={(bill.rate.currency + " ") + (bill.kpis.totalCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+                <MiniStat label="Billable minutes" value={String(bill.kpis.billableMinutes)} />
+                <MiniStat label="Billable calls" value={String(bill.kpis.billableCalls)} />
+                <MiniStat label="Avg / call" value={(bill.rate.currency + " ") + (bill.kpis.avgCallCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1164,6 +1214,125 @@ const AgentConfigPage = ({ agentId, onBack }) => {
         </div>
       )}
 
+      {tab === "billing" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Header: range selector + report download */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
+              {[["total", "Total"], ["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
+                <button key={k} className={"btn btn-xs " + (billRange === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: billRange === k ? "var(--border-strong)" : "transparent" }} onClick={() => setBillRange(k)}>{l}</button>
+              ))}
+            </div>
+            {billRange === "custom" && (
+              <>
+                <input type="date" className="input" style={{ width: 150 }} value={billCStart} onChange={(e) => setBillCStart(e.target.value)} />
+                <span style={{ color: "var(--text-3)", fontSize: 12 }}>→</span>
+                <input type="date" className="input" style={{ width: 150 }} value={billCEnd} onChange={(e) => setBillCEnd(e.target.value)} />
+              </>
+            )}
+            <div style={{ flex: 1 }} />
+            <a
+              className="btn btn-primary btn-sm"
+              href={(() => {
+                const qs = billRange === "custom" && billCStart && billCEnd ? `range=custom&start=${billCStart}&end=${billCEnd}` : `range=${billRange}`;
+                return `/admin/agents/${agentId}/billing-report?${qs}`;
+              })()}
+              target="_blank"
+              rel="noopener"
+              style={{ textDecoration: "none" }}
+            >
+              <Icon name="download" size={12} /> Download PDF
+            </a>
+          </div>
+
+          {billALoading && <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading billing…</div>}
+          {!billALoading && billRange === "custom" && (!billCStart || !billCEnd) && (
+            <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-3)" }}>Pick a start and end date.</div>
+          )}
+          {!billALoading && billA && !billA.configured && (
+            <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-2)" }}>
+              <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected for this agent.</span> Add its subaccount SID in <b>Settings</b>.
+            </div>
+          )}
+          {!billALoading && billA && billA.configured && (
+            <>
+              {/* Period & rate */}
+              <div className="panel" style={{ padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Period</div>
+                    <div className="mono" style={{ fontSize: 13, color: "var(--text-0)", marginTop: 2 }}>
+                      {billA.range === "total" ? "All-time" : (billA.start + " → " + billA.end)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Rate</div>
+                    <div className="mono" style={{ fontSize: 13, color: "var(--text-0)", marginTop: 2 }}>{billA.rate.currency} {billA.rate.perMinute.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / billable minute</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Subaccount</div>
+                    <div className="mono" style={{ fontSize: 13, color: "var(--text-0)", marginTop: 2 }}>{(billA.subaccount || "").slice(0, 14)}…</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Billing method</div>
+                    <div style={{ fontSize: 12.5, color: "var(--text-1)", marginTop: 2 }}>Per call, rounded up to next minute</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* KPIs */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                <MiniStat label="Total cost" value={billA.rate.currency + " " + (billA.kpis.totalCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+                <MiniStat label="Billable minutes" value={String(billA.kpis.billableMinutes)} />
+                <MiniStat label="Billable calls" value={String(billA.kpis.billableCalls) + " / " + String(billA.kpis.calls)} />
+                <MiniStat label="Avg / billable call" value={billA.rate.currency + " " + (billA.kpis.avgCallCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+              </div>
+
+              {/* Cost trend */}
+              <div className="panel" style={{ padding: 14 }}>
+                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{billA.seriesLabel}</div>
+                <AgentBars data={billA.series} />
+              </div>
+
+              {/* Line items */}
+              <div className="panel">
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-0)" }}>Call-level billing</span>
+                    <span style={{ fontSize: 11.5, color: "var(--text-3)", marginLeft: 10 }}>{billA.lineItems.length} line items</span>
+                  </div>
+                  <span className="mono" style={{ fontSize: 11.5, color: "var(--text-0)" }}>Total {billA.rate.currency} {(billA.kpis.totalCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ maxHeight: 480, overflowY: "auto" }}>
+                  <table className="data-table">
+                    <thead><tr><th>#</th><th>Call SID</th><th>When</th><th>Direction</th><th>Outcome</th><th style={{ textAlign: "right" }}>Duration</th><th style={{ textAlign: "right" }}>Bill. min</th><th style={{ textAlign: "right" }}>Cost</th></tr></thead>
+                    <tbody>
+                      {billA.lineItems.map((l, i) => (
+                        <tr key={l.id}>
+                          <td style={{ color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{i + 1}</td>
+                          <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)", fontSize: 11 }}>{l.id}</td>
+                          <td style={{ color: "var(--text-2)" }}>{l.startedAt}</td>
+                          <td style={{ color: "var(--text-2)" }}>{l.direction}</td>
+                          <td style={{ color: "var(--text-1)" }}>{l.outcome}</td>
+                          <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{l.duration}</td>
+                          <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{l.billableMinutes}</td>
+                          <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{billA.rate.currency} {(l.cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {billA.lineItems.length === 0 && <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>No billable calls in this period.</div>}
+              </div>
+
+              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                Billing is computed from Twilio call records on subaccount <span className="mono">{billA.subaccount}</span>. Each call's duration is rounded up to the next whole minute, then multiplied by the per-minute rate. Source of truth: Twilio Calls API.
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {tab === "settings" && (
         <div className="panel" style={{ padding: 16, maxWidth: 620 }}>
           <Field label="Agent name"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
@@ -1179,6 +1348,10 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Calls & analytics for this agent are read from this Twilio subaccount.</div>
           <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} disabled={saving} onClick={saveSettings}>{saving ? "Saving…" : "Save changes"}</button>
         </div>
+      )}
+
+      {tab === "commissioner" && (
+        <EmptyState icon="users" title="Commissioner" description="Coming soon." />
       )}
     </div>
   );
