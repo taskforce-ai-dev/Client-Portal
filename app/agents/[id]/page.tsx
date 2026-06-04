@@ -10,7 +10,8 @@ import TwilioNotice from "@/components/TwilioNotice";
 import { Phone } from "lucide-react";
 import { workspace } from "@/lib/data";
 import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient } from "@/lib/adminDb";
+import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
+import CallLogTable, { CallRow } from "@/components/CallLogTable";
 import {
   bucketCallsByHour,
   bucketOutcomes,
@@ -41,12 +42,15 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
 
   const sub = agentDb.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
   const configuredAuth = isTwilioAuthConfigured() && !!sub;
-  const [{ calls, configured, error }, usage] = await Promise.all([
+  const [{ calls, configured, error }, usage, summariesRaw] = await Promise.all([
     configuredAuth
       ? getAllCallsForSubaccount(sub, { max: 1000 })
       : Promise.resolve({ calls: [] as any[], configured: false, error: undefined as string | undefined }),
     configuredAuth ? getUsageForSubaccount(sub) : Promise.resolve({ configured: false, totalCalls: 0, totalMinutes: 0, totalPrice: 0, error: undefined as string | undefined }),
+    listCallSummaries(agentDb.id, { limit: 100 }),
   ]);
+  const summaryByCall = new Map<string, typeof summariesRaw[number]>();
+  for (const s of summariesRaw) if (s.twilio_call_sid) summaryByCall.set(s.twilio_call_sid, s);
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const today = calls.filter((c) => {
@@ -110,8 +114,8 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
         <OutcomeChart data={outcomes} />
       </div>
 
-      <div className="card p-5">
-        <div className="flex items-center justify-between mb-4">
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
           <div className="font-semibold text-white">Recent calls</div>
           <Link
             href={`/agents/${agent.id}/calls`}
@@ -120,50 +124,19 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
             View all →
           </Link>
         </div>
-        {recentCalls.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-500">
-            {configured ? "No calls yet." : "Connect Twilio to see calls."}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left stat-label border-b border-white/5">
-                  <th className="py-2 pr-3 font-medium">Caller</th>
-                  <th className="py-2 pr-3 font-medium">Number</th>
-                  <th className="py-2 pr-3 font-medium">Started</th>
-                  <th className="py-2 pr-3 font-medium">Duration</th>
-                  <th className="py-2 pr-3 font-medium">Outcome</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentCalls.map((c) => (
-                  <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                    <td className="py-3 pr-3 font-medium text-slate-100">{c.caller}</td>
-                    <td className="py-3 pr-3 text-slate-400 font-mono text-xs">{c.number}</td>
-                    <td className="py-3 pr-3 text-slate-500">{c.startedAt}</td>
-                    <td className="py-3 pr-3 text-slate-300">{c.duration}</td>
-                    <td className="py-3 pr-3">
-                      <OutcomePill outcome={c.outcome} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <CallLogTable
+          calls={recentCalls.map<CallRow>((c) => ({
+            id: c.id,
+            caller: c.caller,
+            direction: c.direction,
+            startedAt: c.startedAt,
+            duration: c.duration,
+            outcome: c.outcome,
+            summary: summaryByCall.get(c.id) || null,
+          }))}
+          emptyMessage={configured ? "No calls yet." : "Connect Twilio to see calls."}
+        />
       </div>
     </div>
   );
-}
-
-function OutcomePill({ outcome }: { outcome: string }) {
-  const map: Record<string, string> = {
-    Booked: "pill-emerald",
-    "Follow-up": "pill-accent",
-    Voicemail: "pill-amber",
-    "No answer": "pill-slate",
-    Cancelled: "pill-rose",
-  };
-  return <span className={map[outcome] ?? "pill-slate"}>{outcome}</span>;
 }

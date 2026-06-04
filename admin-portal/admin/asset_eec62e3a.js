@@ -1264,6 +1264,42 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             )}
           </div>
 
+          {/* Recent calls (last 10, with View transcript) */}
+          <div className="panel">
+            <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>Recent calls</span>
+              <button className="btn btn-ghost btn-xs" onClick={() => setTab("callLog")}>View all →</button>
+            </div>
+            {tw && tw.configured && (tw.calls || []).length > 0 ? (
+              <table className="data-table">
+                <thead><tr><th>Caller</th><th>When</th><th>Direction</th><th>Duration</th><th>Outcome</th><th style={{ textAlign: "right" }}>Transcript</th></tr></thead>
+                <tbody>
+                  {(tw.calls || []).slice(0, 10).map((c) => {
+                    const sum = (convs || []).find((s) => s.twilio_call_sid === c.id);
+                    return (
+                      <tr key={c.id}>
+                        <td style={{ color: "var(--text-0)" }}>{sum?.caller_name || c.caller}</td>
+                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", fontSize: 11.5 }}>{c.startedAt}</td>
+                        <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
+                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
+                        <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {sum ? (
+                            <button className="btn btn-ghost btn-xs" style={{ color: "var(--red-300)" }} onClick={() => setTranscriptModal(sum)}>View transcript</button>
+                          ) : (
+                            <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>{tw && tw.configured ? "No calls yet." : "Twilio not connected for this agent."}</div>
+            )}
+          </div>
+
         </div>
       )}
 
@@ -1327,26 +1363,8 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   <AgentOutcomes data={twA.outcomes} />
                 </div>
               </div>
-              <div className="panel">
-                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 12.5, fontWeight: 600, color: "var(--text-0)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>Last 10 calls</span>
-                  <button className="btn btn-ghost btn-xs" onClick={() => setTab("callLog")}>View all in Call Log →</button>
-                </div>
-                <table className="data-table">
-                  <thead><tr><th>Caller</th><th>Direction</th><th>When</th><th>Duration</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {twA.calls.slice(0, 10).map((c) => (
-                      <tr key={c.id}>
-                        <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>{c.caller}</td>
-                        <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
-                        <td style={{ color: "var(--text-2)" }}>{c.startedAt}</td>
-                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
-                        <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {twA.calls.length === 0 && <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>No calls in this period.</div>}
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", textAlign: "right" }}>
+                Looking for the call list? It now lives in <button className="btn btn-ghost btn-xs" style={{ color: "var(--red-300)" }} onClick={() => setTab("callLog")}>Call Log →</button>
               </div>
             </>
           )}
@@ -1480,62 +1498,62 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               </table>
             )}
           </div>
+        </div>
+      )}
 
-          {/* Transcript modal */}
-          {transcriptModal && (
-            <div className="drawer-overlay" style={{ zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setTranscriptModal(null)}>
-              <div className="panel" style={{ maxWidth: 820, width: "92vw", maxHeight: "85vh", padding: 0, display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-                <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
-                      {transcriptModal.caller_name || "Caller"}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2, fontFamily: "var(--ff-mono)" }}>
-                      {transcriptModal.caller_phone || ""}
-                      {transcriptModal.mentioned_dates ? ` · ${transcriptModal.mentioned_dates}` : ""}
-                      {transcriptModal.sentiment ? ` · ${transcriptModal.sentiment}` : ""}
-                    </div>
-                  </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setTranscriptModal(null)}>
-                    <Icon name="x" size={14} />
-                  </button>
+      {/* Transcript modal — rendered at component root so it works from any tab */}
+      {transcriptModal && (
+        <div className="drawer-overlay" style={{ zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setTranscriptModal(null)}>
+          <div className="panel" style={{ maxWidth: 820, width: "92vw", maxHeight: "85vh", padding: 0, display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
+                  {transcriptModal.caller_name || "Caller"}
                 </div>
-                <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-                  {transcriptModal.transcript ? (
-                    <>
-                      <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Transcript</div>
-                      <pre style={{ padding: 12, background: "rgba(0,0,0,0.25)", borderRadius: 6, whiteSpace: "pre-wrap", fontFamily: "var(--ff-mono)", fontSize: 12, lineHeight: 1.6, marginTop: 0, marginBottom: 16, color: "var(--text-1)" }}>
-                        {transcriptModal.transcript}
-                      </pre>
-                    </>
-                  ) : (
-                    <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 12px", borderRadius: 6, background: "rgba(0,0,0,0.18)", marginBottom: 16 }}>
-                      No raw transcript posted — only the summary below.
-                    </div>
-                  )}
-                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Summary</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>
-                    {transcriptModal.summary}
-                  </div>
-                  {transcriptModal.key_points && (
-                    <>
-                      <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Key points</div>
-                      <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>{transcriptModal.key_points}</div>
-                    </>
-                  )}
-                  {transcriptModal.action_items && (
-                    <>
-                      <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Action items</div>
-                      <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>{transcriptModal.action_items}</div>
-                    </>
-                  )}
-                  {transcriptModal.topics && (
-                    <div style={{ fontSize: 11, color: "var(--text-3)" }}>Topics: {transcriptModal.topics}</div>
-                  )}
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2, fontFamily: "var(--ff-mono)" }}>
+                  {transcriptModal.caller_phone || ""}
+                  {transcriptModal.mentioned_dates ? ` · ${transcriptModal.mentioned_dates}` : ""}
+                  {transcriptModal.sentiment ? ` · ${transcriptModal.sentiment}` : ""}
                 </div>
               </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setTranscriptModal(null)}>
+                <Icon name="x" size={14} />
+              </button>
             </div>
-          )}
+            <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
+              {transcriptModal.transcript ? (
+                <>
+                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Transcript</div>
+                  <pre style={{ padding: 12, background: "rgba(0,0,0,0.25)", borderRadius: 6, whiteSpace: "pre-wrap", fontFamily: "var(--ff-mono)", fontSize: 12, lineHeight: 1.6, marginTop: 0, marginBottom: 16, color: "var(--text-1)" }}>
+                    {transcriptModal.transcript}
+                  </pre>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 12px", borderRadius: 6, background: "rgba(0,0,0,0.18)", marginBottom: 16 }}>
+                  No raw transcript posted — only the summary below.
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Summary</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>
+                {transcriptModal.summary}
+              </div>
+              {transcriptModal.key_points && (
+                <>
+                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Key points</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>{transcriptModal.key_points}</div>
+                </>
+              )}
+              {transcriptModal.action_items && (
+                <>
+                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Action items</div>
+                  <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>{transcriptModal.action_items}</div>
+                </>
+              )}
+              {transcriptModal.topics && (
+                <div style={{ fontSize: 11, color: "var(--text-3)" }}>Topics: {transcriptModal.topics}</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
