@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { FileText, X } from "lucide-react";
 
 export type CallSummary = {
@@ -51,6 +52,10 @@ export default function CallLogTable({
   maxHeight?: number;
 }) {
   const [modal, setModal] = useState<CallSummary | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Mark when we're hydrated on the client (so createPortal can run safely).
+  useEffect(() => { setMounted(true); }, []);
 
   // Esc-to-close + body scroll lock when modal is open
   useEffect(() => {
@@ -109,9 +114,10 @@ export default function CallLogTable({
         </table>
       </div>
 
-      {modal && (
+      {mounted && modal && createPortal(
         <div
           className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 p-3"
+          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={() => setModal(null)}
         >
           <div
@@ -177,7 +183,8 @@ export default function CallLogTable({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
