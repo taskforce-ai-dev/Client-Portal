@@ -1145,7 +1145,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               <DataRow label="Role / persona" value={agent.role || "—"} />
               <DataRow label="Type" value={agent.type} />
               <DataRow label="Channels" value={agent.channels} />
-              <DataRow label="Status" value={agent.status} />
+              <DataRow label="Status" value={<StatusDot status={agent.status} />} />
               <DataRow label="Twilio subaccount" value={agent.twilio_subaccount_sid || "—"} />
             </div>
           </div>
