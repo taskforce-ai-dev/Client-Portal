@@ -1150,6 +1150,14 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)", marginBottom: 8 }}>About this agent</div>
             <div style={{ fontSize: 12.5, color: "var(--text-2)", whiteSpace: "pre-wrap" }}>{agent.description || "No description yet — add one in Settings."}</div>
             <div style={{ marginTop: 14 }}>
+              <DataRow label="Agent ID" value={
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span className="mono">{agent.id}</span>
+                  <button className="btn btn-ghost btn-xs" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(agent.id); toast("Agent ID copied", "success"); }}>
+                    <Icon name="copy" size={11} />
+                  </button>
+                </span>
+              } />
               <DataRow label="Role / persona" value={agent.role || "—"} />
               <DataRow label="Type" value={agent.type} />
               <DataRow label="Channels" value={agent.channels} />
