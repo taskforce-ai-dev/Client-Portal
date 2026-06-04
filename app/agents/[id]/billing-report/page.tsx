@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, findClientById } from "@/lib/adminDb";
 import { BillingRange, fmtDurSec, getBillingSnapshot, moneyLKR } from "@/lib/billing";
+import { formatTs } from "@/lib/twilio";
 import PrintOnReady from "@/components/PrintOnReady";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,7 @@ export default async function ClientBillingReport({
     customEnd: searchParams.end,
   });
 
-  const generatedAt = new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC";
+  const generatedAt = formatTs(new Date().toISOString());
   const periodLabel = snapshot.range === "total"
     ? "All-time"
     : `${snapshot.start} → ${snapshot.end}`;
@@ -141,7 +142,7 @@ export default async function ClientBillingReport({
                   <tr key={l.id}>
                     <td>{i + 1}</td>
                     <td className="mono">{l.id}</td>
-                    <td>{l.startedAtIso ? l.startedAtIso.slice(0, 19).replace("T", " ") : "—"}</td>
+                    <td>{formatTs(l.startedAtIso)}</td>
                     <td>{l.direction}</td>
                     <td>{l.outcome}</td>
                     <td className="r mono">{l.duration}</td>

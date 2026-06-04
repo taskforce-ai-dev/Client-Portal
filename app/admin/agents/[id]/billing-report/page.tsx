@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { isAuthed } from "@/lib/adminAuth";
 import { findAgentById, findClientById, isDbConfigured } from "@/lib/adminDb";
-import { getAllCallsForSubaccount, isTwilioAuthConfigured } from "@/lib/twilio";
+import { formatTs, getAllCallsForSubaccount, isTwilioAuthConfigured } from "@/lib/twilio";
 import PrintOnReady from "@/components/PrintOnReady";
 
 export const dynamic = "force-dynamic";
@@ -80,7 +80,7 @@ export default async function BillingReportPage({
   const totalCost = totalMin * RATE_PER_MINUTE;
   const billableCalls = lineItems.filter((l) => l.billableMinutes > 0).length;
 
-  const generatedAt = new Date().toISOString().slice(0, 19).replace("T", " ") + " UTC";
+  const generatedAt = formatTs(new Date().toISOString());
   const periodLabel = range === "total"
     ? "All-time"
     : `${ymd(start)} → ${ymd(endDate)}`;
@@ -149,7 +149,7 @@ export default async function BillingReportPage({
                   <tr key={l.id}>
                     <td>{i + 1}</td>
                     <td className="mono small">{l.id}</td>
-                    <td>{l.startedAtIso ? l.startedAtIso.slice(0, 19).replace("T", " ") : "—"}</td>
+                    <td>{formatTs(l.startedAtIso)}</td>
                     <td>{l.direction}</td>
                     <td>{l.outcome}</td>
                     <td className="r mono">{l.duration}</td>

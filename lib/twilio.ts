@@ -88,6 +88,18 @@ function relativeTime(iso: string) {
   return d.toLocaleDateString();
 }
 
+// Absolute "YYYY-MM-DD HH:MM:SS" formatted in the configured display
+// timezone (defaults to Asia/Colombo). Professional, unambiguous, no
+// relative wording. Used for call logs, billing, analytics.
+export function formatTs(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  const tz = process.env.DISPLAY_TIMEZONE || "Asia/Colombo";
+  // sv-SE locale produces ISO-like output ("YYYY-MM-DD HH:MM:SS") in any tz.
+  return d.toLocaleString("sv-SE", { timeZone: tz });
+}
+
 const STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
   "no-answer": "No answer",
@@ -124,7 +136,7 @@ function mapCall(c: TwilioCall): DisplayCall {
     id: c.sid,
     caller: other,
     number: other,
-    startedAt: relativeTime(c.start_time),
+    startedAt: formatTs(c.start_time),
     startedAtIso: c.start_time,
     duration: formatDuration(dur),
     durationSec: dur,

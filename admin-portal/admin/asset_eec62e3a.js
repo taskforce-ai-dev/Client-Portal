@@ -1243,7 +1243,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                           {(s.summary || "").split("\n")[0]}
                         </div>
                       </div>
-                      <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{s.occurred_at ? new Date(s.occurred_at).toISOString().slice(0, 16).replace("T", " ") : ""}</span>
+                      <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{s.occurred_at ? new Date(s.occurred_at).toLocaleString("sv-SE", { timeZone: "Asia/Colombo" }).slice(0, 16) : ""}</span>
                     </summary>
                     <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: "var(--text-1)", lineHeight: 1.55 }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
@@ -1424,7 +1424,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                       <tbody>
                         {tokA.recent.map((r) => (
                           <tr key={r.id}>
-                            <td style={{ color: "var(--text-2)" }}>{r.at ? new Date(r.at).toISOString().slice(0, 19).replace("T", " ") : "—"}</td>
+                            <td style={{ color: "var(--text-2)" }}>{r.at ? new Date(r.at).toLocaleString("sv-SE", { timeZone: "Asia/Colombo" }) : "—"}</td>
                             <td style={{ color: "var(--text-1)", fontFamily: "var(--ff-mono)", fontSize: 11 }}>{r.model}</td>
                             <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{r.input.toLocaleString()}</td>
                             <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{r.output.toLocaleString()}</td>
