@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileText, X } from "lucide-react";
 
 export type CallSummary = {
@@ -52,6 +52,16 @@ export default function CallLogTable({
 }) {
   const [modal, setModal] = useState<CallSummary | null>(null);
 
+  // Esc-to-close + body scroll lock when modal is open
+  useEffect(() => {
+    if (!modal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setModal(null); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [modal]);
+
   if (!calls.length) {
     return <div className="py-10 text-center text-sm text-slate-500">{emptyMessage}</div>;
   }
@@ -101,56 +111,70 @@ export default function CallLogTable({
 
       {modal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/75 p-3"
           onClick={() => setModal(null)}
         >
           <div
-            className="card max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+            className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-xl bg-[#0d1117] border border-white/10 shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
           >
-            <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
-              <div className="min-w-0">
-                <div className="text-base font-semibold text-white">{modal.caller_name || "Caller"}</div>
-                <div className="text-xs text-slate-400 mt-0.5 font-mono">
-                  {modal.caller_phone || ""}
-                  {modal.mentioned_dates ? ` · ${modal.mentioned_dates}` : ""}
-                  {modal.sentiment ? (
-                    <span className={"ml-2 " + (sentimentPill[modal.sentiment] || "pill-slate")}>{modal.sentiment}</span>
-                  ) : null}
+            {/* Sticky header */}
+            <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-white/10 flex-shrink-0 bg-white/[0.02]">
+              <div className="min-w-0 flex-1">
+                <div className="stat-label mb-1">Call transcript</div>
+                <div className="text-base sm:text-lg font-semibold text-white">{modal.caller_name || "Caller"}</div>
+                <div className="text-xs text-slate-400 mt-1 font-mono flex flex-wrap gap-x-3 gap-y-1">
+                  {modal.caller_phone && <span>{modal.caller_phone}</span>}
+                  {modal.mentioned_dates && <span>{modal.mentioned_dates}</span>}
+                  {modal.sentiment && (
+                    <span className={sentimentPill[modal.sentiment] || "pill-slate"}>{modal.sentiment}</span>
+                  )}
                 </div>
               </div>
-              <button onClick={() => setModal(null)} className="text-slate-400 hover:text-slate-200 p-1">
-                <X className="w-4 h-4" />
+              <button
+                onClick={() => setModal(null)}
+                aria-label="Close"
+                className="flex items-center gap-1.5 bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 rounded-md px-3 py-2 text-sm font-medium text-slate-100 flex-shrink-0 transition-colors"
+              >
+                <X className="w-4 h-4" /> Close
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+
+            {/* Scrollable body */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5" style={{ WebkitOverflowScrolling: "touch" }}>
               {modal.transcript ? (
                 <>
-                  <div className="stat-label mb-1.5">Transcript</div>
-                  <pre className="bg-black/25 rounded-md p-3 text-xs text-slate-200 font-mono whitespace-pre-wrap leading-relaxed mb-4">
+                  <div className="stat-label mb-2">Full transcript</div>
+                  <pre className="bg-black/30 border border-white/5 rounded-lg p-4 text-sm text-slate-200 font-mono whitespace-pre-wrap break-words leading-relaxed mb-5">
                     {modal.transcript}
                   </pre>
                 </>
               ) : (
-                <div className="text-xs text-slate-500 bg-black/15 rounded-md p-3 mb-4">
-                  No raw transcript posted — only the summary below.
+                <div className="text-sm text-slate-400 bg-black/20 border border-white/5 rounded-lg p-3 mb-5">
+                  No raw transcript was posted for this call — only the summary below.
                 </div>
               )}
-              <div className="stat-label mb-1.5">Summary</div>
-              <p className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed mb-4">{modal.summary}</p>
+              <div className="stat-label mb-2">Summary</div>
+              <p className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed mb-5">{modal.summary}</p>
               {modal.key_points && (
                 <>
-                  <div className="stat-label mb-1.5">Key points</div>
-                  <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed mb-4">{modal.key_points}</div>
+                  <div className="stat-label mb-2">Key points</div>
+                  <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed mb-5">{modal.key_points}</div>
                 </>
               )}
               {modal.action_items && (
                 <>
-                  <div className="stat-label mb-1.5">Action items</div>
-                  <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed mb-4">{modal.action_items}</div>
+                  <div className="stat-label mb-2">Action items</div>
+                  <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed mb-5">{modal.action_items}</div>
                 </>
               )}
-              {modal.topics && <div className="text-xs text-slate-500">Topics: {modal.topics}</div>}
+              {modal.topics && (
+                <div className="text-xs text-slate-400 bg-black/20 border border-white/5 rounded-md p-3">
+                  <span className="stat-label mr-2">Topics</span>{modal.topics}
+                </div>
+              )}
             </div>
           </div>
         </div>

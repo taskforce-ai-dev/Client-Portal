@@ -970,6 +970,14 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [callLogLoading, setCallLogLoading] = useState(false);
   const [clRange, setClRange] = useState("total");
   const [transcriptModal, setTranscriptModal] = useState(null);
+  useEffect(() => {
+    if (!transcriptModal) return;
+    const onKey = (e) => { if (e.key === "Escape") setTranscriptModal(null); };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
+  }, [transcriptModal]);
   const toast = useToast();
 
   useEffect(() => {
@@ -1157,7 +1165,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       </div>
 
       <div className="tabs">
-        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["analytics", "Analytics"], ["callLog", "Call Log"], ["billing", "Billing"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
+        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["callLog", "Call Log"], ["analytics", "Analytics"], ["billing", "Billing"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
           <div key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -1503,54 +1511,113 @@ const AgentConfigPage = ({ agentId, onBack }) => {
 
       {/* Transcript modal — rendered at component root so it works from any tab */}
       {transcriptModal && (
-        <div className="drawer-overlay" style={{ zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setTranscriptModal(null)}>
-          <div className="panel" style={{ maxWidth: 820, width: "92vw", maxHeight: "85vh", padding: 0, display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)" }}>
-                  {transcriptModal.caller_name || "Caller"}
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2, fontFamily: "var(--ff-mono)" }}>
-                  {transcriptModal.caller_phone || ""}
-                  {transcriptModal.mentioned_dates ? ` · ${transcriptModal.mentioned_dates}` : ""}
-                  {transcriptModal.sentiment ? ` · ${transcriptModal.sentiment}` : ""}
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 10000,
+            background: "rgba(0,0,0,0.75)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 12,
+          }}
+          onClick={() => setTranscriptModal(null)}
+        >
+          <div
+            style={{
+              background: "#0d1117",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 12,
+              width: "100%",
+              maxWidth: 960,
+              maxHeight: "92vh",
+              display: "flex", flexDirection: "column",
+              boxShadow: "0 30px 80px -10px rgba(0,0,0,0.7)",
+              overflow: "hidden",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Sticky header with prominent Close button */}
+            <div style={{
+              padding: "14px 18px",
+              borderBottom: "1px solid var(--border)",
+              display: "flex", alignItems: "flex-start", justifyContent: "space-between",
+              gap: 12, flexShrink: 0,
+              background: "rgba(255,255,255,0.02)",
+            }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>Call transcript</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-0)" }}>{transcriptModal.caller_name || "Caller"}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4, fontFamily: "var(--ff-mono)", display: "flex", flexWrap: "wrap", gap: "4px 12px" }}>
+                  {transcriptModal.caller_phone && <span>{transcriptModal.caller_phone}</span>}
+                  {transcriptModal.mentioned_dates && <span>{transcriptModal.mentioned_dates}</span>}
+                  {transcriptModal.sentiment && <span>· {transcriptModal.sentiment}</span>}
                 </div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => setTranscriptModal(null)}>
-                <Icon name="x" size={14} />
+              <button
+                onClick={() => setTranscriptModal(null)}
+                aria-label="Close"
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: "8px 14px",
+                  color: "var(--text-0)",
+                  cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 6,
+                  fontSize: 13, fontWeight: 500,
+                  flexShrink: 0, minWidth: 80, justifyContent: "center",
+                }}
+              >
+                <Icon name="x" size={14} /> Close
               </button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
+
+            {/* Scrollable body */}
+            <div style={{
+              flex: 1, minHeight: 0, overflowY: "auto",
+              padding: "18px 20px 24px",
+              WebkitOverflowScrolling: "touch",
+            }}>
               {transcriptModal.transcript ? (
                 <>
-                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Transcript</div>
-                  <pre style={{ padding: 12, background: "rgba(0,0,0,0.25)", borderRadius: 6, whiteSpace: "pre-wrap", fontFamily: "var(--ff-mono)", fontSize: 12, lineHeight: 1.6, marginTop: 0, marginBottom: 16, color: "var(--text-1)" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Full transcript</div>
+                  <pre style={{
+                    padding: 14,
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    fontFamily: "var(--ff-mono)",
+                    fontSize: 12.5, lineHeight: 1.7,
+                    margin: 0, marginBottom: 20,
+                    color: "var(--text-1)",
+                  }}>
                     {transcriptModal.transcript}
                   </pre>
                 </>
               ) : (
-                <div style={{ fontSize: 12, color: "var(--text-3)", padding: "8px 12px", borderRadius: 6, background: "rgba(0,0,0,0.18)", marginBottom: 16 }}>
-                  No raw transcript posted — only the summary below.
+                <div style={{ fontSize: 12.5, color: "var(--text-3)", padding: "12px 14px", borderRadius: 8, background: "rgba(0,0,0,0.2)", marginBottom: 20, border: "1px solid var(--border)" }}>
+                  No raw transcript was posted for this call — only the summary below.
                 </div>
               )}
-              <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Summary</div>
-              <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>
-                {transcriptModal.summary}
-              </div>
+              <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Summary</div>
+              <div style={{ fontSize: 13, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 20, lineHeight: 1.65 }}>{transcriptModal.summary}</div>
               {transcriptModal.key_points && (
                 <>
-                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Key points</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>{transcriptModal.key_points}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Key points</div>
+                  <div style={{ fontSize: 13, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 20, lineHeight: 1.65 }}>{transcriptModal.key_points}</div>
                 </>
               )}
               {transcriptModal.action_items && (
                 <>
-                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Action items</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 16, lineHeight: 1.55 }}>{transcriptModal.action_items}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Action items</div>
+                  <div style={{ fontSize: 13, color: "var(--text-1)", whiteSpace: "pre-wrap", marginBottom: 20, lineHeight: 1.65 }}>{transcriptModal.action_items}</div>
                 </>
               )}
               {transcriptModal.topics && (
-                <div style={{ fontSize: 11, color: "var(--text-3)" }}>Topics: {transcriptModal.topics}</div>
+                <div style={{ fontSize: 12, color: "var(--text-3)", padding: "10px 14px", background: "rgba(0,0,0,0.2)", borderRadius: 8, border: "1px solid var(--border)" }}>
+                  <span style={{ textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 10, marginRight: 8 }}>Topics</span>
+                  {transcriptModal.topics}
+                </div>
               )}
             </div>
           </div>
