@@ -1032,8 +1032,25 @@ const AgentConfigPage = ({ agentId, onBack }) => {
         const summariesArr = Array.isArray(sums?.summaries) ? sums.summaries : [];
         const summaryMap = new Map(summariesArr.map((s) => [s.twilio_call_sid, s]));
         const merged = (tw?.calls || []).map((c) => ({ ...c, summary: summaryMap.get(c.id) || null }));
-        const withSummaries = merged.filter((c) => c.summary).length;
-        setCallLog({ calls: merged, summarized: withSummaries });
+        const matchedCallSids = new Set(merged.map((c) => c.id));
+        // Summaries that don't match any Twilio call — show as their own rows
+        // so the admin can still see them (e.g. if the backend posted a
+        // synthetic call_sid that doesn't match the real Twilio CallSid).
+        const orphans = summariesArr
+          .filter((s) => !s.twilio_call_sid || !matchedCallSids.has(s.twilio_call_sid))
+          .map((s) => ({
+            id: s.id,
+            caller: s.caller_name || "Caller",
+            startedAt: s.occurred_at ? new Date(s.occurred_at).toLocaleString("sv-SE", { timeZone: "Asia/Colombo" }) : "—",
+            direction: "—",
+            duration: s.duration_sec ? `${Math.floor(s.duration_sec / 60)}:${String(s.duration_sec % 60).padStart(2, "0")}` : "—",
+            outcome: "Summary only",
+            summary: s,
+            orphan: true,
+          }));
+        const allRows = [...merged, ...orphans];
+        const withSummaries = allRows.filter((c) => c.summary).length;
+        setCallLog({ calls: allRows, summarized: withSummaries });
       })
       .catch(() => { if (active) setCallLog({ calls: [], summarized: 0 }); })
       .finally(() => { if (active) setCallLogLoading(false); });
