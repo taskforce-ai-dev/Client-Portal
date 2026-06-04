@@ -97,6 +97,24 @@ export async function ensureSchema(sql: Sql) {
     twilio_call_sid text,
     occurred_at timestamptz NOT NULL DEFAULT now())`;
   await sql`CREATE INDEX IF NOT EXISTS sentinel_token_usage_agent_at_idx ON sentinel_token_usage (agent_id, occurred_at DESC)`;
+  // One organised summary per call (no full transcript). Optional structured
+  // fields so the admin / client portal can render it as a small report.
+  await sql`CREATE TABLE IF NOT EXISTS sentinel_call_summary (
+    id text PRIMARY KEY,
+    agent_id text NOT NULL,
+    client_id text NOT NULL,
+    twilio_call_sid text UNIQUE,
+    caller_name text,
+    caller_phone text,
+    summary text NOT NULL DEFAULT '',
+    key_points text,
+    action_items text,
+    mentioned_dates text,
+    sentiment text,
+    topics text,
+    duration_sec integer,
+    occurred_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`CREATE INDEX IF NOT EXISTS sentinel_call_summary_agent_at_idx ON sentinel_call_summary (agent_id, occurred_at DESC)`;
 }
 
 // Migrate any legacy plaintext passwords into the encrypted column, then blank
@@ -447,6 +465,78 @@ export async function listTokenUsage(agentId: string, opts: { startIso?: string;
     SELECT * FROM sentinel_token_usage
     WHERE agent_id = ${agentId}
     ORDER BY occurred_at DESC LIMIT ${limit}`) as DbTokenUsage[];
+}
+
+export type DbCallSummary = {
+  id: string;
+  agent_id: string;
+  client_id: string;
+  twilio_call_sid: string | null;
+  caller_name: string | null;
+  caller_phone: string | null;
+  summary: string;
+  key_points: string | null;
+  action_items: string | null;
+  mentioned_dates: string | null;
+  sentiment: string | null;
+  topics: string | null;
+  duration_sec: number | null;
+  occurred_at: string;
+};
+
+export async function recordCallSummary(input: {
+  id: string;
+  agentId: string;
+  clientId: string;
+  twilioCallSid?: string | null;
+  callerName?: string | null;
+  callerPhone?: string | null;
+  summary: string;
+  keyPoints?: string | null;
+  actionItems?: string | null;
+  mentionedDates?: string | null;
+  sentiment?: string | null;
+  topics?: string | null;
+  durationSec?: number | null;
+  occurredAt?: Date | null;
+}): Promise<{ inserted: boolean }> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  // ON CONFLICT (id) preserves idempotency from request_id; UNIQUE on
+  // twilio_call_sid prevents posting two summaries for the same call.
+  try {
+    const rows = (await sql`
+      INSERT INTO sentinel_call_summary
+        (id, agent_id, client_id, twilio_call_sid, caller_name, caller_phone, summary, key_points, action_items, mentioned_dates, sentiment, topics, duration_sec, occurred_at)
+      VALUES (${input.id}, ${input.agentId}, ${input.clientId},
+              ${input.twilioCallSid ?? null}, ${input.callerName ?? null}, ${input.callerPhone ?? null},
+              ${input.summary}, ${input.keyPoints ?? null}, ${input.actionItems ?? null},
+              ${input.mentionedDates ?? null}, ${input.sentiment ?? null}, ${input.topics ?? null},
+              ${input.durationSec ?? null}, ${input.occurredAt ? input.occurredAt.toISOString() : new Date().toISOString()})
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id`) as { id: string }[];
+    return { inserted: rows.length > 0 };
+  } catch (e) {
+    // Most likely a unique-violation on twilio_call_sid — treat as duplicate.
+    if (e instanceof Error && /unique|duplicate/i.test(e.message)) return { inserted: false };
+    throw e;
+  }
+}
+
+export async function listCallSummaries(agentId: string, opts: { limit?: number; startIso?: string; endIso?: string } = {}): Promise<DbCallSummary[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureSeed(sql);
+  const limit = Math.min(opts.limit ?? 100, 1000);
+  if (opts.startIso && opts.endIso) {
+    return (await sql`SELECT * FROM sentinel_call_summary
+      WHERE agent_id = ${agentId} AND occurred_at >= ${opts.startIso} AND occurred_at < ${opts.endIso}
+      ORDER BY occurred_at DESC LIMIT ${limit}`) as DbCallSummary[];
+  }
+  return (await sql`SELECT * FROM sentinel_call_summary
+    WHERE agent_id = ${agentId}
+    ORDER BY occurred_at DESC LIMIT ${limit}`) as DbCallSummary[];
 }
 
 export async function getAgentKb(agentId: string): Promise<string> {

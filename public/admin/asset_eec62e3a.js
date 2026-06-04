@@ -964,6 +964,8 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [tokALoading, setTokALoading] = useState(false);
   const [ingestKey, setIngestKey] = useState(null);
   const [ingestRevealed, setIngestRevealed] = useState(false);
+  const [convs, setConvs] = useState(null);
+  const [convsLoading, setConvsLoading] = useState(true);
   const toast = useToast();
 
   useEffect(() => {
@@ -1003,6 +1005,12 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       .catch(() => { if (active) setTok({ configured: false }); })
       .finally(() => { if (active) setTokLoading(false); });
     setIngestKey(null); setIngestRevealed(false);
+    setConvsLoading(true);
+    fetch(`/api/admin/agents/${agentId}/summaries?limit=20`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setConvs(Array.isArray(d?.summaries) ? d.summaries : []); })
+      .catch(() => { if (active) setConvs([]); })
+      .finally(() => { if (active) setConvsLoading(false); });
     return () => { active = false; };
   }, [agentId]);
 
@@ -1202,6 +1210,81 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   </div>
                 )}
               </>
+            )}
+          </div>
+
+          {/* Recent conversation summaries (Anthropic-generated per call) */}
+          <div className="panel" style={{ padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>Recent conversations</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Latest call summaries — posted by your backend after each call</div>
+              </div>
+              <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{convs ? `${convs.length} summaries` : ""}</span>
+            </div>
+            {convsLoading && <div style={{ fontSize: 12, color: "var(--text-3)" }}>Loading…</div>}
+            {!convsLoading && convs && convs.length === 0 && (
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                No summaries yet. Your backend can POST one per call to <span className="mono">/api/agents/{agent.id}/summaries</span> — sample in <b>Settings → Ingest API key</b>.
+              </div>
+            )}
+            {!convsLoading && convs && convs.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {convs.slice(0, 5).map((s) => (
+                  <details key={s.id} className="panel-flat" style={{ padding: 0 }}>
+                    <summary style={{ listStyle: "none", cursor: "pointer", padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 12.5 }}>
+                      <Icon name="chevron-down" size={12} style={{ color: "var(--text-3)" }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ color: "var(--text-0)" }}>
+                          {s.caller_name || "Caller"}
+                          {s.mentioned_dates && <span style={{ color: "var(--text-3)", fontWeight: 400 }}> · {s.mentioned_dates}</span>}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {(s.summary || "").split("\n")[0]}
+                        </div>
+                      </div>
+                      <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{s.occurred_at ? new Date(s.occurred_at).toISOString().slice(0, 16).replace("T", " ") : ""}</span>
+                    </summary>
+                    <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: "var(--text-1)", lineHeight: 1.55 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Caller</div>
+                          <div style={{ marginTop: 2 }}>{s.caller_name || "—"}</div>
+                          {s.caller_phone && <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{s.caller_phone}</div>}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mentioned dates</div>
+                          <div style={{ marginTop: 2 }}>{s.mentioned_dates || "—"}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Sentiment / Call</div>
+                          <div style={{ marginTop: 2 }}>{s.sentiment || "—"}</div>
+                          {s.twilio_call_sid && <div className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{s.twilio_call_sid}</div>}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Summary</div>
+                      <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{s.summary}</div>
+                      {s.key_points && (
+                        <>
+                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 10 }}>Key points</div>
+                          <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{s.key_points}</div>
+                        </>
+                      )}
+                      {s.action_items && (
+                        <>
+                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 10 }}>Action items</div>
+                          <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{s.action_items}</div>
+                        </>
+                      )}
+                      {s.topics && (
+                        <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-3)" }}>
+                          Topics: {s.topics}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -1521,6 +1604,28 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   }'`}</pre>
             <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>
               <span className="mono">model</span> = the Claude model you called. <span className="mono">input_tokens</span>/<span className="mono">output_tokens</span> come from the Anthropic response's <span className="mono">usage</span> object. <span className="mono">request_id</span> (Anthropic's <span className="mono">id</span>) makes the call idempotent.
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Example: POST one organised summary per call</div>
+            <pre style={{ whiteSpace: "pre-wrap", fontFamily: "var(--ff-mono)", fontSize: 11.5, background: "rgba(0,0,0,0.3)", padding: 12, borderRadius: 8, color: "var(--text-1)", lineHeight: 1.55, margin: 0 }}>{`curl -X POST https://client-portal-pi-fawn.vercel.app/api/agents/${agent.id}/summaries \\
+  -H "x-api-key: ${ingestRevealed && ingestKey ? ingestKey : "<your-ingest-key>"}" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "call_sid": "CAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "caller_name": "John Smith",
+    "caller_phone": "+94771234567",
+    "summary": "Caller asked about chalet availability for the weekend of June 14-15. He has 3 guests and prefers the deluxe room. Wants to know the pet policy as he has a small dog.",
+    "key_points": "- Weekend booking June 14-15\\n- 3 guests, deluxe room\\n- Has a small dog",
+    "action_items": "- Send booking confirmation\\n- Confirm pet fee policy",
+    "mentioned_dates": "June 14-15, 2026",
+    "sentiment": "positive",
+    "topics": "booking,pet policy",
+    "duration_sec": 154
+  }'`}</pre>
+            <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>
+              Same key. Ask Claude at the end of the call to produce these structured fields (name, dates, summary, key points, action items). <span className="mono">call_sid</span> is the Twilio Call SID — it ties the summary to the corresponding row on the Calls page.
             </div>
           </div>
         </div>
