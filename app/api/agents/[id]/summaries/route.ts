@@ -52,6 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     sentiment?: string;
     topics?: string | string[];
     duration_sec?: number;
+    transcript?: string;
     occurred_at?: string;
     request_id?: string;
   };
@@ -84,6 +85,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     sentiment: body.sentiment || null,
     topics: topicsStr,
     durationSec: typeof body.duration_sec === "number" ? Math.floor(body.duration_sec) : null,
+    transcript: body.transcript || null,
     occurredAt,
   });
 

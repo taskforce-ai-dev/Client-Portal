@@ -180,6 +180,13 @@ function SummaryCard({ sum }: { sum: any }) {
         </Field>
       </div>
 
+      {sum.transcript && (
+        <div className="mt-4">
+          <div className="stat-label mb-1.5">Full transcript</div>
+          <pre className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed font-mono bg-black/25 rounded-md p-3 max-h-80 overflow-y-auto">{sum.transcript}</pre>
+        </div>
+      )}
+
       <div className="mt-4">
         <div className="stat-label mb-1.5">Summary</div>
         <p className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">{sum.summary}</p>

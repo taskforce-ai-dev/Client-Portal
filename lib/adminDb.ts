@@ -114,6 +114,7 @@ export async function ensureSchema(sql: Sql) {
     topics text,
     duration_sec integer,
     occurred_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS transcript text`;
   await sql`CREATE INDEX IF NOT EXISTS sentinel_call_summary_agent_at_idx ON sentinel_call_summary (agent_id, occurred_at DESC)`;
 }
 
@@ -481,6 +482,7 @@ export type DbCallSummary = {
   sentiment: string | null;
   topics: string | null;
   duration_sec: number | null;
+  transcript: string | null;
   occurred_at: string;
 };
 
@@ -498,6 +500,7 @@ export async function recordCallSummary(input: {
   sentiment?: string | null;
   topics?: string | null;
   durationSec?: number | null;
+  transcript?: string | null;
   occurredAt?: Date | null;
 }): Promise<{ inserted: boolean }> {
   const sql = getSql();
@@ -508,12 +511,13 @@ export async function recordCallSummary(input: {
   try {
     const rows = (await sql`
       INSERT INTO sentinel_call_summary
-        (id, agent_id, client_id, twilio_call_sid, caller_name, caller_phone, summary, key_points, action_items, mentioned_dates, sentiment, topics, duration_sec, occurred_at)
+        (id, agent_id, client_id, twilio_call_sid, caller_name, caller_phone, summary, key_points, action_items, mentioned_dates, sentiment, topics, duration_sec, transcript, occurred_at)
       VALUES (${input.id}, ${input.agentId}, ${input.clientId},
               ${input.twilioCallSid ?? null}, ${input.callerName ?? null}, ${input.callerPhone ?? null},
               ${input.summary}, ${input.keyPoints ?? null}, ${input.actionItems ?? null},
               ${input.mentionedDates ?? null}, ${input.sentiment ?? null}, ${input.topics ?? null},
-              ${input.durationSec ?? null}, ${input.occurredAt ? input.occurredAt.toISOString() : new Date().toISOString()})
+              ${input.durationSec ?? null}, ${input.transcript ?? null},
+              ${input.occurredAt ? input.occurredAt.toISOString() : new Date().toISOString()})
       ON CONFLICT (id) DO NOTHING
       RETURNING id`) as { id: string }[];
     return { inserted: rows.length > 0 };

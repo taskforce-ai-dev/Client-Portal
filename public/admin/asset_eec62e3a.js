@@ -966,6 +966,8 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [ingestRevealed, setIngestRevealed] = useState(false);
   const [convs, setConvs] = useState(null);
   const [convsLoading, setConvsLoading] = useState(true);
+  const [callLog, setCallLog] = useState(null);
+  const [callLogLoading, setCallLogLoading] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -1013,6 +1015,26 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       .finally(() => { if (active) setConvsLoading(false); });
     return () => { active = false; };
   }, [agentId]);
+
+  useEffect(() => {
+    if (tab !== "callLog" || callLog) return;
+    let active = true;
+    setCallLogLoading(true);
+    Promise.all([
+      fetch(`/api/admin/agents/${agentId}/twilio?range=total`, { credentials: "include" }).then((r) => r.json()),
+      fetch(`/api/admin/agents/${agentId}/summaries?limit=500`, { credentials: "include" }).then((r) => r.json()),
+    ])
+      .then(([tw, sums]) => {
+        if (!active) return;
+        const summariesArr = Array.isArray(sums?.summaries) ? sums.summaries : [];
+        const summaryMap = new Map(summariesArr.map((s) => [s.twilio_call_sid, s]));
+        const merged = (tw?.calls || []).map((c) => ({ ...c, summary: summaryMap.get(c.id) || null }));
+        setCallLog({ calls: merged, summarized: summariesArr.length });
+      })
+      .catch(() => { if (active) setCallLog({ calls: [], summarized: 0 }); })
+      .finally(() => { if (active) setCallLogLoading(false); });
+    return () => { active = false; };
+  }, [tab, agentId]);
 
   useEffect(() => {
     if (tab !== "analytics") return;
@@ -1114,7 +1136,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       </div>
 
       <div className="tabs">
-        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["analytics", "Analytics"], ["billing", "Billing"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
+        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["analytics", "Analytics"], ["callLog", "Call Log"], ["billing", "Billing"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
           <div key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -1221,80 +1243,6 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             )}
           </div>
 
-          {/* Recent conversation summaries (Anthropic-generated per call) */}
-          <div className="panel" style={{ padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>Recent conversations</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Latest call summaries — posted by your backend after each call</div>
-              </div>
-              <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{convs ? `${convs.length} summaries` : ""}</span>
-            </div>
-            {convsLoading && <div style={{ fontSize: 12, color: "var(--text-3)" }}>Loading…</div>}
-            {!convsLoading && convs && convs.length === 0 && (
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                No summaries yet. Your backend can POST one per call to <span className="mono">/api/agents/{agent.id}/summaries</span> — sample in <b>Settings → Ingest API key</b>.
-              </div>
-            )}
-            {!convsLoading && convs && convs.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {convs.slice(0, 5).map((s) => (
-                  <details key={s.id} className="panel-flat" style={{ padding: 0 }}>
-                    <summary style={{ listStyle: "none", cursor: "pointer", padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, fontSize: 12.5 }}>
-                      <Icon name="chevron-down" size={12} style={{ color: "var(--text-3)" }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ color: "var(--text-0)" }}>
-                          {s.caller_name || "Caller"}
-                          {s.mentioned_dates && <span style={{ color: "var(--text-3)", fontWeight: 400 }}> · {s.mentioned_dates}</span>}
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {(s.summary || "").split("\n")[0]}
-                        </div>
-                      </div>
-                      <span className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{s.occurred_at ? new Date(s.occurred_at).toLocaleString("sv-SE", { timeZone: "Asia/Colombo" }).slice(0, 16) : ""}</span>
-                    </summary>
-                    <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: "var(--text-1)", lineHeight: 1.55 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Caller</div>
-                          <div style={{ marginTop: 2 }}>{s.caller_name || "—"}</div>
-                          {s.caller_phone && <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{s.caller_phone}</div>}
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mentioned dates</div>
-                          <div style={{ marginTop: 2 }}>{s.mentioned_dates || "—"}</div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Sentiment / Call</div>
-                          <div style={{ marginTop: 2 }}>{s.sentiment || "—"}</div>
-                          {s.twilio_call_sid && <div className="mono" style={{ fontSize: 10.5, color: "var(--text-3)" }}>{s.twilio_call_sid}</div>}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Summary</div>
-                      <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{s.summary}</div>
-                      {s.key_points && (
-                        <>
-                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 10 }}>Key points</div>
-                          <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{s.key_points}</div>
-                        </>
-                      )}
-                      {s.action_items && (
-                        <>
-                          <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 10 }}>Action items</div>
-                          <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{s.action_items}</div>
-                        </>
-                      )}
-                      {s.topics && (
-                        <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-3)" }}>
-                          Topics: {s.topics}
-                        </div>
-                      )}
-                    </div>
-                  </details>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -1359,25 +1307,24 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </div>
               </div>
               <div className="panel">
-                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 12.5, fontWeight: 600, color: "var(--text-0)", display: "flex", justifyContent: "space-between" }}>
-                  <span>Call log</span><span style={{ color: "var(--text-3)", fontWeight: 400 }}>{twA.calls.length} calls</span>
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 12.5, fontWeight: 600, color: "var(--text-0)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>Last 10 calls</span>
+                  <button className="btn btn-ghost btn-xs" onClick={() => setTab("callLog")}>View all in Call Log →</button>
                 </div>
-                <div style={{ maxHeight: 460, overflowY: "auto" }}>
-                  <table className="data-table">
-                    <thead><tr><th>Caller</th><th>Direction</th><th>When</th><th>Duration</th><th>Status</th></tr></thead>
-                    <tbody>
-                      {twA.calls.map((c) => (
-                        <tr key={c.id}>
-                          <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>{c.caller}</td>
-                          <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
-                          <td style={{ color: "var(--text-2)" }}>{c.startedAt}</td>
-                          <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
-                          <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <table className="data-table">
+                  <thead><tr><th>Caller</th><th>Direction</th><th>When</th><th>Duration</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {twA.calls.slice(0, 10).map((c) => (
+                      <tr key={c.id}>
+                        <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>{c.caller}</td>
+                        <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
+                        <td style={{ color: "var(--text-2)" }}>{c.startedAt}</td>
+                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
+                        <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
                 {twA.calls.length === 0 && <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>No calls in this period.</div>}
               </div>
             </>
@@ -1447,6 +1394,114 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {tab === "callLog" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="panel">
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>Call log</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                  {callLog ? `${callLog.calls.length} calls · ${callLog.summarized} with transcripts` : "—"}
+                </div>
+              </div>
+            </div>
+            {callLogLoading && <div style={{ padding: 30, textAlign: "center", color: "var(--text-3)" }}>Loading…</div>}
+            {!callLogLoading && callLog && callLog.calls.length === 0 && (
+              <div style={{ padding: 30, textAlign: "center", color: "var(--text-3)" }}>
+                No calls in this agent's subaccount yet.
+              </div>
+            )}
+            {!callLogLoading && callLog && callLog.calls.length > 0 && (
+              <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 180 }}>Caller</th>
+                    <th>When</th>
+                    <th>Direction</th>
+                    <th>Duration</th>
+                    <th>Outcome</th>
+                    <th style={{ textAlign: "right", width: 160 }}>Transcript</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {callLog.calls.map((c) => (
+                    <React.Fragment key={c.id}>
+                      <tr>
+                        <td style={{ color: "var(--text-0)" }}>{c.summary?.caller_name || c.caller}</td>
+                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", fontSize: 11.5 }}>{c.startedAt}</td>
+                        <td style={{ color: "var(--text-2)" }}>{c.direction}</td>
+                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
+                        <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {c.summary ? (
+                            <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>↓ see below</span>
+                          ) : (
+                            <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                      {c.summary && (
+                        <tr>
+                          <td colSpan={6} style={{ padding: 0, background: "rgba(255,255,255,0.015)" }}>
+                            <details>
+                              <summary style={{ listStyle: "none", cursor: "pointer", padding: "8px 16px", fontSize: 12, color: "var(--text-3)", display: "flex", alignItems: "center", gap: 8 }}>
+                                <Icon name="chevron-down" size={12} />
+                                <span style={{ color: "var(--text-1)" }}>View transcript</span>
+                                <span style={{ color: "var(--text-3)" }}>· {(c.summary.summary || "").split("\n")[0].slice(0, 90)}{(c.summary.summary || "").length > 90 ? "…" : ""}</span>
+                              </summary>
+                              <div style={{ padding: "8px 16px 16px", fontSize: 12.5, color: "var(--text-1)", lineHeight: 1.55 }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                                  <div>
+                                    <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Caller</div>
+                                    <div style={{ marginTop: 2 }}>{c.summary.caller_name || "—"}</div>
+                                    {c.summary.caller_phone && <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{c.summary.caller_phone}</div>}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mentioned dates</div>
+                                    <div style={{ marginTop: 2 }}>{c.summary.mentioned_dates || "—"}</div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Sentiment</div>
+                                    <div style={{ marginTop: 2 }}>{c.summary.sentiment || "—"}</div>
+                                  </div>
+                                </div>
+                                {c.summary.transcript && (
+                                  <>
+                                    <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Full transcript</div>
+                                    <pre style={{ marginTop: 4, padding: 12, background: "rgba(0,0,0,0.25)", borderRadius: 6, whiteSpace: "pre-wrap", fontFamily: "var(--ff-mono)", fontSize: 11.5, lineHeight: 1.55, maxHeight: 320, overflowY: "auto" }}>{c.summary.transcript}</pre>
+                                  </>
+                                )}
+                                <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 12 }}>Summary</div>
+                                <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{c.summary.summary}</div>
+                                {c.summary.key_points && (
+                                  <>
+                                    <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 12 }}>Key points</div>
+                                    <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{c.summary.key_points}</div>
+                                  </>
+                                )}
+                                {c.summary.action_items && (
+                                  <>
+                                    <div style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 12 }}>Action items</div>
+                                    <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>{c.summary.action_items}</div>
+                                  </>
+                                )}
+                                {c.summary.topics && (
+                                  <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-3)" }}>Topics: {c.summary.topics}</div>
+                                )}
+                              </div>
+                            </details>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
@@ -1630,7 +1685,8 @@ const AgentConfigPage = ({ agentId, onBack }) => {
     "mentioned_dates": "June 14-15, 2026",
     "sentiment": "positive",
     "topics": "booking,pet policy",
-    "duration_sec": 154
+    "duration_sec": 154,
+    "transcript": "Guest: Hi I want to book...\\nAgent: Sure! For which dates?..."
   }'`}</pre>
             <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>
               Same key. Ask Claude at the end of the call to produce these structured fields (name, dates, summary, key points, action items). <span className="mono">call_sid</span> is the Twilio Call SID — it ties the summary to the corresponding row on the Calls page.
