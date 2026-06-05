@@ -81,6 +81,8 @@ export async function ensureSchema(sql: Sql) {
   // admin can paste them once per agent and reveal them later.
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS anthropic_api_key_enc text`;
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS elevenlabs_api_key_enc text`;
+  // KB reload webhook URL — dashboard POSTs new content here after admin saves KB.
+  await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS kb_reload_url text`;
   // Per-agent knowledge base (one markdown/text document per agent), shared
   // by the admin agent-config page and the client portal knowledge page.
   await sql`CREATE TABLE IF NOT EXISTS sentinel_kb (
@@ -264,6 +266,7 @@ export type DbAgent = {
   ingest_key: string | null;
   anthropic_api_key_enc: string | null;
   elevenlabs_api_key_enc: string | null;
+  kb_reload_url: string | null;
   created_at: string;
 };
 
@@ -342,6 +345,7 @@ export async function updateAgent(agentId: string, fields: {
   twilioSubaccountSid?: string;
   anthropicApiKey?: string;
   elevenlabsApiKey?: string;
+  kbReloadUrl?: string;
 }): Promise<DbAgent | null> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
@@ -359,13 +363,14 @@ export async function updateAgent(agentId: string, fields: {
   const anthropicEnc = fields.anthropicApiKey === undefined
     ? current.anthropic_api_key_enc
     : (fields.anthropicApiKey.trim() ? encryptSecret(fields.anthropicApiKey.trim()) : null);
+  const kbReloadUrl = fields.kbReloadUrl !== undefined ? (fields.kbReloadUrl.trim() || null) : current.kb_reload_url;
   const elevenlabsEnc = fields.elevenlabsApiKey === undefined
     ? current.elevenlabs_api_key_enc
     : (fields.elevenlabsApiKey.trim() ? encryptSecret(fields.elevenlabsApiKey.trim()) : null);
   const initial = (name[0] || "A").toUpperCase();
   const rows = (await sql`
     UPDATE sentinel_agent
-    SET name = ${name}, role = ${role}, status = ${status}, type = ${type}, channels = ${channels}, description = ${description}, initial = ${initial}, twilio_subaccount_sid = ${twilioSub}, anthropic_api_key_enc = ${anthropicEnc}, elevenlabs_api_key_enc = ${elevenlabsEnc}
+    SET name = ${name}, role = ${role}, status = ${status}, type = ${type}, channels = ${channels}, description = ${description}, initial = ${initial}, twilio_subaccount_sid = ${twilioSub}, anthropic_api_key_enc = ${anthropicEnc}, elevenlabs_api_key_enc = ${elevenlabsEnc}, kb_reload_url = ${kbReloadUrl}
     WHERE id = ${agentId} RETURNING *`) as DbAgent[];
   await audit(sql, "agent.update", "agent", name, "Updated agent " + name);
   return rows[0] ?? null;

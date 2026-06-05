@@ -939,7 +939,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("overview");
-  const [form, setForm] = useState({ name: "", role: "", type: "voice", status: "live", description: "", twilio_subaccount_sid: "" });
+  const [form, setForm] = useState({ name: "", role: "", type: "voice", status: "live", description: "", twilio_subaccount_sid: "", kb_reload_url: "" });
   const [saving, setSaving] = useState(false);
   const [kb, setKb] = useState("");
   const [kbDirty, setKbDirty] = useState(false);
@@ -989,7 +989,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
         if (!active) return;
         if (d && d.id) {
           setAgent(d);
-          setForm({ name: d.name || "", role: d.role || "", type: d.type || "voice", status: d.status || "live", description: d.description || "", twilio_subaccount_sid: d.twilio_subaccount_sid || "" });
+          setForm({ name: d.name || "", role: d.role || "", type: d.type || "voice", status: d.status || "live", description: d.description || "", twilio_subaccount_sid: d.twilio_subaccount_sid || "", kb_reload_url: d.kb_reload_url || "" });
         }
         setLoading(false);
       })
@@ -1756,6 +1756,10 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <input className="input mono" value={form.twilio_subaccount_sid} placeholder="ACxxxxxxxx…" onChange={(e) => setForm({ ...form, twilio_subaccount_sid: e.target.value })} />
           </Field>
           <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Calls & analytics for this agent are read from this Twilio subaccount.</div>
+          <Field label="KB reload URL" style={{ marginTop: 12 }}>
+            <input className="input mono" value={form.kb_reload_url} placeholder="https://your-domain.com/kb-reload" onChange={(e) => setForm({ ...form, kb_reload_url: e.target.value })} />
+          </Field>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Dashboard POSTs KB content here after each save so the agent reloads instantly. Leave blank to skip.</div>
           <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} disabled={saving} onClick={saveSettings}>{saving ? "Saving…" : "Save changes"}</button>
 
           {/* Ingest API key for posting Claude/Anthropic token usage */}

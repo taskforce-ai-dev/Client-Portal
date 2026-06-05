@@ -1788,6 +1788,10 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <input className="input mono" value={form.twilio_subaccount_sid} placeholder="ACxxxxxxxx…" onChange={(e) => setForm({ ...form, twilio_subaccount_sid: e.target.value })} />
           </Field>
           <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Calls & analytics for this agent are read from this Twilio subaccount.</div>
+          <Field label="KB reload URL" style={{ marginTop: 12 }}>
+            <input className="input mono" value={form.kb_reload_url} placeholder="https://your-domain.com/kb-reload" onChange={(e) => setForm({ ...form, kb_reload_url: e.target.value })} />
+          </Field>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Dashboard POSTs KB content here after each save so the agent reloads instantly. Leave blank to skip.</div>
 
           <Field label="Anthropic API Key" style={{ marginTop: 12 }}>
             <div style={{ display: "flex", gap: 8 }}>

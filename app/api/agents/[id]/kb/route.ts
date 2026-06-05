@@ -6,9 +6,6 @@ import { findAgentById, getAgentKb, isDbConfigured, setAgentKb } from "@/lib/adm
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Authorize: an admin, or the client that owns the agent. Returns the agent
-// row when allowed, or null. Shared by the admin agent-config page and the
-// client portal knowledge editor so the KB stays in sync.
 async function authorize(agentId: string) {
   const agent = await findAgentById(agentId);
   if (!agent) return null;
@@ -16,6 +13,23 @@ async function authorize(agentId: string) {
   const session = getClientSession();
   if (session && session.clientId === agent.client_id) return agent;
   return null;
+}
+
+async function fireKbReload(agent: { id: string; kb_reload_url: string | null }, content: string) {
+  const url = agent.kb_reload_url;
+  const secret = process.env.KB_RELOAD_SECRET;
+  if (!url || !secret) return;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "X-KB-Secret": secret },
+      body: JSON.stringify({ content }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) console.error("[kb-reload] agent", agent.id, "returned", res.status);
+  } catch (err) {
+    console.error("[kb-reload] failed to reach agent", agent.id, err);
+  }
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -36,6 +50,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   } catch {
     return NextResponse.json({ message: "Invalid request" }, { status: 400 });
   }
-  await setAgentKb(agent.id, agent.client_id, body.content ?? "");
+  const content = body.content ?? "";
+  await setAgentKb(agent.id, agent.client_id, content);
+  // Fire-and-forget: push new content to the running agent container.
+  void fireKbReload(agent, content);
   return NextResponse.json({ ok: true });
 }

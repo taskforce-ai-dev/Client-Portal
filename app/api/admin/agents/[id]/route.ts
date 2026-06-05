@@ -16,13 +16,14 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     twilio_subaccount_sid: agent.twilio_subaccount_sid,
     has_anthropic_api_key: !!agent.anthropic_api_key_enc,
     has_elevenlabs_api_key: !!agent.elevenlabs_api_key_enc,
+    kb_reload_url: agent.kb_reload_url,
   });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isAuthed()) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   if (!isDbConfigured()) return NextResponse.json({ message: "Database not connected." }, { status: 503 });
-  let body: { name?: string; role?: string; status?: string; type?: string; description?: string; twilio_subaccount_sid?: string; anthropic_api_key?: string; elevenlabs_api_key?: string };
+  let body: { name?: string; role?: string; status?: string; type?: string; description?: string; twilio_subaccount_sid?: string; anthropic_api_key?: string; elevenlabs_api_key?: string; kb_reload_url?: string };
   try {
     body = await req.json();
   } catch {
@@ -37,6 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     twilioSubaccountSid: body.twilio_subaccount_sid,
     anthropicApiKey: body.anthropic_api_key,
     elevenlabsApiKey: body.elevenlabs_api_key,
+    kbReloadUrl: body.kb_reload_url,
   });
   if (!updated) return NextResponse.json({ message: "Not found" }, { status: 404 });
   return NextResponse.json({ ok: true });
