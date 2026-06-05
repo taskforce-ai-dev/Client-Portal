@@ -939,7 +939,11 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("overview");
-  const [form, setForm] = useState({ name: "", role: "", type: "voice", status: "live", description: "", twilio_subaccount_sid: "" });
+  const [form, setForm] = useState({ name: "", role: "", type: "voice", status: "live", description: "", twilio_subaccount_sid: "", anthropic_api_key: "", elevenlabs_api_key: "" });
+  const [hasAnthropicKey, setHasAnthropicKey] = useState(false);
+  const [hasElevenlabsKey, setHasElevenlabsKey] = useState(false);
+  const [anthropicRevealed, setAnthropicRevealed] = useState(false);
+  const [elevenlabsRevealed, setElevenlabsRevealed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [kb, setKb] = useState("");
   const [kbDirty, setKbDirty] = useState(false);
@@ -989,7 +993,11 @@ const AgentConfigPage = ({ agentId, onBack }) => {
         if (!active) return;
         if (d && d.id) {
           setAgent(d);
-          setForm({ name: d.name || "", role: d.role || "", type: d.type || "voice", status: d.status || "live", description: d.description || "", twilio_subaccount_sid: d.twilio_subaccount_sid || "" });
+          setForm({ name: d.name || "", role: d.role || "", type: d.type || "voice", status: d.status || "live", description: d.description || "", twilio_subaccount_sid: d.twilio_subaccount_sid || "", anthropic_api_key: "", elevenlabs_api_key: "" });
+          setHasAnthropicKey(!!d.has_anthropic_api_key);
+          setHasElevenlabsKey(!!d.has_elevenlabs_api_key);
+          setAnthropicRevealed(false);
+          setElevenlabsRevealed(false);
         }
         setLoading(false);
       })
@@ -1088,6 +1096,20 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       setIngestRevealed(true);
     } catch (e) { toast(e.message, "error"); }
   };
+  const revealApiKey = async (which) => {
+    try {
+      const r = await fetch(`/api/admin/agents/${agentId}/api-keys`, { credentials: "include" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      if (which === "anthropic") {
+        setForm((f) => ({ ...f, anthropic_api_key: d.anthropic || "" }));
+        setAnthropicRevealed(true);
+      } else {
+        setForm((f) => ({ ...f, elevenlabs_api_key: d.elevenlabs || "" }));
+        setElevenlabsRevealed(true);
+      }
+    } catch (e) { toast(e.message, "error"); }
+  };
   const regenIngestKey = async () => {
     try {
       const r = await fetch(`/api/admin/agents/${agentId}/ingest-key`, { method: "POST", credentials: "include" });
@@ -1130,11 +1152,21 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const r = await fetch(`/api/admin/agents/${agentId}`, { method: "PATCH", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify(form) });
+      // Only send API-key fields if the admin actually touched them, so an
+      // empty input doesn't accidentally wipe a previously-saved key.
+      const body = {
+        name: form.name, role: form.role, type: form.type, status: form.status,
+        description: form.description, twilio_subaccount_sid: form.twilio_subaccount_sid,
+      };
+      if (anthropicRevealed || form.anthropic_api_key) body.anthropic_api_key = form.anthropic_api_key;
+      if (elevenlabsRevealed || form.elevenlabs_api_key) body.elevenlabs_api_key = form.elevenlabs_api_key;
+      const r = await fetch(`/api/admin/agents/${agentId}`, { method: "PATCH", headers: { "content-type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.message || "Save failed");
       toast("Agent updated", "success");
       setAgent({ ...agent, ...form });
+      if (body.anthropic_api_key !== undefined) setHasAnthropicKey(!!form.anthropic_api_key.trim());
+      if (body.elevenlabs_api_key !== undefined) setHasElevenlabsKey(!!form.elevenlabs_api_key.trim());
     } catch (e) { toast(e.message, "error"); } finally { setSaving(false); }
   };
 
@@ -1756,6 +1788,41 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <input className="input mono" value={form.twilio_subaccount_sid} placeholder="ACxxxxxxxx…" onChange={(e) => setForm({ ...form, twilio_subaccount_sid: e.target.value })} />
           </Field>
           <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Calls & analytics for this agent are read from this Twilio subaccount.</div>
+
+          <Field label="Anthropic API Key" style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="input mono"
+                type={anthropicRevealed ? "text" : "password"}
+                value={form.anthropic_api_key}
+                placeholder={hasAnthropicKey && !anthropicRevealed ? "•••••••• (set) — leave blank to keep" : "sk-ant-…"}
+                onChange={(e) => setForm({ ...form, anthropic_api_key: e.target.value })}
+                style={{ flex: 1 }}
+              />
+              {hasAnthropicKey && !anthropicRevealed && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => revealApiKey("anthropic")}>Reveal</button>
+              )}
+            </div>
+          </Field>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Stored encrypted. Leave blank to keep the existing key.</div>
+
+          <Field label="ElevenLabs API Key" style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="input mono"
+                type={elevenlabsRevealed ? "text" : "password"}
+                value={form.elevenlabs_api_key}
+                placeholder={hasElevenlabsKey && !elevenlabsRevealed ? "•••••••• (set) — leave blank to keep" : "sk_…"}
+                onChange={(e) => setForm({ ...form, elevenlabs_api_key: e.target.value })}
+                style={{ flex: 1 }}
+              />
+              {hasElevenlabsKey && !elevenlabsRevealed && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => revealApiKey("elevenlabs")}>Reveal</button>
+              )}
+            </div>
+          </Field>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Stored encrypted. Leave blank to keep the existing key.</div>
+
           <button className="btn btn-primary btn-sm" style={{ marginTop: 14 }} disabled={saving} onClick={saveSettings}>{saving ? "Saving…" : "Save changes"}</button>
 
           {/* Ingest API key for posting Claude/Anthropic token usage */}

@@ -77,6 +77,10 @@ export async function ensureSchema(sql: Sql) {
   // Ingest API key — your custom backend uses this to POST Anthropic token
   // usage for each Claude call so we can show per-agent token analytics.
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS ingest_key text`;
+  // Reversibly-encrypted third-party API keys (Anthropic, ElevenLabs) so the
+  // admin can paste them once per agent and reveal them later.
+  await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS anthropic_api_key_enc text`;
+  await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS elevenlabs_api_key_enc text`;
   // Per-agent knowledge base (one markdown/text document per agent), shared
   // by the admin agent-config page and the client portal knowledge page.
   await sql`CREATE TABLE IF NOT EXISTS sentinel_kb (
@@ -258,6 +262,8 @@ export type DbAgent = {
   description: string | null;
   twilio_subaccount_sid: string | null;
   ingest_key: string | null;
+  anthropic_api_key_enc: string | null;
+  elevenlabs_api_key_enc: string | null;
   created_at: string;
 };
 
@@ -334,6 +340,8 @@ export async function updateAgent(agentId: string, fields: {
   type?: string;
   description?: string;
   twilioSubaccountSid?: string;
+  anthropicApiKey?: string;
+  elevenlabsApiKey?: string;
 }): Promise<DbAgent | null> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
@@ -347,13 +355,32 @@ export async function updateAgent(agentId: string, fields: {
   const channels = channelsForType(type);
   const description = fields.description !== undefined ? fields.description : current.description;
   const twilioSub = fields.twilioSubaccountSid !== undefined ? (fields.twilioSubaccountSid.trim() || null) : current.twilio_subaccount_sid;
+  // For API keys: undefined = keep, "" = clear, non-empty = set & encrypt.
+  const anthropicEnc = fields.anthropicApiKey === undefined
+    ? current.anthropic_api_key_enc
+    : (fields.anthropicApiKey.trim() ? encryptSecret(fields.anthropicApiKey.trim()) : null);
+  const elevenlabsEnc = fields.elevenlabsApiKey === undefined
+    ? current.elevenlabs_api_key_enc
+    : (fields.elevenlabsApiKey.trim() ? encryptSecret(fields.elevenlabsApiKey.trim()) : null);
   const initial = (name[0] || "A").toUpperCase();
   const rows = (await sql`
     UPDATE sentinel_agent
-    SET name = ${name}, role = ${role}, status = ${status}, type = ${type}, channels = ${channels}, description = ${description}, initial = ${initial}, twilio_subaccount_sid = ${twilioSub}
+    SET name = ${name}, role = ${role}, status = ${status}, type = ${type}, channels = ${channels}, description = ${description}, initial = ${initial}, twilio_subaccount_sid = ${twilioSub}, anthropic_api_key_enc = ${anthropicEnc}, elevenlabs_api_key_enc = ${elevenlabsEnc}
     WHERE id = ${agentId} RETURNING *`) as DbAgent[];
   await audit(sql, "agent.update", "agent", name, "Updated agent " + name);
   return rows[0] ?? null;
+}
+
+export async function revealAgentApiKeys(agentId: string): Promise<{ anthropic: string | null; elevenlabs: string | null } | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  await ensureSeed(sql);
+  const rows = (await sql`SELECT anthropic_api_key_enc, elevenlabs_api_key_enc FROM sentinel_agent WHERE id = ${agentId} LIMIT 1`) as { anthropic_api_key_enc: string | null; elevenlabs_api_key_enc: string | null }[];
+  if (!rows[0]) return null;
+  return {
+    anthropic: decryptSecret(rows[0].anthropic_api_key_enc),
+    elevenlabs: decryptSecret(rows[0].elevenlabs_api_key_enc),
+  };
 }
 
 export async function deleteAgent(agentId: string): Promise<boolean> {
