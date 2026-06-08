@@ -313,6 +313,10 @@ export function bucketOutcomes(calls: DisplayCall[]) {
   for (const c of calls) {
     counts.set(c.outcome, (counts.get(c.outcome) ?? 0) + 1);
   }
+  // Always surface "Handed over" as its own row, even with zero calls, so the
+  // client sees the category exists. It populates once handover-keyword
+  // detection finds matching transcripts.
+  if (!counts.has("Handed over")) counts.set("Handed over", 0);
   return Array.from(counts.entries()).map(([outcome, count]) => ({
     outcome,
     count,

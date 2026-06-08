@@ -15,6 +15,9 @@ export type OutcomeSlice = {
 
 export default function OutcomeChart({ data }: { data: OutcomeSlice[] }) {
   const total = data.reduce((s, o) => s + o.count, 0);
+  // Donut only renders non-empty slices; legend below shows every category
+  // (including zero-count rows like "Handed over" when no transcripts match).
+  const pieData = data.filter((o) => o.count > 0);
   const [openOutcome, setOpenOutcome] = useState<OutcomeSlice | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -44,7 +47,7 @@ export default function OutcomeChart({ data }: { data: OutcomeSlice[] }) {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={data}
+                  data={pieData}
                   dataKey="count"
                   nameKey="outcome"
                   innerRadius={40}
@@ -52,7 +55,7 @@ export default function OutcomeChart({ data }: { data: OutcomeSlice[] }) {
                   paddingAngle={2}
                   stroke="none"
                 >
-                  {data.map((o, i) => (
+                  {pieData.map((o, i) => (
                     <Cell key={i} fill={o.color} />
                   ))}
                 </Pie>
@@ -69,28 +72,32 @@ export default function OutcomeChart({ data }: { data: OutcomeSlice[] }) {
             </ResponsiveContainer>
           </div>
           <ul className="flex-1 space-y-2 text-sm">
-            {data.map((o) => (
-              <li key={o.outcome} className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2 text-slate-300 min-w-0">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ background: o.color, boxShadow: `0 0 8px ${o.color}` }}
-                  />
-                  <span className="truncate">{o.outcome}</span>
-                </span>
-                <span className="flex items-center gap-3 shrink-0">
-                  <span className="text-slate-400 text-xs tabular-nums">{o.count}</span>
-                  <button
-                    type="button"
-                    onClick={() => setOpenOutcome(o)}
-                    disabled={o.calls.length === 0}
-                    className="text-[11px] font-medium text-accent-300 hover:text-accent-200 inline-flex items-center gap-1 disabled:text-slate-600 disabled:cursor-not-allowed"
-                  >
-                    See full list <ExternalLink className="w-3 h-3" />
-                  </button>
-                </span>
-              </li>
-            ))}
+            {data.map((o) => {
+              const empty = o.calls.length === 0;
+              return (
+                <li key={o.outcome} className="flex items-center justify-between gap-3">
+                  <span className={`flex items-center gap-2 min-w-0 ${empty ? "text-slate-500" : "text-slate-300"}`}>
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${empty ? "opacity-40" : ""}`}
+                      style={{ background: o.color, boxShadow: empty ? "none" : `0 0 8px ${o.color}` }}
+                    />
+                    <span className="truncate">{o.outcome}</span>
+                  </span>
+                  <span className="flex items-center gap-3 shrink-0">
+                    <span className={`text-xs tabular-nums ${empty ? "text-slate-600" : "text-slate-400"}`}>{o.count}</span>
+                    <button
+                      type="button"
+                      onClick={() => setOpenOutcome(o)}
+                      disabled={empty}
+                      className="text-[11px] font-medium text-accent-300 hover:text-accent-200 inline-flex items-center gap-1 disabled:text-slate-600 disabled:cursor-not-allowed disabled:hover:text-slate-600"
+                      title={empty ? "No calls in this category yet" : undefined}
+                    >
+                      See full list <ExternalLink className="w-3 h-3" />
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
