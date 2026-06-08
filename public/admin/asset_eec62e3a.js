@@ -974,6 +974,11 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [callLogLoading, setCallLogLoading] = useState(false);
   const [clRange, setClRange] = useState("total");
   const [transcriptModal, setTranscriptModal] = useState(null);
+  const [notif, setNotif] = useState(null);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifRange, setNotifRange] = useState("total");
+  const [notifCStart, setNotifCStart] = useState("");
+  const [notifCEnd, setNotifCEnd] = useState("");
   useEffect(() => {
     if (!transcriptModal) return;
     const onKey = (e) => { if (e.key === "Escape") setTranscriptModal(null); };
@@ -1136,6 +1141,22 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   }, [tab, billRange, billCStart, billCEnd, agentId]);
 
   useEffect(() => {
+    if (tab !== "notifications") return;
+    if (notifRange === "custom" && (!notifCStart || !notifCEnd)) return;
+    let active = true;
+    setNotifLoading(true);
+    const qs = notifRange === "custom"
+      ? `range=custom&start=${notifCStart}&end=${notifCEnd}`
+      : `range=${notifRange}`;
+    fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setNotif(d || { items: [], quota: null }); })
+      .catch(() => { if (active) setNotif({ items: [], quota: null }); })
+      .finally(() => { if (active) setNotifLoading(false); });
+    return () => { active = false; };
+  }, [tab, notifRange, notifCStart, notifCEnd, agentId]);
+
+  useEffect(() => {
     if (tab !== "analytics") return;
     if (range === "custom" && (!cStart || !cEnd)) return;
     let active = true;
@@ -1197,7 +1218,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       </div>
 
       <div className="tabs">
-        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["callLog", "Call Log"], ["analytics", "Analytics"], ["billing", "Billing"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
+        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["callLog", "Call Log"], ["analytics", "Analytics"], ["billing", "Billing"], ["notifications", "Notifications"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
           <div key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -1881,6 +1902,88 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>
               Same key. Ask Claude at the end of the call to produce these structured fields (name, dates, summary, key points, action items). <span className="mono">call_sid</span> is the Twilio Call SID — it ties the summary to the corresponding row on the Calls page.
             </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "notifications" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Header: range chips */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
+              {[["total", "All"], ["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
+                <button key={k} className={"btn btn-xs " + (notifRange === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: notifRange === k ? "var(--border-strong)" : "transparent" }} onClick={() => setNotifRange(k)}>{l}</button>
+              ))}
+            </div>
+            {notifRange === "custom" && (
+              <>
+                <input type="date" className="input" style={{ width: 150 }} value={notifCStart} onChange={(e) => setNotifCStart(e.target.value)} />
+                <span style={{ color: "var(--text-3)", fontSize: 12 }}>→</span>
+                <input type="date" className="input" style={{ width: 150 }} value={notifCEnd} onChange={(e) => setNotifCEnd(e.target.value)} />
+              </>
+            )}
+          </div>
+
+          {/* Quota KPI strip */}
+          {notif?.quota && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              <MiniStat
+                label="Status"
+                value={notif.quota.status === "exceeded" ? "Pay-as-you-go" : notif.quota.status === "warn" ? "80% used" : "Within plan"}
+              />
+              <MiniStat
+                label="Used this month"
+                value={(() => { const m = notif.quota.billableMinutes || 0; const h = Math.floor(m/60), r = m%60; return r ? `${h}h ${r}m` : `${h}h`; })()}
+              />
+              <MiniStat
+                label="Included"
+                value={(() => { const m = notif.quota.includedMinutes || 0; const h = Math.floor(m/60), r = m%60; return r ? `${h}h ${r}m` : `${h}h`; })()}
+              />
+              <MiniStat
+                label="Overage so far"
+                value={notif.quota.overageMinutes ? (() => { const m = notif.quota.overageMinutes; const h = Math.floor(m/60), r = m%60; return r ? `${h}h ${r}m` : `${h}h`; })() : "—"}
+              />
+            </div>
+          )}
+
+          {notifLoading && (
+            <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading notifications…</div>
+          )}
+          {!notifLoading && notif?.customMissing && (
+            <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-3)" }}>Pick a start and end date.</div>
+          )}
+          {!notifLoading && notif && !notif.customMissing && notif.items && notif.items.length === 0 && (
+            <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: "var(--text-1)", fontWeight: 600 }}>No notifications</div>
+              <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>Nothing has been delivered for this agent in this range.</div>
+            </div>
+          )}
+          {!notifLoading && notif && notif.items && notif.items.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {notif.items.map((n) => {
+                const isExceeded = n.kind === "exceeded";
+                const accent = isExceeded ? "rgba(239,68,68,0.45)" : "rgba(245,158,11,0.45)";
+                const bg = isExceeded ? "rgba(239,68,68,0.06)" : "rgba(245,158,11,0.05)";
+                const dot = isExceeded ? "#ef4444" : "#f59e0b";
+                const title = isExceeded ? "Monthly 40h quota reached" : "80% of monthly quota used";
+                return (
+                  <div key={n.id} className="panel" style={{ padding: 12, borderLeft: `3px solid ${accent}`, background: bg }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, boxShadow: `0 0 8px ${dot}` }} />
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: isExceeded ? "#fecaca" : "#fde68a" }}>{title}</div>
+                      </div>
+                      <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{n.occurredAt ? n.occurredAt.replace("T", " ").slice(0, 19) : ""}</div>
+                    </div>
+                    <div style={{ fontSize: 12.5, color: "var(--text-1)", marginTop: 6 }}>{n.summary}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+            Quota notifications fire once per (agent, month, threshold) when the agent crosses 80% or 100% of its included 40h. They land here and in the client portal&apos;s Notifications tab simultaneously.
           </div>
         </div>
       )}

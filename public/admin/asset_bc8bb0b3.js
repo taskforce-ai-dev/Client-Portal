@@ -131,7 +131,7 @@ const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e || "").trim());
 const AdminUsersPage = () => {
   const [admins, setAdmins] = useState(null);
   const [inviting, setInviting] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", password: suggestAdminPassword() });
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [created, setCreated] = useState(null);
@@ -148,7 +148,7 @@ const AdminUsersPage = () => {
   useEffect(() => { refresh(); }, []);
 
   const startInvite = () => {
-    setForm({ name: "", email: "", password: suggestAdminPassword() });
+    setForm({ name: "", email: "", password: "" });
     setErr(""); setCreated(null); setInviting(true);
   };
 
@@ -182,7 +182,13 @@ const AdminUsersPage = () => {
   };
 
   const resetPw = async (a) => {
-    const np = suggestAdminPassword();
+    const suggested = suggestAdminPassword();
+    const np = window.prompt(
+      "New password for " + a.email + "\n\nType your own password (min 8 characters), or keep the suggestion below:",
+      suggested,
+    );
+    if (np === null) return;
+    if (!np || np.length < 8) { toast("Password must be at least 8 characters", "error"); return; }
     try {
       const r = await fetch(`/api/admin/admins/${a.id}/password`, {
         method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
@@ -213,10 +219,10 @@ const AdminUsersPage = () => {
               <Field label="Name (optional)"><input className="input" placeholder="Jane Doe" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
               <Field label="Email"><input className="input mono" type="email" placeholder="admin@taskforceai.tech" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
             </div>
-            <Field label="Password (min 8 chars · stored hashed)">
+            <Field label="Password (type your own, min 8 chars · or click ↻ to suggest one · stored hashed)">
               <div style={{ display: "flex", gap: 8 }}>
-                <input className="input mono" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} style={{ flex: 1 }} />
-                <button type="button" className="btn btn-secondary btn-sm" title="Suggest another" onClick={() => setForm({ ...form, password: suggestAdminPassword() })}>↻</button>
+                <input className="input mono" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Type a password (min 8 chars)" style={{ flex: 1 }} />
+                <button type="button" className="btn btn-secondary btn-sm" title="Suggest a strong password" onClick={() => setForm({ ...form, password: suggestAdminPassword() })}>↻</button>
                 <button type="button" className="btn btn-secondary btn-sm" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(form.password); toast("Password copied", "success"); }}>Copy</button>
               </div>
             </Field>
