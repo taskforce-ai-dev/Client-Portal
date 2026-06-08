@@ -510,6 +510,12 @@ const NewClientPage = () => {
   const [api, setApi] = useState(false);
   const [features, setFeatures] = useState({ Analytics: true, "Knowledge Base": true, Transcripts: true, "Billing View": true, "Team Members": false });
   const [autoInvoice, setAutoInvoice] = useState(true);
+  const [company, setCompany] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [businessType, setBusinessType] = useState("");
+  const [businessDescription, setBusinessDescription] = useState("");
   const toast = useToast();
 
   const plans = [
@@ -530,16 +536,18 @@ const NewClientPage = () => {
 
       <FormSection title="Account details" subtitle="Primary contact and location.">
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <Field label="Company name"><input className="input" placeholder="Acme Logistics, Inc." /></Field>
-          <Field label="Contact name"><input className="input" placeholder="Jane Doe" /></Field>
-          <Field label="Email address"><input className="input" type="email" placeholder="jane@acme.com" /></Field>
-          <Field label="Phone number"><input className="input mono" placeholder="+1 ___-___-____" /></Field>
+          <Field label="Company name"><input className="input" placeholder="Acme Logistics, Inc." value={company} onChange={e => setCompany(e.target.value)} /></Field>
+          <Field label="Contact name"><input className="input" placeholder="Jane Doe" value={contactName} onChange={e => setContactName(e.target.value)} /></Field>
+          <Field label="Email address"><input className="input" type="email" placeholder="jane@acme.com" value={contactEmail} onChange={e => setContactEmail(e.target.value)} /></Field>
+          <Field label="Phone number"><input className="input mono" placeholder="+1 ___-___-____" value={contactPhone} onChange={e => setContactPhone(e.target.value)} /></Field>
           <Field label="Country">
             <select className="input">
               <option>United States</option><option>Canada</option><option>United Kingdom</option><option>Germany</option><option>India</option><option>Singapore</option><option>Mexico</option>
             </select>
           </Field>
           <Field label="Timezone"><select className="input"><option>America/Los_Angeles</option><option>America/New_York</option><option>Europe/London</option><option>Asia/Singapore</option></select></Field>
+          <Field label="Business type"><input className="input" placeholder="e.g. Hotel, Electronics retailer" value={businessType} onChange={e => setBusinessType(e.target.value)} /></Field>
+          <Field label="Business description"><textarea className="input" rows={2} placeholder="Brief description of the business" value={businessDescription} onChange={e => setBusinessDescription(e.target.value)} /></Field>
         </div>
       </FormSection>
 
@@ -629,8 +637,16 @@ const NewClientPage = () => {
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <button className="btn btn-ghost" onClick={() => toast("Draft saved", "success")}>Save as draft</button>
-        <button className="btn btn-secondary" onClick={() => toast("Account created", "success")}>Create account only</button>
-        <button className="btn btn-primary" onClick={() => toast("Account created & welcome email sent", "success")}>Create account & send welcome email</button>
+        <button className="btn btn-secondary" onClick={() => {
+          fetch('/api/admin/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: company, contactName, contactEmail, contactPhone }) })
+            .then(r => r.ok ? toast("Account created", "success") : toast("Failed to create account", "error"))
+            .catch(e => toast("Error: " + e.message, "error"));
+        }}>Create account only</button>
+        <button className="btn btn-primary" onClick={() => {
+          fetch('/api/admin/clients', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: company, contactName, contactEmail, contactPhone }) })
+            .then(r => r.ok ? toast("Account created", "success") : toast("Failed to create account", "error"))
+            .catch(e => toast("Error: " + e.message, "error"));
+        }}>Create account & send welcome email</button>
       </div>
     </div>
   );
@@ -650,4 +666,220 @@ const Field = ({ label, children, style }) => (
   </div>
 );
 
-Object.assign(window, { ClientsPage, ClientDrawer, NewClientPage });
+const KnowledgeStructurer = () => {
+  const [agents, setAgents] = useState([]);
+  const [agentId, setAgentId] = useState("");
+  const [target, setTarget] = useState(null);
+  const [currentDoc, setCurrentDoc] = useState(null);
+  const [showTargetForm, setShowTargetForm] = useState(false);
+  const [targetBaseUrl, setTargetBaseUrl] = useState("");
+  const [targetSecret, setTargetSecret] = useState("");
+  const [targetFilename, setTargetFilename] = useState("knowledge.txt");
+  const [rawText, setRawText] = useState("");
+  const [mode, setMode] = useState("merge");
+  const [businessType, setBusinessType] = useState("");
+  const [businessDescription, setBusinessDescription] = useState("");
+  const [structuring, setStructuring] = useState(false);
+  const [structured, setStructured] = useState(null);
+  const [editedContent, setEditedContent] = useState("");
+  const [detectedBt, setDetectedBt] = useState("");
+  const [warnings, setWarnings] = useState([]);
+  const [publishing, setPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState(null);
+  const [publishError, setPublishError] = useState(null);
+  const toast = useToast();
+
+  useEffect(() => {
+    fetch("/api/agents").then(r => r.json()).then(data => setAgents(Array.isArray(data) ? data : (data.agents || []))).catch(() => {});
+  }, []);
+
+  const selectAgent = async (id) => {
+    setAgentId(id);
+    setTarget(null); setCurrentDoc(null); setStructured(null); setPublishResult(null); setPublishError(null);
+    if (!id) return;
+    const [t, d] = await Promise.all([
+      fetch(`/api/admin/agents/${id}/kb-target`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/admin/agents/${id}/kb-document`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    setTarget(t);
+    setCurrentDoc(d);
+    setShowTargetForm(!t);
+    if (t) { setTargetBaseUrl(t.baseUrl); setTargetSecret(t.secret); setTargetFilename(t.filename); }
+  };
+
+  const saveTarget = async () => {
+    const r = await fetch(`/api/admin/agents/${agentId}/kb-target`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ baseUrl: targetBaseUrl, secret: targetSecret, filename: targetFilename }),
+    });
+    if (r.ok) { setTarget(await r.json()); setShowTargetForm(false); toast("VPS target saved", "success"); }
+    else toast("Failed to save target", "error");
+  };
+
+  const handlePdf = async (file) => {
+    if (typeof pdfjsLib === "undefined") { toast("PDF.js not loaded — paste text instead", "error"); return; }
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(" ") + "\n";
+    }
+    setRawText(prev => prev ? prev + "\n\n" + text : text);
+    toast(`Extracted ${pdf.numPages} page(s)`, "success");
+  };
+
+  const doStructure = async () => {
+    if (!rawText.trim()) { toast("Paste some text or upload a PDF first", "error"); return; }
+    setStructuring(true); setStructured(null); setPublishResult(null); setPublishError(null);
+    try {
+      const r = await fetch("/api/admin/knowledge-base/structure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId, rawText, mode, businessType, businessDescription }),
+      });
+      const data = await r.json();
+      if (!r.ok) { toast(data.message || "Structuring failed", "error"); return; }
+      setStructured(data.structuredContent);
+      setEditedContent(data.structuredContent);
+      setDetectedBt(data.businessType || "");
+      setWarnings(data.warnings || []);
+    } catch (e) { toast("Network error: " + e.message, "error"); }
+    finally { setStructuring(false); }
+  };
+
+  const doPublish = async () => {
+    setPublishing(true); setPublishResult(null); setPublishError(null);
+    try {
+      const r = await fetch("/api/admin/knowledge-base/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId, content: editedContent, businessType: detectedBt || businessType }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setPublishError(data.message || "Publish failed"); return; }
+      setPublishResult(data);
+      toast("KB published — agent is re-embedding now", "success");
+    } catch (e) { setPublishError("Network error: " + e.message); }
+    finally { setPublishing(false); }
+  };
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ fontSize: 20, fontWeight: 600 }}>Knowledge Base Structurer</div>
+      <div style={{ fontSize: 12, color: "var(--text-3)" }}>Drop raw PDFs or paste text — AI will detect the business vertical and structure it for optimal agent retrieval.</div>
+
+      {/* Step 1: Agent picker */}
+      <div className="panel">
+        <SectionHeader title="1. Select agent" subtitle="Pick which agent's KB to update." />
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          <select className="input" style={{ maxWidth: 340 }} value={agentId} onChange={e => selectAgent(e.target.value)}>
+            <option value="">— choose an agent —</option>
+            {agents.map(a => <option key={a.id} value={a.id}>{a.name} ({a.type})</option>)}
+          </select>
+
+          {agentId && target && !showTargetForm && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--emerald)" }}>
+              <Icon name="check" size={13} /> VPS target: {target.baseUrl} → {target.filename}
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: "2px 8px" }} onClick={() => setShowTargetForm(true)}>Edit</button>
+            </div>
+          )}
+
+          {agentId && showTargetForm && (
+            <div style={{ background: "var(--surface-1)", border: "1px solid var(--border)", borderRadius: 8, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600 }}>Configure VPS target for /kb-reload</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <Field label="Base URL"><input className="input mono" placeholder="http://67.207.90.109:8001" value={targetBaseUrl} onChange={e => setTargetBaseUrl(e.target.value)} /></Field>
+                <Field label="KB reload secret"><input className="input mono" type="password" placeholder="KB_RELOAD_SECRET value" value={targetSecret} onChange={e => setTargetSecret(e.target.value)} /></Field>
+                <Field label="Filename"><input className="input mono" placeholder="knowledge.txt" value={targetFilename} onChange={e => setTargetFilename(e.target.value)} /></Field>
+              </div>
+              <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={saveTarget}>Save target</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Step 2: Input */}
+      <div className="panel">
+        <SectionHeader title="2. Input raw content" subtitle="Paste text or upload a PDF. PDF text is extracted client-side." />
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Business type (optional hint)"><input className="input" placeholder="e.g. Hotel, Electronics retailer" value={businessType} onChange={e => setBusinessType(e.target.value)} /></Field>
+            <Field label="Business description (optional hint)"><input className="input" placeholder="e.g. Boutique hotel in Ella, Sri Lanka" value={businessDescription} onChange={e => setBusinessDescription(e.target.value)} /></Field>
+          </div>
+          <Field label="Paste raw text">
+            <textarea className="input" rows={8} style={{ fontFamily: "var(--ff-mono)", fontSize: 12, resize: "vertical" }} value={rawText} onChange={e => setRawText(e.target.value)} placeholder="Paste brochure text, rate sheets, policy docs..." />
+          </Field>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5 }}>
+              <Icon name="upload" size={14} />
+              <span>Upload PDF</span>
+              <input type="file" accept=".pdf" style={{ display: "none" }} onChange={e => e.target.files[0] && handlePdf(e.target.files[0])} />
+            </label>
+            {currentDoc && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <span style={{ color: "var(--text-3)" }}>Mode:</span>
+                {["merge", "replace"].map(m => (
+                  <button key={m} className={"btn btn-sm " + (mode === m ? "btn-primary" : "btn-secondary")} onClick={() => setMode(m)}>
+                    {m === "merge" ? "Merge with existing" : "Replace entirely"}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={doStructure} disabled={structuring || !agentId || !rawText.trim()}>
+            {structuring ? "Structuring…" : "Structure →"}
+          </button>
+        </div>
+      </div>
+
+      {/* Step 3: Preview + diff */}
+      {structured !== null && (
+        <div className="panel">
+          <SectionHeader title="3. Review structured KB" subtitle="Edit if needed, then publish." />
+          <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              {detectedBt && <span style={{ fontSize: 11, background: "rgba(59,130,246,0.12)", color: "#60a5fa", borderRadius: 4, padding: "2px 8px" }}>Vertical: {detectedBt}</span>}
+              {warnings.map((w, i) => <span key={i} style={{ fontSize: 11, background: "rgba(245,158,11,0.12)", color: "#fbbf24", borderRadius: 4, padding: "2px 8px" }}><Icon name="alert-triangle" size={11} /> {w}</span>)}
+            </div>
+            {currentDoc ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Current KB</div>
+                  <textarea className="input" rows={20} style={{ fontFamily: "var(--ff-mono)", fontSize: 11, resize: "vertical" }} value={currentDoc.content} readOnly />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>New KB (editable)</div>
+                  <textarea className="input" rows={20} style={{ fontFamily: "var(--ff-mono)", fontSize: 11, resize: "vertical" }} value={editedContent} onChange={e => setEditedContent(e.target.value)} />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Structured KB (editable)</div>
+                <textarea className="input" rows={24} style={{ fontFamily: "var(--ff-mono)", fontSize: 12, resize: "vertical" }} value={editedContent} onChange={e => setEditedContent(e.target.value)} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: Publish */}
+      {structured !== null && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {publishResult && <div style={{ padding: 12, background: "rgba(16,185,129,0.1)", border: "1px solid var(--emerald)", borderRadius: 8, fontSize: 13, color: "var(--emerald)" }}><Icon name="check" size={14} /> KB published — agent is re-embedding now.</div>}
+          {publishError && <div style={{ padding: 12, background: "rgba(239,68,68,0.1)", border: "1px solid var(--red-400)", borderRadius: 8, fontSize: 13, color: "#f87171" }}>{publishError}</div>}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button className="btn btn-primary" style={{ gap: 6, display: "flex", alignItems: "center" }} onClick={doPublish} disabled={publishing || !target || !editedContent.trim()}>
+              <Icon name="send" size={14} />
+              {publishing ? "Publishing…" : "Publish to agent"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { ClientsPage, ClientDrawer, NewClientPage, KnowledgeStructurer });

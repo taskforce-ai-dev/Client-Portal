@@ -63,7 +63,7 @@ const App = () => {
       case "audit":       return <AuditLogPage />;
       case "admins":      return <AdminUsersPage />;
       case "config":      return <AdminUsersPage />;
-      case "kb":          return <PageStub icon="book" title="Knowledge base management" description="Curate the system-wide knowledge base templates clients can clone." />;
+      case "kb":          return <KnowledgeStructurer />;
       default:            return <PageStub title="Coming soon" description="This section is not yet implemented." />;
     }
   };

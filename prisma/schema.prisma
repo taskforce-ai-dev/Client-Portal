@@ -223,10 +223,12 @@ model Agent {
   type               AgentType
   avatarShape        String?
   status             AgentStatus           @default(idle)
-  personality        String?
-  language           String?
-  greeting           String?
-  rating             Float?
+  personality         String?
+  language            String?
+  greeting            String?
+  rating              Float?
+  businessType        String?
+  businessDescription String?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
   workspace          Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
@@ -236,6 +238,8 @@ model Agent {
   messageEvents      MessageEvent[]
   transcripts        Transcript[]
   events             AgentEvent[]
+  kbTarget           AgentKbTarget?
+  kbDocument         AgentKbDocument?
 }
 
 model AgentChannel {
@@ -648,4 +652,37 @@ model MrrMovement {
 
   @@unique([periodStart, kind])
   @@index([periodStart])
+}
+
+model AgentKbTarget {
+  id        String   @id @default(cuid())
+  agentId   String   @unique
+  baseUrl   String
+  secret    String
+  filename  String   @default("knowledge.txt")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+model AgentKbDocument {
+  id           String            @id @default(cuid())
+  agentId      String            @unique
+  content      String
+  businessType String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  agent        Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  snapshots    AgentKbSnapshot[]
+}
+
+model AgentKbSnapshot {
+  id                String          @id @default(cuid())
+  agentKbDocumentId String
+  content           String
+  reason            String?
+  createdAt         DateTime        @default(now())
+  agentKbDocument   AgentKbDocument @relation(fields: [agentKbDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([agentKbDocumentId])
 }

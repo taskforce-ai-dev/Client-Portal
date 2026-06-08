@@ -25,6 +25,8 @@ const envSchema = z.object({
   BILLING_KB_UPDATE_RATE: z.string().min(1).default("0.15"),
   ANALYTICS_REVENUE_PER_CONVERSION: z.string().min(1).default("249.00"),
   INBOUND_WEBHOOK_SECRET: z.string().optional().transform((value) => value?.trim() || undefined),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().min(1).default("claude-sonnet-4-6"),
 });
 
 function parseMoneyToCents(value: string, key: string): number {
@@ -114,4 +116,6 @@ export const env = {
     ),
   },
   inboundWebhookSecret: rawEnv.INBOUND_WEBHOOK_SECRET,
+  anthropicApiKey: rawEnv.ANTHROPIC_API_KEY,
+  anthropicModel: rawEnv.ANTHROPIC_MODEL,
 } as const;

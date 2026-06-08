@@ -133,7 +133,7 @@ async function ensureAgent(payload: AgentWebhookPayload["agent"], channel?: Agen
   });
 }
 
-async function upsertCall(agentId: string, payload: NonNullable<AgentWebhookPayload["call"]>, fallbackOccurredAt: Date) {
+async function upsertCall(agentId: string, workspaceId: string | null, payload: NonNullable<AgentWebhookPayload["call"]>, fallbackOccurredAt: Date) {
   const startedAt = toDateOrNull(payload.startedAt) ?? fallbackOccurredAt;
   const endedAt = toDateOrNull(payload.endedAt);
   const callId = payload.id ?? createPrefixedId("call");
@@ -157,6 +157,7 @@ async function upsertCall(agentId: string, payload: NonNullable<AgentWebhookPayl
     create: {
       id: callId,
       agentId,
+      workspaceId: workspaceId ?? undefined,
       direction: payload.direction,
       status: payload.status ?? "completed",
       outcome: payload.outcome,
@@ -175,6 +176,7 @@ async function upsertCall(agentId: string, payload: NonNullable<AgentWebhookPayl
 
 async function upsertTranscript(
   agentId: string,
+  workspaceId: string | null,
   channel: NonNullable<AgentWebhookPayload["channel"]>,
   payload: NonNullable<AgentWebhookPayload["transcript"]>,
   fallbackOccurredAt: Date,
@@ -206,6 +208,7 @@ async function upsertTranscript(
     create: {
       id: transcriptId,
       agentId,
+      workspaceId: workspaceId ?? undefined,
       channel: channel as Channel,
       contact: "unknown",
       callId,
@@ -253,6 +256,7 @@ async function upsertTranscript(
 
 async function upsertMessageEvent(
   agentId: string,
+  workspaceId: string | null,
   payload: NonNullable<AgentWebhookPayload["message"]>,
   fallbackOccurredAt: Date,
   transcriptId?: string,
@@ -276,6 +280,7 @@ async function upsertMessageEvent(
     create: {
       id: messageId,
       agentId,
+      workspaceId: workspaceId ?? undefined,
       transcriptId,
       direction: payload.direction ?? "outbound",
       status: payload.status ?? "sent",
@@ -366,14 +371,16 @@ export async function ingestAgentWebhook(payload: AgentWebhookPayload) {
   const occurredAt = toDateOrNull(payload.occurredAt) ?? new Date();
   const agent = await ensureAgent(payload.agent, payload.channel);
 
-  const call = agent && payload.call ? await upsertCall(agent.id, payload.call, occurredAt) : null;
+  const workspaceId = agent?.workspaceId ?? null;
+
+  const call = agent && payload.call ? await upsertCall(agent.id, workspaceId, payload.call, occurredAt) : null;
   const transcript =
     agent && payload.channel && payload.transcript
-      ? await upsertTranscript(agent.id, payload.channel, payload.transcript, occurredAt, call?.id)
+      ? await upsertTranscript(agent.id, workspaceId, payload.channel, payload.transcript, occurredAt, call?.id)
       : null;
   const message =
     agent && payload.message
-      ? await upsertMessageEvent(agent.id, payload.message, occurredAt, transcript?.id)
+      ? await upsertMessageEvent(agent.id, workspaceId, payload.message, occurredAt, transcript?.id)
       : null;
   const knowledgeBase = payload.knowledgeBase ? await upsertKnowledgeBase(agent?.id ?? null, payload.knowledgeBase) : null;
 
@@ -389,6 +396,7 @@ export async function ingestAgentWebhook(payload: AgentWebhookPayload) {
         payload.transcript?.summary ??
         `Processed ${payload.eventType}`,
       severity: inferSeverity(payload.eventType, payload.severity),
+      workspaceId: workspaceId ?? undefined,
       agentId: agent?.id,
       callId: call?.id,
       messageEventId: message?.id,

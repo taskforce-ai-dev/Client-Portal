@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import Anthropic from "@anthropic-ai/sdk";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import fastifyStatic from "@fastify/static";
@@ -1613,6 +1614,230 @@ app.post(
     const message = await replyToTicket(request.params.ticketId, request.body, adminId(request));
     reply.code(201);
     return message;
+  },
+);
+
+// ------------------------------------------------------------------
+// Admin — Agent KB target config + KB document + structuring/publish
+// ------------------------------------------------------------------
+
+const KB_STRUCTURE_SYSTEM_PROMPT = `You are a knowledge base structuring engine for AI voice agents. Transform raw business information into a retrieval-optimized KB document.
+
+FORMATTING RULES — non-negotiable:
+- Blank line between every paragraph and every section header
+- Every paragraph is 300–500 characters, self-contained — no cross-references to other sections
+- Repeat the entity name (business name, product name, policy name) explicitly in every paragraph — no pronouns, no "it"/"they"
+- State all prices, hours, policies, and facts inline in the paragraph where they appear
+- Adapt the section structure to the business vertical — do not force a hotel template onto a retail document
+
+HOTEL-STYLE EXAMPLE:
+TREEHOUSE CHALETS — COMPLETE KNOWLEDGE BASE
+
+1. PROPERTY OVERVIEW
+Treehouse Chalets is a boutique eco-resort in Ella, Sri Lanka. Treehouse Chalets features 12 individually designed treehouse units surrounded by tea plantation views and tropical forest. Treehouse Chalets provides air conditioning, private bathrooms, and daily housekeeping in all units.
+
+2. ROOM TYPES
+Forest Escape Suite at Treehouse Chalets accommodates 2 guests and includes a private deck, king bed, and en-suite bathroom. Forest Escape Suite rates at Treehouse Chalets start at LKR 26,290 per night during off-peak periods (May–November 2026).
+
+RETAIL-STYLE EXAMPLE:
+## About FLiCo
+FLiCo is a leading electronics retailer in Sri Lanka specializing in home appliances, consumer electronics, and IT products. FLiCo operates showrooms across Colombo, Kandy, and Galle. FLiCo offers delivery, installation, and 12-month after-sales service on all products.
+
+### KONKA Single Door Refrigerators
+1. **KONKA 92L Single Door Mini Fridge (KRF-92S)** — LKR 49,900
+   The KONKA KRF-92S is a compact 92-litre direct-cool refrigerator suitable for bedrooms and offices. The KONKA KRF-92S has adjustable shelves and a vegetable crisper. FLiCo offers free delivery on the KONKA KRF-92S within Colombo.
+
+Return ONLY a JSON object (no markdown fences, no commentary) with this exact shape:
+{"structuredContent":"<full formatted KB document>","businessType":"<detected vertical e.g. hotel, electronics_retail, insurance, restaurant>","sections":["<name>"],"warnings":["<any concern>"]}`;
+
+const kbTargetBody = Type.Object({
+  baseUrl: Type.String({ minLength: 1 }),
+  secret: Type.String({ minLength: 1 }),
+  filename: Type.Optional(Type.String()),
+});
+
+app.get(
+  "/api/admin/agents/:agentId/kb-target",
+  {
+    schema: {
+      tags: ["Admin / Knowledge Base"],
+      summary: "Get VPS target config for an agent's KB reload endpoint",
+      params: Type.Object({ agentId: Type.String() }),
+    },
+  },
+  async (request) => {
+    const target = await prisma.agentKbTarget.findUnique({ where: { agentId: request.params.agentId } });
+    return target ?? null;
+  },
+);
+
+app.put(
+  "/api/admin/agents/:agentId/kb-target",
+  {
+    schema: {
+      tags: ["Admin / Knowledge Base"],
+      summary: "Create or update VPS target config for an agent's KB reload endpoint",
+      params: Type.Object({ agentId: Type.String() }),
+      body: kbTargetBody,
+    },
+  },
+  async (request) => {
+    const { agentId } = request.params;
+    const body = request.body as Static<typeof kbTargetBody>;
+    return prisma.agentKbTarget.upsert({
+      where: { agentId },
+      create: { agentId, ...body, filename: body.filename ?? "knowledge.txt" },
+      update: { ...body, updatedAt: new Date() },
+    });
+  },
+);
+
+app.get(
+  "/api/admin/agents/:agentId/kb-document",
+  {
+    schema: {
+      tags: ["Admin / Knowledge Base"],
+      summary: "Get the current structured KB document stored for an agent",
+      params: Type.Object({ agentId: Type.String() }),
+    },
+  },
+  async (request) => {
+    const doc = await prisma.agentKbDocument.findUnique({
+      where: { agentId: request.params.agentId },
+      include: { snapshots: { orderBy: { createdAt: "desc" }, take: 5 } },
+    });
+    return doc ?? null;
+  },
+);
+
+const structureKbBody = Type.Object({
+  agentId: Type.String({ minLength: 1 }),
+  rawText: Type.String({ minLength: 1 }),
+  mode: Type.Union([Type.Literal("merge"), Type.Literal("replace")]),
+  businessType: Type.Optional(Type.String()),
+  businessDescription: Type.Optional(Type.String()),
+});
+
+app.post(
+  "/api/admin/knowledge-base/structure",
+  {
+    schema: {
+      tags: ["Admin / Knowledge Base"],
+      summary: "Structure raw text into a retrieval-optimized KB document (preview only — does not persist or publish)",
+      body: structureKbBody,
+    },
+  },
+  async (request, reply) => {
+    if (!env.anthropicApiKey) {
+      reply.code(501).send({ message: "ANTHROPIC_API_KEY is not configured on this server" });
+      return;
+    }
+
+    const { agentId, rawText, mode, businessType, businessDescription } = request.body as Static<typeof structureKbBody>;
+
+    let existingContent: string | null = null;
+    if (mode === "merge") {
+      const doc = await prisma.agentKbDocument.findUnique({ where: { agentId } });
+      existingContent = doc?.content ?? null;
+    }
+
+    const hints: string[] = [];
+    if (businessType) hints.push(`Business type: ${businessType}`);
+    if (businessDescription) hints.push(`Business description: ${businessDescription}`);
+    const hintBlock = hints.length ? hints.join("\n") + "\n\n" : "";
+
+    const userMessage =
+      mode === "merge" && existingContent
+        ? `${hintBlock}EXISTING KNOWLEDGE BASE:\n${existingContent}\n\nNEW INFORMATION TO INTEGRATE:\n${rawText}\n\nIntegrate the new information: update changed facts, add new sections as needed, preserve sections not mentioned in the new input, and deduplicate. Return the complete updated document.`
+        : `${hintBlock}Structure this raw business information into a retrieval-optimized knowledge base document:\n\n${rawText}`;
+
+    const anthropic = new Anthropic({ apiKey: env.anthropicApiKey });
+    let result: { structuredContent: string; businessType: string; sections: string[]; warnings: string[] };
+    try {
+      const response = await anthropic.messages.create({
+        model: env.anthropicModel,
+        max_tokens: 8192,
+        system: KB_STRUCTURE_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+      });
+      const text = response.content[0]?.type === "text" ? response.content[0].text : "";
+      result = JSON.parse(text);
+    } catch (err) {
+      const msg = err instanceof SyntaxError ? "Claude returned non-JSON output — retry or check the input" : String(err);
+      reply.code(502).send({ message: `Structuring failed: ${msg}` });
+      return;
+    }
+
+    return result;
+  },
+);
+
+const publishKbBody = Type.Object({
+  agentId: Type.String({ minLength: 1 }),
+  content: Type.String({ minLength: 1 }),
+  businessType: Type.Optional(Type.String()),
+});
+
+app.post(
+  "/api/admin/knowledge-base/publish",
+  {
+    schema: {
+      tags: ["Admin / Knowledge Base"],
+      summary: "Snapshot the current KB, persist the new content, then POST it live to the agent's /kb-reload endpoint",
+      body: publishKbBody,
+    },
+  },
+  async (request, reply) => {
+    const { agentId, content, businessType } = request.body as Static<typeof publishKbBody>;
+
+    const target = await prisma.agentKbTarget.findUnique({ where: { agentId } });
+    if (!target) {
+      reply.code(422).send({ message: "No VPS target configured for this agent. Create one via PUT /api/admin/agents/:agentId/kb-target first." });
+      return;
+    }
+
+    // Snapshot + persist inside a transaction so the dashboard is always the source of truth
+    const existing = await prisma.agentKbDocument.findUnique({ where: { agentId } });
+    await prisma.$transaction(async (tx) => {
+      if (existing) {
+        await tx.agentKbSnapshot.create({
+          data: { agentKbDocumentId: existing.id, content: existing.content, reason: "pre-publish" },
+        });
+        await tx.agentKbDocument.update({
+          where: { agentId },
+          data: { content, businessType: businessType ?? undefined, updatedAt: new Date() },
+        });
+      } else {
+        await tx.agentKbDocument.create({
+          data: { agentId, content, businessType: businessType ?? undefined },
+        });
+      }
+      if (businessType) {
+        await tx.agent.update({ where: { id: agentId }, data: { businessType } });
+      }
+    });
+
+    // Push live to VPS agent
+    let agentResult: unknown;
+    try {
+      const vpsRes = await fetch(`${target.baseUrl}/kb-reload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-KB-Secret": target.secret },
+        body: JSON.stringify({ content, filename: target.filename }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!vpsRes.ok) {
+        const errBody = await vpsRes.text();
+        reply.code(502).send({ message: `Agent /kb-reload returned HTTP ${vpsRes.status}: ${errBody}` });
+        return;
+      }
+      agentResult = await vpsRes.json();
+    } catch (err) {
+      reply.code(502).send({ message: `Could not reach agent at ${target.baseUrl}: ${String(err)}` });
+      return;
+    }
+
+    return { ok: true, agentResult };
   },
 );
 
