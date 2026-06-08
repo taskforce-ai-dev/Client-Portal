@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import AgentSidebar from "@/components/AgentSidebar";
 import AgentTopbar from "@/components/AgentTopbar";
 import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient } from "@/lib/adminDb";
+import { findAgentForClient, listAgentsByClient } from "@/lib/adminDb";
 import { getUsageForSubaccount } from "@/lib/twilio";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,10 @@ export default async function AgentLayout({
 }) {
   const session = getClientSession();
   if (!session) redirect("/login");
-  const dbAgent = await findAgentForClient(params.id, session.clientId);
+  const [dbAgent, dbAgents] = await Promise.all([
+    findAgentForClient(params.id, session.clientId),
+    listAgentsByClient(session.clientId),
+  ]);
   if (!dbAgent) redirect("/select");
 
   const agent = {
@@ -29,6 +32,11 @@ export default async function AgentLayout({
     initial: dbAgent.initial,
   };
 
+  const topbarAgents = dbAgents.map((a) => ({
+    id: a.id, name: a.name, role: a.role, gradient: a.gradient, initial: a.initial,
+  }));
+  const topbarCurrent = { id: agent.id, name: agent.name, role: agent.role, gradient: agent.gradient, initial: agent.initial };
+
   const sub = dbAgent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
   const usage = await getUsageForSubaccount(sub);
 
@@ -36,7 +44,7 @@ export default async function AgentLayout({
     <div className="flex min-h-screen">
       <AgentSidebar agent={agent} minutesUsed={Math.round(usage.totalMinutes)} />
       <div className="flex-1 flex flex-col min-w-0">
-        <AgentTopbar />
+        <AgentTopbar current={topbarCurrent} agents={topbarAgents} />
         <main className="flex-1 p-6 lg:p-8 overflow-x-hidden">{children}</main>
       </div>
     </div>
