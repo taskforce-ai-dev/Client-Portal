@@ -16,12 +16,11 @@ export default async function KnowledgeBasePage({ params }: { params: { id: stri
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Knowledge Base</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Edit what {agent.name} knows. Changes are saved to your workspace and stay in
-          sync with the TaskforceAI team.
+          View what {agent.name} knows. Contact your admin to request changes.
         </p>
       </div>
 
-      <KnowledgeEditor endpoint={`/api/agents/${agent.id}/kb`} allowUpload={false} />
+      <KnowledgeEditor endpoint={`/api/agents/${agent.id}/kb`} allowUpload={false} readOnly={true} />
     </div>
   );
 }

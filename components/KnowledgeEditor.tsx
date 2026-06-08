@@ -9,6 +9,7 @@ import {
   Eye,
   FileText,
   Github,
+  Lock,
   Loader2,
   Pencil,
   Save,
@@ -22,9 +23,11 @@ type Imported = { name: string; at: number };
 export default function KnowledgeEditor({
   endpoint = "/api/kb",
   allowUpload = true,
+  readOnly = false,
 }: {
   endpoint?: string;
   allowUpload?: boolean;
+  readOnly?: boolean;
 } = {}) {
   const [content, setContent] = useState("");
   const [configured, setConfigured] = useState(false);
@@ -69,6 +72,7 @@ export default function KnowledgeEditor({
   }, [endpoint, allowUpload]);
 
   const save = useCallback(async () => {
+    if (readOnly) return;
     setSaving(true);
     setError(null);
     setStatus(null);
@@ -93,6 +97,7 @@ export default function KnowledgeEditor({
   }, [content, source, endpoint, allowUpload]);
 
   useEffect(() => {
+    if (readOnly) return;
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
@@ -104,6 +109,7 @@ export default function KnowledgeEditor({
   }, [dirty, saving, save]);
 
   async function uploadFile(file: File) {
+    if (readOnly) return;
     const isPdf =
       file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
     if (!isPdf) {
@@ -146,7 +152,11 @@ export default function KnowledgeEditor({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          {!allowUpload ? (
+          {readOnly ? (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/[0.06] ring-1 ring-white/10 text-xs text-slate-400" title="Only admins can edit">
+              <Lock className="w-3 h-3" /> Read only
+            </span>
+          ) : !allowUpload ? (
             <span className="pill-emerald" title="Saved to the database and shown in the client portal">
               <Check className="w-3 h-3" /> Synced with client portal
             </span>
@@ -168,15 +178,15 @@ export default function KnowledgeEditor({
               {lastSaved.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
             </span>
           )}
-          {dirty && <span className="text-xs text-amber-300">Unsaved changes</span>}
+          {!readOnly && dirty && <span className="text-xs text-amber-300">Unsaved changes</span>}
         </div>
 
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-xl bg-white/[0.04] ring-1 ring-white/10 p-0.5">
-            <TabButton active={tab === "edit"} onClick={() => setTab("edit")} icon={Pencil} label="Edit" />
+            {!readOnly && <TabButton active={tab === "edit"} onClick={() => setTab("edit")} icon={Pencil} label="Edit" />}
             <TabButton active={tab === "preview"} onClick={() => setTab("preview")} icon={Eye} label="Preview" />
           </div>
-          {allowUpload && (
+          {!readOnly && allowUpload && (
             <>
               <input
                 ref={fileInput}
@@ -198,10 +208,10 @@ export default function KnowledgeEditor({
               </button>
             </>
           )}
-          <button className="btn-primary" onClick={save} disabled={saving || !dirty}>
+          {!readOnly && <button className="btn-primary" onClick={save} disabled={saving || !dirty}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -223,13 +233,13 @@ export default function KnowledgeEditor({
           dragging && "ring-2 ring-accent-400/50"
         )}
         onDragOver={(e) => {
-          if (!allowUpload) return;
+          if (!allowUpload || readOnly) return;
           e.preventDefault();
           setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => {
-          if (!allowUpload) return;
+          if (!allowUpload || readOnly) return;
           e.preventDefault();
           setDragging(false);
           const f = e.dataTransfer.files?.[0];
@@ -242,7 +252,7 @@ export default function KnowledgeEditor({
               <Loader2 className="w-4 h-4 animate-spin" /> Loading knowledge base…
             </span>
           </div>
-        ) : tab === "edit" ? (
+        ) : tab === "edit" && !readOnly ? (
           <textarea
             value={content}
             onChange={(e) => {
@@ -269,7 +279,7 @@ export default function KnowledgeEditor({
 
       <div className="flex items-center justify-between text-xs text-slate-500">
         <span>{content.length.toLocaleString()} characters · Markdown</span>
-        <span>Tip: ⌘/Ctrl + S to save</span>
+        {readOnly ? <span>Contact your admin to make changes</span> : <span>Tip: ⌘/Ctrl + S to save</span>}
       </div>
 
       {imported.length > 0 && (

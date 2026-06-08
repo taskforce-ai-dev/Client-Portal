@@ -42,8 +42,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isDbConfigured()) return NextResponse.json({ message: "Database not connected." }, { status: 503 });
-  const agent = await authorize(params.id);
-  if (!agent) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  if (!isAuthed()) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+  const agent = await findAgentById(params.id);
+  if (!agent) return NextResponse.json({ message: "Not found" }, { status: 404 });
   let body: { content?: string };
   try {
     body = await req.json();
@@ -52,7 +53,6 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
   const content = body.content ?? "";
   await setAgentKb(agent.id, agent.client_id, content);
-  // Fire-and-forget: push new content to the running agent container.
   void fireKbReload(agent, content);
   return NextResponse.json({ ok: true });
 }
