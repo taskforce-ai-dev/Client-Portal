@@ -259,9 +259,9 @@ export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSn
 }
 
 // Fires once per (agent, calendar month, threshold). Writes an audit row with
-// a deterministic id so a refresh storm can't spam the feed. The Flutter
-// admin console reads sentinel_audit for its Activity Feed + Audit Log, so
-// this single insert delivers the admin-side notification too.
+// a deterministic id so a refresh storm can't spam the feed. target=agent.id
+// so the per-agent notifications tab can filter precisely; the summary still
+// carries the client/agent name for the admin's global feed.
 export async function recordQuotaNoticeIfNeeded(agent: DbAgent, snap: AgentQuotaSnapshot): Promise<void> {
   if (!snap.configured || snap.status === "ok") return;
   const sql = getSql();
@@ -273,7 +273,7 @@ export async function recordQuotaNoticeIfNeeded(agent: DbAgent, snap: AgentQuota
     : `${agent.name}: 80% of monthly 40h call quota used for ${snap.periodLabel} (${Math.floor(snap.billableMinutes / 60)}h ${snap.billableMinutes % 60}m of 40h).`;
   try {
     await sql`INSERT INTO sentinel_audit (id, admin_name, action, type, target, summary)
-              VALUES (${id}, ${"System"}, ${action}, ${"client"}, ${agent.client_id}, ${summary})
+              VALUES (${id}, ${"System"}, ${action}, ${"quota"}, ${agent.id}, ${summary})
               ON CONFLICT (id) DO NOTHING`;
   } catch {
     // Audit write is best-effort — never block a page render on it.

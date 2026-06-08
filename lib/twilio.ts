@@ -307,6 +307,7 @@ export function bucketOutcomes(calls: DisplayCall[]) {
     "No answer": "#94A3B8",
     Failed: "#FB7185",
     Canceled: "#FB7185",
+    "Handed over": "#A78BFA",
   };
   const counts = new Map<string, number>();
   for (const c of calls) {

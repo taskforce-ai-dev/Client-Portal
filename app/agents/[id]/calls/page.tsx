@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Filter, Search } from "lucide-react";
 import SourceBadge from "@/components/SourceBadge";
 import AutoRefresh from "@/components/AutoRefresh";
 import TwilioNotice from "@/components/TwilioNotice";
@@ -8,6 +7,7 @@ import CallLogTable, { CallRow } from "@/components/CallLogTable";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
 import { formatTs, getAllCallsForSubaccount, isTwilioAuthConfigured } from "@/lib/twilio";
+import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export default async function CallLogsPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { range?: string; start?: string; end?: string };
+  searchParams: { range?: string; start?: string; end?: string; outcome?: string };
 }) {
   const session = getClientSession();
   if (!session) redirect("/login");
@@ -36,6 +36,7 @@ export default async function CallLogsPage({
   let range = (searchParams.range as string) || "total";
   if (!["total", "today", "week", "month", "custom"].includes(range)) range = "total";
   const customMissing = range === "custom" && (!searchParams.start || !searchParams.end);
+  const outcomeFilter = searchParams.outcome || "all";
 
   // Compute window
   const now = new Date();
@@ -71,15 +72,21 @@ export default async function CallLogsPage({
   const summaryByCall = new Map<string, typeof summariesRaw[number]>();
   for (const s of summariesRaw) if (s.twilio_call_sid) summaryByCall.set(s.twilio_call_sid, s);
 
-  const rows: CallRow[] = calls.map((c) => ({
-    id: c.id,
-    caller: c.caller,
-    direction: c.direction,
-    startedAt: c.startedAt,
-    duration: c.duration,
-    outcome: c.outcome,
-    summary: summaryByCall.get(c.id) || null,
-  }));
+  const rows: CallRow[] = calls.map((c) => {
+    const summary = summaryByCall.get(c.id) || null;
+    const handover = c.outcome === "Completed" && summary
+      ? isHandoverCall({ transcript: summary.transcript, summary: summary.summary, action_items: summary.action_items })
+      : false;
+    return {
+      id: c.id,
+      caller: c.caller,
+      direction: c.direction,
+      startedAt: c.startedAt,
+      duration: c.duration,
+      outcome: handover ? HANDOVER_OUTCOME : c.outcome,
+      summary,
+    };
+  });
 
   // Orphan summaries (no matching Twilio call) — show as "Summary only" rows
   const matchedCallSids = new Set(rows.map((r) => r.id));
@@ -102,8 +109,26 @@ export default async function CallLogsPage({
       summary: s as any,
     }));
 
-  const allRows = [...rows, ...orphans];
+  const allRowsUnfiltered = [...rows, ...orphans];
+  // Outcome filter chips. "all" = no filter; others match the row's outcome
+  // string literally (which already reflects Handed-over reclassification).
+  const outcomeCounts: Record<string, number> = { all: allRowsUnfiltered.length };
+  for (const r of allRowsUnfiltered) outcomeCounts[r.outcome] = (outcomeCounts[r.outcome] ?? 0) + 1;
+  const allRows = outcomeFilter === "all"
+    ? allRowsUnfiltered
+    : allRowsUnfiltered.filter((r) => r.outcome === outcomeFilter);
   const summarizedCount = allRows.filter((r) => r.summary).length;
+  const qsBase = new URLSearchParams();
+  if (range !== "total") qsBase.set("range", range);
+  if (range === "custom" && searchParams.start) qsBase.set("start", searchParams.start);
+  if (range === "custom" && searchParams.end) qsBase.set("end", searchParams.end);
+  const outcomeHref = (val: string) => {
+    const qs = new URLSearchParams(qsBase);
+    if (val !== "all") qs.set("outcome", val);
+    return qs.toString() ? `?${qs.toString()}` : "?";
+  };
+  const OUTCOME_CHIPS = ["all", "Completed", HANDOVER_OUTCOME, "No answer", "Busy", "Failed"]
+    .filter((o) => o === "all" || (outcomeCounts[o] ?? 0) > 0);
 
   return (
     <div className="space-y-6">
@@ -154,6 +179,24 @@ export default async function CallLogsPage({
       )}
 
       <TwilioNotice configured={configured} error={error} />
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="stat-label mr-1">Outcome</span>
+        {OUTCOME_CHIPS.map((o) => (
+          <Link
+            key={o}
+            href={outcomeHref(o)}
+            scroll={false}
+            className={outcomeFilter === o
+              ? "px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.06] ring-1 ring-white/10 text-white"
+              : "px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:bg-white/[0.03]"
+            }
+          >
+            {o === "all" ? "All" : o}{" "}
+            <span className="text-slate-500 ml-0.5">{outcomeCounts[o] ?? 0}</span>
+          </Link>
+        ))}
+      </div>
 
       <div className="card overflow-hidden">
         <CallLogTable

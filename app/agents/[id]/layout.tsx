@@ -5,7 +5,7 @@ import QuotaBanner from "@/components/QuotaBanner";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listAgentsByClient } from "@/lib/adminDb";
 import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
-import { getUsageForSubaccount } from "@/lib/twilio";
+import { countCurrentMonthNotifications } from "@/lib/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -39,19 +39,22 @@ export default async function AgentLayout({
   }));
   const topbarCurrent = { id: agent.id, name: agent.name, role: agent.role, gradient: agent.gradient, initial: agent.initial };
 
-  const sub = dbAgent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
-  const [usage, quota] = await Promise.all([
-    getUsageForSubaccount(sub),
-    getAgentMonthlyQuota(dbAgent),
-  ]);
+  const quota = await getAgentMonthlyQuota(dbAgent);
   // Fire-once-per-month audit row so the admin Activity Feed surfaces it too.
   await recordQuotaNoticeIfNeeded(dbAgent, quota);
+  const unread = await countCurrentMonthNotifications(dbAgent.id);
 
   return (
     <div className="flex min-h-screen">
-      <AgentSidebar agent={agent} minutesUsed={Math.round(usage.totalMinutes)} />
+      <AgentSidebar
+        agent={agent}
+        minutesUsed={quota.billableMinutes}
+        minutesLimit={quota.includedMinutes}
+        quotaStatus={quota.status}
+        unreadNotifications={unread}
+      />
       <div className="flex-1 flex flex-col min-w-0">
-        <AgentTopbar current={topbarCurrent} agents={topbarAgents} />
+        <AgentTopbar current={topbarCurrent} agents={topbarAgents} unreadNotifications={unread} />
         <main className="flex-1 p-6 lg:p-8 overflow-x-hidden space-y-6">
           <QuotaBanner quota={quota} />
           {children}

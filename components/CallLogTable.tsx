@@ -33,6 +33,7 @@ const outcomePill: Record<string, string> = {
   "No answer": "pill-slate",
   Failed: "pill-rose",
   Canceled: "pill-rose",
+  "Handed over": "pill-violet",
   "Summary only": "pill-slate",
 };
 

@@ -8,18 +8,18 @@ import SourceBadge from "@/components/SourceBadge";
 import AutoRefresh from "@/components/AutoRefresh";
 import TwilioNotice from "@/components/TwilioNotice";
 import { Phone } from "lucide-react";
-import { workspace } from "@/lib/data";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
+import { getAgentMonthlyQuota } from "@/lib/billing";
 import CallLogTable, { CallRow } from "@/components/CallLogTable";
 import {
   bucketCallsByHour,
   bucketOutcomes,
   callStats,
   getAllCallsForSubaccount,
-  getUsageForSubaccount,
   isTwilioAuthConfigured,
 } from "@/lib/twilio";
+import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
 
 function ymdLocal(d: Date) { return d.toISOString().slice(0, 10); }
 
@@ -42,28 +42,38 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
 
   const sub = agentDb.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
   const configuredAuth = isTwilioAuthConfigured() && !!sub;
-  const [{ calls, configured, error }, usage, summariesRaw] = await Promise.all([
+  const [{ calls, configured, error }, summariesRaw, quota] = await Promise.all([
     configuredAuth
       ? getAllCallsForSubaccount(sub, { max: 1000 })
       : Promise.resolve({ calls: [] as any[], configured: false, error: undefined as string | undefined }),
-    configuredAuth ? getUsageForSubaccount(sub) : Promise.resolve({ configured: false, totalCalls: 0, totalMinutes: 0, totalPrice: 0, error: undefined as string | undefined }),
     listCallSummaries(agentDb.id, { limit: 100 }),
+    getAgentMonthlyQuota(agentDb),
   ]);
   const summaryByCall = new Map<string, typeof summariesRaw[number]>();
   for (const s of summariesRaw) if (s.twilio_call_sid) summaryByCall.set(s.twilio_call_sid, s);
 
+  // Reclassify completed calls as "Handed over" when the transcript/summary
+  // shows the AI agent transferred to a human. Keeps the underlying Twilio
+  // status but gives clients a true picture of how the conversation ended.
+  const enrichedCalls = calls.map((c) => {
+    if (c.outcome !== "Completed") return c;
+    const sum = summaryByCall.get(c.id);
+    return sum && isHandoverCall({ transcript: sum.transcript, summary: sum.summary, action_items: sum.action_items })
+      ? { ...c, outcome: HANDOVER_OUTCOME }
+      : c;
+  });
+
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const today = calls.filter((c) => {
+  const today = enrichedCalls.filter((c) => {
     if (!c.startedAtIso) return false;
     const d = new Date(c.startedAtIso);
     return !isNaN(d.getTime()) && d >= todayStart;
   });
-  const { total, completionRate, completed, avgDuration } = callStats(calls);
-  const minutesPct = Math.round((usage.totalMinutes / workspace.minutesLimit) * 100);
+  const { total, completionRate, completed, avgDuration } = callStats(enrichedCalls);
 
   const hourly = bucketCallsByHour(today);
-  const outcomes = bucketOutcomes(calls);
-  const recentCalls = calls.slice(0, 5);
+  const outcomes = bucketOutcomes(enrichedCalls);
+  const recentCalls = enrichedCalls.slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -101,9 +111,9 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
         <KpiCard label="Avg duration" value={avgDuration} delta={0} hint="All calls" />
         <KpiCard
           label="Minutes this month"
-          value={Math.round(usage.totalMinutes).toLocaleString()}
+          value={quota.billableMinutes.toLocaleString()}
           delta={0}
-          hint={`${minutesPct}% of ${workspace.minutesLimit.toLocaleString()} plan`}
+          hint={`${quota.percent}% of ${quota.includedMinutes.toLocaleString()} included`}
         />
       </div>
 

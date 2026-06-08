@@ -15,9 +15,11 @@ export type TopbarAgent = {
 export default function AgentTopbar({
   current,
   agents,
+  unreadNotifications = 0,
 }: {
   current: TopbarAgent;
   agents: TopbarAgent[];
+  unreadNotifications?: number;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -104,10 +106,18 @@ export default function AgentTopbar({
             ⌘K
           </kbd>
         </div>
-        <button className="relative p-2 rounded-xl hover:bg-white/[0.06] text-slate-400">
+        <Link
+          href={`/agents/${current.id}/notifications`}
+          aria-label="Notifications"
+          className="relative p-2 rounded-xl hover:bg-white/[0.06] text-slate-400 hover:text-slate-200"
+        >
           <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-rose-400 shadow-[0_0_8px_0_rgba(251,113,133,0.8)]" />
-        </button>
+          {unreadNotifications > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 grid place-items-center rounded-full bg-rose-500 text-[10px] font-semibold text-white shadow-[0_0_10px_-2px_rgba(244,63,94,0.7)]">
+              {unreadNotifications > 9 ? "9+" : unreadNotifications}
+            </span>
+          )}
+        </Link>
         <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs">
           TC
         </div>

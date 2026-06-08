@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
   BarChart3,
+  Bell,
   CreditCard,
   Hexagon,
   LayoutDashboard,
@@ -13,9 +14,9 @@ import {
   Settings,
 } from "lucide-react";
 import clsx from "clsx";
-import { workspace, type Agent } from "@/lib/data";
+import { type Agent } from "@/lib/data";
 
-const main = (id: string) => [
+const mainTop = (id: string) => [
   { href: `/agents/${id}`, label: "Overview", icon: LayoutDashboard, exact: true },
   { href: `/agents/${id}/calls`, label: "Call Logs", icon: Phone },
   { href: `/agents/${id}/knowledge`, label: "Knowledge Base", icon: Library },
@@ -27,26 +28,46 @@ const account = (id: string) => [
   { href: `/agents/${id}/settings`, label: "Settings", icon: Settings },
 ];
 
+function fmtHm(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
 export default function AgentSidebar({
   agent,
   minutesUsed,
+  minutesLimit,
+  quotaStatus,
+  unreadNotifications,
 }: {
   agent: Agent;
   minutesUsed: number;
+  minutesLimit: number;
+  quotaStatus: "ok" | "warn" | "exceeded";
+  unreadNotifications: number;
 }) {
   const pathname = usePathname();
-  const pct = Math.min(100, Math.round((minutesUsed / workspace.minutesLimit) * 100));
+  const pct = Math.min(999, Math.round((minutesUsed / minutesLimit) * 100));
+  const cappedPct = Math.min(100, pct);
+  const barClass = quotaStatus === "exceeded"
+    ? "bg-gradient-to-r from-rose-500 to-amber-500"
+    : quotaStatus === "warn"
+      ? "bg-gradient-to-r from-amber-400 to-amber-500"
+      : "bg-accent-gradient";
 
   const Item = ({
     href,
     label,
     Icon,
     exact,
+    badge,
   }: {
     href: string;
     label: string;
     Icon: React.ComponentType<{ className?: string }>;
     exact?: boolean;
+    badge?: number;
   }) => {
     const active = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
     return (
@@ -60,7 +81,12 @@ export default function AgentSidebar({
         )}
       >
         <Icon className={clsx("w-4 h-4", active ? "text-accent-300" : "text-slate-500")} />
-        {label}
+        <span className="flex-1">{label}</span>
+        {badge ? (
+          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-rose-500/90 text-[10px] font-semibold text-white shadow-[0_0_10px_-2px_rgba(244,63,94,0.7)]">
+            {badge > 9 ? "9+" : badge}
+          </span>
+        ) : null}
       </Link>
     );
   };
@@ -105,9 +131,15 @@ export default function AgentSidebar({
             Main
           </div>
           <div className="space-y-1">
-            {main(agent.id).map(({ href, label, icon, exact }) => (
+            {mainTop(agent.id).map(({ href, label, icon, exact }) => (
               <Item key={href} href={href} label={label} Icon={icon} exact={exact} />
             ))}
+            <Item
+              href={`/agents/${agent.id}/notifications`}
+              label="Notifications"
+              Icon={Bell}
+              badge={unreadNotifications}
+            />
           </div>
         </div>
 
@@ -125,14 +157,17 @@ export default function AgentSidebar({
 
       <div className="p-4 border-t border-white/5">
         <div className="flex items-center justify-between text-xs mb-2">
-          <span className="text-slate-400">Monthly minutes</span>
-          <span className="text-slate-300 font-medium">{pct}%</span>
+          <span className="text-slate-400">Included this month</span>
+          <span className={clsx(
+            "font-medium",
+            quotaStatus === "exceeded" ? "text-rose-300" : quotaStatus === "warn" ? "text-amber-300" : "text-slate-300",
+          )}>{pct}%</span>
         </div>
         <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-          <div className="h-full rounded-full bg-accent-gradient" style={{ width: `${pct}%` }} />
+          <div className={clsx("h-full rounded-full", barClass)} style={{ width: `${cappedPct}%` }} />
         </div>
         <div className="text-[11px] text-slate-500 mt-2">
-          {minutesUsed.toLocaleString()} / {workspace.minutesLimit.toLocaleString()} used
+          {fmtHm(minutesUsed)} of {fmtHm(minutesLimit)} used
         </div>
       </div>
     </aside>
