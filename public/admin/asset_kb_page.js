@@ -118,7 +118,25 @@ const KnowledgeBasePage = () => {
             <button
               onClick={() => toggleClient(client.id)}
               style={{
-                width: "100            {expanded[client.id] && client.agents && client.agents.map(agent => {
+                width: "100%", textAlign: "left",
+                background: expanded[client.id] ? "rgba(255,255,255,0.04)" : "none",
+                border: "none", cursor: "pointer",
+                padding: "7px 10px", borderRadius: 6, marginBottom: 2,
+                color: "var(--text-1)", fontSize: 13, fontWeight: 500,
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <span style={{ fontSize: 9, color: "var(--text-3)", flexShrink: 0,
+                display: "inline-block",
+                transform: expanded[client.id] ? "rotate(90deg)" : "none",
+                transition: "transform 0.15s",
+              }}>▶</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis",
+                whiteSpace: "nowrap", flex: 1 }}>
+                {client.company}
+              </span>
+            </button>
+            {expanded[client.id] && client.agents && client.agents.map(agent => {
               const isSel = selectedAgent && selectedAgent.id === agent.id;
               return (
                 <button
