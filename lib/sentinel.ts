@@ -25,6 +25,7 @@ function months12(): string[] {
 
 function activityKey(action: string): string {
   const a = action.toLowerCase();
+  if (a.includes("quota")) return "payment_failed";
   if (a.includes("created") || a.includes("signup")) return "signup";
   if (a.includes("suspend") || a.includes("block") || a.includes("delete")) return "account_blocked";
   if (a.includes("fail")) return "payment_failed";

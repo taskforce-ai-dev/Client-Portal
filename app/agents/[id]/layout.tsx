@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import AgentSidebar from "@/components/AgentSidebar";
 import AgentTopbar from "@/components/AgentTopbar";
+import QuotaBanner from "@/components/QuotaBanner";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listAgentsByClient } from "@/lib/adminDb";
+import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
 import { getUsageForSubaccount } from "@/lib/twilio";
 
 export const dynamic = "force-dynamic";
@@ -38,14 +40,22 @@ export default async function AgentLayout({
   const topbarCurrent = { id: agent.id, name: agent.name, role: agent.role, gradient: agent.gradient, initial: agent.initial };
 
   const sub = dbAgent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
-  const usage = await getUsageForSubaccount(sub);
+  const [usage, quota] = await Promise.all([
+    getUsageForSubaccount(sub),
+    getAgentMonthlyQuota(dbAgent),
+  ]);
+  // Fire-once-per-month audit row so the admin Activity Feed surfaces it too.
+  await recordQuotaNoticeIfNeeded(dbAgent, quota);
 
   return (
     <div className="flex min-h-screen">
       <AgentSidebar agent={agent} minutesUsed={Math.round(usage.totalMinutes)} />
       <div className="flex-1 flex flex-col min-w-0">
         <AgentTopbar current={topbarCurrent} agents={topbarAgents} />
-        <main className="flex-1 p-6 lg:p-8 overflow-x-hidden">{children}</main>
+        <main className="flex-1 p-6 lg:p-8 overflow-x-hidden space-y-6">
+          <QuotaBanner quota={quota} />
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -1,10 +1,15 @@
-import { DbAgent } from "./adminDb";
+import { DbAgent, getSql } from "./adminDb";
 import { getAllCallsForSubaccount, isTwilioAuthConfigured } from "./twilio";
 
 // Rate: Rs. 3 per billable minute. Each call is rounded up to the next whole
 // minute. Change once and both admin + client portal pick it up.
 const RATE_PER_MINUTE = 3;
 const CURRENCY = "Rs.";
+
+// Package inclusion: each agent gets 40 hours of voice calls per calendar
+// month. Warn the client at 80% (32h) so they aren't surprised.
+export const INCLUDED_MINUTES_PER_MONTH = 40 * 60;
+export const QUOTA_WARN_MINUTES = Math.floor(INCLUDED_MINUTES_PER_MONTH * 0.8);
 
 export function billingRate() {
   return { perMinute: RATE_PER_MINUTE, currency: CURRENCY };
@@ -182,6 +187,97 @@ export async function getBillingSnapshot(
 
 export function moneyLKR(n: number) {
   return `Rs. ${(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+export type QuotaStatus = "ok" | "warn" | "exceeded";
+
+export type AgentQuotaSnapshot = {
+  configured: boolean;
+  error?: string | null;
+  periodYm: string; // e.g. "2026-06"
+  periodLabel: string; // e.g. "June 2026"
+  billableMinutes: number;
+  includedMinutes: number;
+  warnMinutes: number;
+  percent: number;
+  status: QuotaStatus;
+  overageMinutes: number;
+  overageCost: number;
+};
+
+function periodLabelFrom(y: number, m1to12: number) {
+  return new Date(Date.UTC(y, m1to12 - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric" });
+}
+
+export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSnapshot> {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const ym = `${y}-${String(m).padStart(2, "0")}`;
+  const periodLabel = periodLabelFrom(y, m);
+  const base: AgentQuotaSnapshot = {
+    configured: false,
+    periodYm: ym,
+    periodLabel,
+    billableMinutes: 0,
+    includedMinutes: INCLUDED_MINUTES_PER_MONTH,
+    warnMinutes: QUOTA_WARN_MINUTES,
+    percent: 0,
+    status: "ok",
+    overageMinutes: 0,
+    overageCost: 0,
+  };
+  const sub = agent.twilio_subaccount_sid || "";
+  if (!isTwilioAuthConfigured() || !sub) return base;
+
+  const start = new Date(y, m - 1, 1);
+  const endFilter = new Date(y, m, 1); // exclusive: first day of next month
+  const { calls, error } = await getAllCallsForSubaccount(sub, {
+    max: 1000,
+    startDate: ymd(start),
+    endDate: ymd(endFilter),
+  });
+  if (error) return { ...base, configured: true, error };
+
+  const billableMinutes = calls.reduce((s, c) => s + (c.durationSec > 0 ? Math.ceil(c.durationSec / 60) : 0), 0);
+  const overageMinutes = Math.max(0, billableMinutes - INCLUDED_MINUTES_PER_MONTH);
+  const status: QuotaStatus = billableMinutes >= INCLUDED_MINUTES_PER_MONTH
+    ? "exceeded"
+    : billableMinutes >= QUOTA_WARN_MINUTES
+      ? "warn"
+      : "ok";
+  return {
+    ...base,
+    configured: true,
+    error: null,
+    billableMinutes,
+    percent: Math.min(999, Math.round((billableMinutes / INCLUDED_MINUTES_PER_MONTH) * 100)),
+    status,
+    overageMinutes,
+    overageCost: overageMinutes * RATE_PER_MINUTE,
+  };
+}
+
+// Fires once per (agent, calendar month, threshold). Writes an audit row with
+// a deterministic id so a refresh storm can't spam the feed. The Flutter
+// admin console reads sentinel_audit for its Activity Feed + Audit Log, so
+// this single insert delivers the admin-side notification too.
+export async function recordQuotaNoticeIfNeeded(agent: DbAgent, snap: AgentQuotaSnapshot): Promise<void> {
+  if (!snap.configured || snap.status === "ok") return;
+  const sql = getSql();
+  if (!sql) return;
+  const id = `aud_q_${agent.id}_${snap.periodYm}_${snap.status}`;
+  const action = snap.status === "exceeded" ? "client.quota.exceeded" : "client.quota.warn";
+  const summary = snap.status === "exceeded"
+    ? `${agent.name}: 40h included calls used for ${snap.periodLabel} — now pay-as-you-go at Rs.${RATE_PER_MINUTE}/min.`
+    : `${agent.name}: 80% of monthly 40h call quota used for ${snap.periodLabel} (${Math.floor(snap.billableMinutes / 60)}h ${snap.billableMinutes % 60}m of 40h).`;
+  try {
+    await sql`INSERT INTO sentinel_audit (id, admin_name, action, type, target, summary)
+              VALUES (${id}, ${"System"}, ${action}, ${"client"}, ${agent.client_id}, ${summary})
+              ON CONFLICT (id) DO NOTHING`;
+  } catch {
+    // Audit write is best-effort — never block a page render on it.
+  }
 }
 
 export function fmtDurSec(sec: number) {
