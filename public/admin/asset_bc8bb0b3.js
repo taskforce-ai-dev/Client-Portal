@@ -137,6 +137,12 @@ const AdminUsersPage = () => {
   const [created, setCreated] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [reminders, setReminders] = useState({ pre3: true, due: true, post3: true, post7: false });
+  // Inline reset-password panel: `resetting` holds the admin being edited
+  // (null when closed). `resetPw` is the typed password.
+  const [resetting, setResetting] = useState(null);
+  const [resetPw, setResetPw] = useState("");
+  const [resetErr, setResetErr] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
   const toast = useToast();
 
   const refresh = () =>
@@ -181,24 +187,32 @@ const AdminUsersPage = () => {
     } catch (e) { toast(e.message, "error"); setConfirm(null); }
   };
 
-  const resetPw = async (a) => {
-    const suggested = suggestAdminPassword();
-    const np = window.prompt(
-      "New password for " + a.email + "\n\nType your own password (min 8 characters), or keep the suggestion below:",
-      suggested,
-    );
-    if (np === null) return;
-    if (!np || np.length < 8) { toast("Password must be at least 8 characters", "error"); return; }
+  const startReset = (a) => {
+    setResetting(a);
+    setResetPw("");
+    setResetErr("");
+    setCreated(null);
+    setInviting(false);
+  };
+
+  const cancelReset = () => { setResetting(null); setResetPw(""); setResetErr(""); };
+
+  const saveReset = async () => {
+    setResetErr("");
+    if (!resetPw || resetPw.length < 8) { setResetErr("Password must be at least 8 characters."); return; }
+    setResetBusy(true);
     try {
-      const r = await fetch(`/api/admin/admins/${a.id}/password`, {
+      const r = await fetch(`/api/admin/admins/${resetting.id}/password`, {
         method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
-        body: JSON.stringify({ password: np }),
+        body: JSON.stringify({ password: resetPw }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.message || "Failed");
-      setCreated({ email: a.email, password: np });
-      toast("Password reset for " + a.email, "success");
-    } catch (e) { toast(e.message, "error"); }
+      setCreated({ email: resetting.email, password: resetPw });
+      toast("Password reset for " + resetting.email, "success");
+      setResetting(null);
+      setResetPw("");
+    } catch (e) { setResetErr(e.message); } finally { setResetBusy(false); }
   };
 
   const list = admins || [];
@@ -230,6 +244,41 @@ const AdminUsersPage = () => {
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button className="btn btn-ghost btn-sm" onClick={() => setInviting(false)}>Cancel</button>
               <button className="btn btn-primary btn-sm" disabled={busy} onClick={sendInvite}>{busy ? "Creating…" : "Create admin"}</button>
+            </div>
+          </div>
+        )}
+
+        {resetting && (
+          <div style={{ padding: 14, borderBottom: "1px solid var(--border)", background: "rgba(167,139,250,0.06)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-0)" }}>Reset password</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                  for <span className="mono" style={{ color: "var(--text-1)" }}>{resetting.email}</span>
+                  {resetting.name ? " · " + resetting.name : ""}
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-xs" onClick={cancelReset}>✕ Close</button>
+            </div>
+            <Field label="New password (type your own, min 8 chars · or click ↻ to suggest one · stored hashed)">
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  className="input mono"
+                  value={resetPw}
+                  onChange={(e) => setResetPw(e.target.value)}
+                  placeholder="Type a new password (min 8 chars)"
+                  autoFocus
+                  style={{ flex: 1 }}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveReset(); }}
+                />
+                <button type="button" className="btn btn-secondary btn-sm" title="Suggest a strong password" onClick={() => setResetPw(suggestAdminPassword())}>↻</button>
+                <button type="button" className="btn btn-secondary btn-sm" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(resetPw); toast("Password copied", "success"); }}>Copy</button>
+              </div>
+            </Field>
+            {resetErr && <div style={{ color: "#ff8585", fontSize: 12.5 }}>{resetErr}</div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" onClick={cancelReset}>Cancel</button>
+              <button className="btn btn-primary btn-sm" disabled={resetBusy} onClick={saveReset}>{resetBusy ? "Saving…" : "Save new password"}</button>
             </div>
           </div>
         )}
@@ -277,7 +326,7 @@ const AdminUsersPage = () => {
                 <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", fontSize: 11.5 }}>{a.created_at ? new Date(a.created_at).toISOString().slice(0, 10) : "—"}</td>
                 <td>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button className="btn btn-ghost btn-xs" onClick={() => resetPw(a)}>Reset password</button>
+                    <button className="btn btn-ghost btn-xs" onClick={() => startReset(a)}>Reset password</button>
                     <button className="btn btn-danger btn-xs" onClick={() => setConfirm(a)}>Revoke</button>
                   </div>
                 </td>
