@@ -89,6 +89,11 @@ export default async function BillingReportPage({
     <Wrapper>
       <PrintOnReady />
 
+      <div className="screen-only" style={{ display: "flex", justifyContent: "flex-end", gap: 14, padding: "0 0 12px", fontSize: 13 }}>
+        <Link href={`/admin/agents/${agent.id}/notifications`} style={{ color: "#a78bfa" }}>Notifications →</Link>
+        <Link href="/admin/notifications" style={{ color: "#a78bfa" }}>All notifications →</Link>
+      </div>
+
       <div className="report">
         <header className="hdr">
           <div>

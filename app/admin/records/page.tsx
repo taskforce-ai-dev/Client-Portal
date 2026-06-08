@@ -89,7 +89,10 @@ function Shell({ children }: { children: React.ReactNode }) {
             <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Database records</h1>
             <p style={{ fontSize: 12.5, color: "#8a93ab", marginTop: 4 }}>Live read-only view of the Neon tables. No passwords or secrets are shown.</p>
           </div>
-          <Link href="/admin" style={{ fontSize: 13, color: "#22d3ee" }}>← Back to admin</Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <Link href="/admin/notifications" style={{ fontSize: 13, color: "#a78bfa" }}>Notifications →</Link>
+            <Link href="/admin" style={{ fontSize: 13, color: "#22d3ee" }}>← Back to admin</Link>
+          </div>
         </div>
         {children}
       </div>

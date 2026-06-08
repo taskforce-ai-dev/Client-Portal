@@ -72,8 +72,30 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
   const { total, completionRate, completed, avgDuration } = callStats(enrichedCalls);
 
   const hourly = bucketCallsByHour(today);
-  const outcomes = bucketOutcomes(enrichedCalls);
-  const recentCalls = enrichedCalls.slice(0, 5);
+
+  // Build CallRow[] grouped by outcome so the chart can drill into each
+  // category with its transcripts attached. Mirrors the Calls page logic.
+  const allRows: CallRow[] = enrichedCalls.map((c) => ({
+    id: c.id,
+    caller: c.caller,
+    direction: c.direction,
+    startedAt: c.startedAt,
+    duration: c.duration,
+    outcome: c.outcome,
+    summary: (summaryByCall.get(c.id) as any) || null,
+  }));
+  const outcomeBuckets = bucketOutcomes(enrichedCalls);
+  const rowsByOutcome = new Map<string, CallRow[]>();
+  for (const r of allRows) {
+    const arr = rowsByOutcome.get(r.outcome) ?? [];
+    arr.push(r);
+    rowsByOutcome.set(r.outcome, arr);
+  }
+  const outcomes = outcomeBuckets.map((b) => ({
+    ...b,
+    calls: rowsByOutcome.get(b.outcome) ?? [],
+  }));
+  const recentCalls = allRows.slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -135,15 +157,7 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
           </Link>
         </div>
         <CallLogTable
-          calls={recentCalls.map<CallRow>((c) => ({
-            id: c.id,
-            caller: c.caller,
-            direction: c.direction,
-            startedAt: c.startedAt,
-            duration: c.duration,
-            outcome: c.outcome,
-            summary: summaryByCall.get(c.id) || null,
-          }))}
+          calls={recentCalls}
           emptyMessage={configured ? "No calls yet." : "Connect Twilio to see calls."}
         />
       </div>

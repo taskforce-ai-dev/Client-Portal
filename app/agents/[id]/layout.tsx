@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import AgentSidebar from "@/components/AgentSidebar";
 import AgentTopbar from "@/components/AgentTopbar";
 import QuotaBanner from "@/components/QuotaBanner";
+import QuotaPopup from "@/components/QuotaPopup";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listAgentsByClient } from "@/lib/adminDb";
 import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
@@ -57,6 +58,7 @@ export default async function AgentLayout({
         <AgentTopbar current={topbarCurrent} agents={topbarAgents} unreadNotifications={unread} />
         <main className="flex-1 p-6 lg:p-8 overflow-x-hidden space-y-6">
           <QuotaBanner quota={quota} />
+          <QuotaPopup agentId={dbAgent.id} quota={quota} />
           {children}
         </main>
       </div>

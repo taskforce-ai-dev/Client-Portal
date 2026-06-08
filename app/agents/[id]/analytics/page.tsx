@@ -8,7 +8,7 @@ import SourceBadge from "@/components/SourceBadge";
 import AutoRefresh from "@/components/AutoRefresh";
 import TwilioNotice from "@/components/TwilioNotice";
 import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient } from "@/lib/adminDb";
+import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
 import {
   bucketCallsByDayRange,
   bucketCallsByHour,
@@ -17,6 +17,8 @@ import {
   getAllCallsForSubaccount,
   isTwilioAuthConfigured,
 } from "@/lib/twilio";
+import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
+import type { CallRow } from "@/components/CallLogTable";
 
 export const dynamic = "force-dynamic";
 
@@ -66,14 +68,43 @@ export default async function AnalyticsPage({
   else if (range === "month") start.setDate(now.getDate() - 29);
   const endFilter = new Date(endDate.getTime() + 86400000);
 
-  const { calls, error } = configured && !customMissing
-    ? await getAllCallsForSubaccount(sub, { max: 1000, startDate: ymd(start), endDate: ymd(endFilter) })
-    : { calls: [] as any[], error: undefined as string | undefined };
+  const [{ calls, error }, summariesRaw] = await Promise.all([
+    configured && !customMissing
+      ? getAllCallsForSubaccount(sub, { max: 1000, startDate: ymd(start), endDate: ymd(endFilter) })
+      : Promise.resolve({ calls: [] as any[], error: undefined as string | undefined }),
+    listCallSummaries(agent.id, { limit: 1000 }),
+  ]);
 
-  const { total, completed, completionRate, avgDuration } = callStats(calls);
-  const byHour = bucketCallsByHour(calls);
-  const byDay = bucketCallsByDayRange(calls, start.getTime(), endDate.getTime()).map((d) => ({ day: d.label, calls: d.value }));
-  const outcomes = bucketOutcomes(calls);
+  const summaryByCall = new Map<string, typeof summariesRaw[number]>();
+  for (const s of summariesRaw) if (s.twilio_call_sid) summaryByCall.set(s.twilio_call_sid, s);
+  const enrichedCalls = calls.map((c) => {
+    if (c.outcome !== "Completed") return c;
+    const sum = summaryByCall.get(c.id);
+    return sum && isHandoverCall({ transcript: sum.transcript, summary: sum.summary, action_items: sum.action_items })
+      ? { ...c, outcome: HANDOVER_OUTCOME }
+      : c;
+  });
+
+  const { total, completed, completionRate, avgDuration } = callStats(enrichedCalls);
+  const byHour = bucketCallsByHour(enrichedCalls);
+  const byDay = bucketCallsByDayRange(enrichedCalls, start.getTime(), endDate.getTime()).map((d) => ({ day: d.label, calls: d.value }));
+
+  const allRows: CallRow[] = enrichedCalls.map((c) => ({
+    id: c.id,
+    caller: c.caller,
+    direction: c.direction,
+    startedAt: c.startedAt,
+    duration: c.duration,
+    outcome: c.outcome,
+    summary: (summaryByCall.get(c.id) as any) || null,
+  }));
+  const rowsByOutcome = new Map<string, CallRow[]>();
+  for (const r of allRows) {
+    const arr = rowsByOutcome.get(r.outcome) ?? [];
+    arr.push(r);
+    rowsByOutcome.set(r.outcome, arr);
+  }
+  const outcomes = bucketOutcomes(enrichedCalls).map((b) => ({ ...b, calls: rowsByOutcome.get(b.outcome) ?? [] }));
   const peak = byHour.reduce((m, h) => (h.calls > m.calls ? h : m), byHour[0] ?? { hour: "—", calls: 0 });
   const periodSubtitle = range === "today" ? "today" : range === "custom"
     ? (customMissing ? "pick a range" : `${ymd(start)} → ${ymd(endDate)}`)
