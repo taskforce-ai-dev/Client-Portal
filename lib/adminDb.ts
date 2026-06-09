@@ -83,6 +83,12 @@ export async function ensureSchema(sql: Sql) {
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS elevenlabs_api_key_enc text`;
   // KB reload webhook URL — dashboard POSTs new content here after admin saves KB.
   await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS kb_reload_url text`;
+  // Per-agent quota config. Admin sets a seed start date, reset cadence, and
+  // included minutes. Defaults to the 1st of the current month + monthly + 40h
+  // so unconfigured agents behave like the legacy hardcoded quota.
+  await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS quota_start_date date NOT NULL DEFAULT (date_trunc('month', current_date)::date)`;
+  await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS quota_reset_cadence text NOT NULL DEFAULT 'monthly'`;
+  await sql`ALTER TABLE sentinel_agent ADD COLUMN IF NOT EXISTS quota_included_minutes integer NOT NULL DEFAULT 2400`;
   // Per-agent knowledge base (one markdown/text document per agent), shared
   // by the admin agent-config page and the client portal knowledge page.
   await sql`CREATE TABLE IF NOT EXISTS sentinel_kb (
@@ -267,6 +273,9 @@ export type DbAgent = {
   anthropic_api_key_enc: string | null;
   elevenlabs_api_key_enc: string | null;
   kb_reload_url: string | null;
+  quota_start_date: string; // ISO 'YYYY-MM-DD'
+  quota_reset_cadence: string; // 'monthly' | 'weekly' | 'none'
+  quota_included_minutes: number;
   created_at: string;
 };
 
@@ -420,6 +429,32 @@ export async function getDbSnapshot(): Promise<DbSnapshot> {
     sql`SELECT admin_name, action, type, target, summary, occurred_at FROM sentinel_audit ORDER BY occurred_at DESC LIMIT 100`,
   ]);
   return { clients, agents, admins, audit } as DbSnapshot;
+}
+
+export async function updateAgentQuotaConfig(agentId: string, fields: {
+  start_date?: string;
+  reset_cadence?: string;
+  included_minutes?: number;
+}): Promise<DbAgent | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  const current = await findAgentById(agentId);
+  if (!current) return null;
+  const startDate = (fields.start_date && /^\d{4}-\d{2}-\d{2}$/.test(fields.start_date))
+    ? fields.start_date
+    : current.quota_start_date;
+  const cadence = (fields.reset_cadence === "weekly" || fields.reset_cadence === "monthly" || fields.reset_cadence === "none")
+    ? fields.reset_cadence
+    : current.quota_reset_cadence;
+  const includedMinutes = (typeof fields.included_minutes === "number" && Number.isFinite(fields.included_minutes) && fields.included_minutes > 0)
+    ? Math.floor(fields.included_minutes)
+    : current.quota_included_minutes;
+  await sql`UPDATE sentinel_agent
+            SET quota_start_date = ${startDate}::date,
+                quota_reset_cadence = ${cadence},
+                quota_included_minutes = ${includedMinutes}
+            WHERE id = ${agentId}`;
+  return await findAgentById(agentId);
 }
 
 export async function regenerateAgentIngestKey(agentId: string): Promise<string | null> {

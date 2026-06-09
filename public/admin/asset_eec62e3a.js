@@ -1024,6 +1024,9 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   // calls recordQuotaNoticeIfNeeded server-side, so the audit row gets
   // written as a side-effect of just opening the agent.
   const [agentQuota, setAgentQuota] = useState(null);
+  // Quota config editor: { start_date, reset_cadence, included_hours } | null.
+  const [quotaConfigForm, setQuotaConfigForm] = useState(null);
+  const [quotaConfigSaving, setQuotaConfigSaving] = useState(false);
   useEffect(() => {
     let active = true;
     fetch(`/api/admin/agents/${agentId}/notifications?range=today`, { credentials: "include" })
@@ -1035,6 +1038,51 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       .catch(() => {});
     return () => { active = false; };
   }, [agentId]);
+
+  const openQuotaConfig = async () => {
+    try {
+      const r = await fetch(`/api/admin/agents/${agentId}/quota`, { credentials: "include" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      const c = d.config || {};
+      setQuotaConfigForm({
+        start_date: (c.start_date || "").slice(0, 10),
+        reset_cadence: c.reset_cadence || "monthly",
+        included_hours: c.included_minutes ? (c.included_minutes / 60) : 40,
+      });
+    } catch (e) { toast(e.message, "error"); }
+  };
+
+  const saveQuotaConfig = async () => {
+    if (!quotaConfigForm) return;
+    const body = {
+      start_date: quotaConfigForm.start_date,
+      reset_cadence: quotaConfigForm.reset_cadence,
+      included_hours: Number(quotaConfigForm.included_hours),
+    };
+    if (!body.start_date) { toast("Pick a start date", "error"); return; }
+    if (!(body.included_hours > 0)) { toast("Quota hours must be positive", "error"); return; }
+    setQuotaConfigSaving(true);
+    try {
+      const r = await fetch(`/api/admin/agents/${agentId}/quota`, {
+        method: "PATCH", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      if (d.quota) setAgentQuota(d.quota);
+      // Wipe sessionStorage dismissals so the new threshold can re-pop.
+      try {
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const k = sessionStorage.key(i);
+          if (k && k.indexOf("quota_popup_") === 0 && k.indexOf(agentId) !== -1) sessionStorage.removeItem(k);
+        }
+      } catch (e) {}
+      toast("Quota saved", "success");
+      setQuotaConfigForm(null);
+    } catch (e) { toast(e.message, "error"); } finally { setQuotaConfigSaving(false); }
+  };
 
   // Pop the modal whenever the latest known quota crosses a threshold,
   // gated by sessionStorage so a dismiss doesn't re-pop on every refresh.
@@ -1322,8 +1370,8 @@ const AgentConfigPage = ({ agentId, onBack }) => {
         </div>
         {agentQuota && agentQuota.configured && (
           <div
-            title={"Month-to-date billable minutes (" + agentQuota.periodLabel + ") · click to open Notifications"}
-            onClick={() => setTab("notifications")}
+            title={"Billable minutes for " + agentQuota.periodLabel + " (" + agentQuota.periodStart + " → " + agentQuota.periodEnd + ") · click to configure quota"}
+            onClick={openQuotaConfig}
             style={{
               display: "flex", alignItems: "center", gap: 8,
               padding: "6px 10px", borderRadius: 8,
@@ -1334,11 +1382,12 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           >
             <span style={{ fontSize: 14 }}>{agentQuota.status === "exceeded" ? "⚠" : agentQuota.status === "warn" ? "⏱" : "✓"}</span>
             <div style={{ fontSize: 11, lineHeight: 1.25 }}>
-              <div style={{ color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 9.5 }}>This month</div>
+              <div style={{ color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 9.5 }}>{agentQuota.periodLabel}</div>
               <div style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>
                 {agentQuota.billableMinutes} / {agentQuota.includedMinutes} min · <span style={{ color: agentQuota.status === "exceeded" ? "#fca5a5" : agentQuota.status === "warn" ? "#fcd34d" : "#86efac" }}>{agentQuota.status}</span>
               </div>
             </div>
+            <span style={{ fontSize: 10, color: "var(--text-3)", marginLeft: 2 }}>⚙</span>
           </div>
         )}
         <StatusDot status={agent.status} />
@@ -1685,6 +1734,70 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </tbody>
               </table>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Quota config editor */}
+      {quotaConfigForm && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
+          onClick={() => !quotaConfigSaving && setQuotaConfigForm(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 480, background: "#0d1117", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7)" }}
+          >
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}>
+              <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Quota config · {agent && agent.name}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-0)", marginTop: 4 }}>Set billing period &amp; included minutes</div>
+            </div>
+            <div style={{ padding: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+              <Field label="Start date · seed for the first billing period">
+                <input
+                  type="date"
+                  className="input mono"
+                  value={quotaConfigForm.start_date}
+                  onChange={(e) => setQuotaConfigForm({ ...quotaConfigForm, start_date: e.target.value })}
+                />
+              </Field>
+              <Field label="Reset cadence">
+                <select
+                  className="input"
+                  value={quotaConfigForm.reset_cadence}
+                  onChange={(e) => setQuotaConfigForm({ ...quotaConfigForm, reset_cadence: e.target.value })}
+                >
+                  <option value="monthly">Monthly (rolls on the start date's day-of-month)</option>
+                  <option value="weekly">Weekly (7-day windows from start date)</option>
+                  <option value="none">None (lifetime, never resets)</option>
+                </select>
+              </Field>
+              <Field label="Included hours per period">
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    className="input mono"
+                    style={{ flex: 1 }}
+                    value={quotaConfigForm.included_hours}
+                    onChange={(e) => setQuotaConfigForm({ ...quotaConfigForm, included_hours: e.target.value })}
+                  />
+                  <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                    = {Math.round((Number(quotaConfigForm.included_hours) || 0) * 60)} min
+                  </span>
+                </div>
+              </Field>
+              <div style={{ fontSize: 11, color: "var(--text-3)", lineHeight: 1.55 }}>
+                Counter shows billable minutes from the start of the current period (the most recent rollover before today) and resets on the next rollover. Notifications fire automatically at 80% &amp; 100% in this portal AND the client portal.
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button className="btn btn-ghost btn-sm" disabled={quotaConfigSaving} onClick={() => setQuotaConfigForm(null)}>Cancel</button>
+                <button className="btn btn-primary btn-sm" disabled={quotaConfigSaving} onClick={saveQuotaConfig}>{quotaConfigSaving ? "Saving…" : "Save quota"}</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2278,7 +2391,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           )}
 
           <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-            Quota notifications fire automatically once per (agent, month, threshold) when the agent crosses 80% or 100% of its included monthly minutes. They appear here, in the client portal&apos;s Notifications tab, and as a one-shot pop-up modal in both portals. Counters reset on the 1st of every calendar month.
+            Quota notifications fire automatically once per (agent, period, threshold) when the agent crosses 80% or 100% of its configured included minutes. They appear here, in the client portal&apos;s Notifications tab, and as a one-shot pop-up modal in both portals. The billing period &amp; quota are editable from the quota pill at the top right of the page.
           </div>
         </div>
       )}

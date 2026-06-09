@@ -6,20 +6,13 @@ import { getAllCallsForSubaccount, isTwilioAuthConfigured } from "./twilio";
 const RATE_PER_MINUTE = 3;
 const CURRENCY = "Rs.";
 
-// Package inclusion: each agent gets 40 hours of voice calls per calendar
-// month. Warn the client at 80% so they aren't surprised.
-// TEMPORARY for end-to-end test: set to 572 minutes so a 1-minute test
-// call (current all-time billable 571 + 1 = 572) tips the agent into
-// "exceeded" — REVERT to 40 * 60 (= 2400) before production.
-export const INCLUDED_MINUTES_PER_MONTH = 572;
+// Default package inclusion when an agent has no explicit quota config:
+// 40 hours of voice calls per calendar month, warn at 80%. Per-agent
+// overrides live on the sentinel_agent row (quota_start_date,
+// quota_reset_cadence, quota_included_minutes) and are editable from the
+// admin SPA's Quota config panel.
+export const INCLUDED_MINUTES_PER_MONTH = 40 * 60;
 export const QUOTA_WARN_MINUTES = Math.max(1, Math.floor(INCLUDED_MINUTES_PER_MONTH * 0.8));
-
-// TEMPORARY for end-to-end test: when true, the quota counts every
-// billable minute the agent has ever logged (matches the Billing tab's
-// "Total" view). When false (production), counts only current calendar
-// month — so the quota resets on the 1st of every month. Flip back to
-// false before production.
-const QUOTA_USE_ALL_TIME_FOR_TEST = true;
 
 export function billingRate() {
   return { perMinute: RATE_PER_MINUTE, currency: CURRENCY };
@@ -204,8 +197,11 @@ export type QuotaStatus = "ok" | "warn" | "exceeded";
 export type AgentQuotaSnapshot = {
   configured: boolean;
   error?: string | null;
-  periodYm: string; // e.g. "2026-06"
-  periodLabel: string; // e.g. "June 2026"
+  periodYm: string; // e.g. "2026-06" (monthly) | "2026-W23" (weekly) | "since-2026-05-15" (none)
+  periodLabel: string; // e.g. "June 2026" | "Week of 2026-06-08" | "Since 2026-05-15"
+  periodStart: string; // ISO 'YYYY-MM-DD' — first day of the active billing period
+  periodEnd: string;   // ISO 'YYYY-MM-DD' — first day OUTSIDE the active period (exclusive)
+  cadence: "monthly" | "weekly" | "none";
   billableMinutes: number;
   includedMinutes: number;
   warnMinutes: number;
@@ -215,23 +211,108 @@ export type AgentQuotaSnapshot = {
   overageCost: number;
 };
 
-function periodLabelFrom(y: number, m1to12: number) {
+function periodLabelFromYm(y: number, m1to12: number) {
   return new Date(Date.UTC(y, m1to12 - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric" });
 }
 
+// Compute the current billing period from the agent's seed start_date + cadence.
+// Monthly: period rolls on the seed's day-of-month (1st by default). Weekly:
+// 7-day windows from the seed. None: one open-ended period from the seed.
+function computePeriodWindow(
+  seed: string,
+  cadence: "monthly" | "weekly" | "none",
+  now = new Date(),
+): { start: Date; end: Date; periodYm: string; periodLabel: string } {
+  // Parse seed as UTC midnight to avoid tz drift.
+  const [sy, sm, sd] = seed.split("-").map((n) => Number(n));
+  const seedDate = new Date(Date.UTC(sy, (sm || 1) - 1, sd || 1));
+  if (cadence === "none") {
+    const start = seedDate;
+    const end = new Date(Date.UTC(9999, 0, 1));
+    return {
+      start,
+      end,
+      periodYm: `since-${seed}`,
+      periodLabel: `Since ${seed}`,
+    };
+  }
+  if (cadence === "weekly") {
+    const oneDay = 86400000;
+    const daysSince = Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - seedDate.getTime()) / oneDay);
+    const weeks = Math.max(0, Math.floor(daysSince / 7));
+    const start = new Date(seedDate.getTime() + weeks * 7 * oneDay);
+    const end = new Date(start.getTime() + 7 * oneDay);
+    // ISO week label like "2026-W23"
+    const isoYear = start.getUTCFullYear();
+    const oneJan = new Date(Date.UTC(isoYear, 0, 1));
+    const week = Math.ceil(((start.getTime() - oneJan.getTime()) / oneDay + oneJan.getUTCDay() + 1) / 7);
+    return {
+      start,
+      end,
+      periodYm: `${isoYear}-W${String(week).padStart(2, "0")}`,
+      periodLabel: `Week of ${start.toISOString().slice(0, 10)}`,
+    };
+  }
+  // monthly (default): period starts on the seed's day-of-month each month.
+  const seedDay = seedDate.getUTCDate();
+  const nowY = now.getUTCFullYear();
+  const nowM = now.getUTCMonth(); // 0-based
+  const today = now.getUTCDate();
+  let py = nowY, pm = nowM;
+  if (today < seedDay) {
+    // Roll back to previous month.
+    if (pm === 0) { pm = 11; py -= 1; } else pm -= 1;
+  }
+  // Cap day to last day of month if seedDay > last day (e.g. seed=31 in Feb).
+  const lastDayOfStart = new Date(Date.UTC(py, pm + 1, 0)).getUTCDate();
+  const startDay = Math.min(seedDay, lastDayOfStart);
+  const start = new Date(Date.UTC(py, pm, startDay));
+  let ey = py, em = pm + 1;
+  if (em > 11) { em = 0; ey += 1; }
+  const lastDayOfEnd = new Date(Date.UTC(ey, em + 1, 0)).getUTCDate();
+  const endDay = Math.min(seedDay, lastDayOfEnd);
+  const end = new Date(Date.UTC(ey, em, endDay));
+  return {
+    start,
+    end,
+    periodYm: `${py}-${String(pm + 1).padStart(2, "0")}`,
+    periodLabel: periodLabelFromYm(py, pm + 1),
+  };
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function pickCadence(raw: string | null | undefined): "monthly" | "weekly" | "none" {
+  if (raw === "weekly" || raw === "none") return raw;
+  return "monthly";
+}
+
 export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSnapshot> {
+  const cadence = pickCadence(agent.quota_reset_cadence);
+  const includedMinutes = agent.quota_included_minutes && agent.quota_included_minutes > 0
+    ? agent.quota_included_minutes
+    : INCLUDED_MINUTES_PER_MONTH;
+  const warnMinutes = Math.max(1, Math.floor(includedMinutes * 0.8));
+  // Seed default: if the column came back empty (older row, freshly created
+  // before the migration applied), fall back to 1st of current month so the
+  // monthly rollover still works.
   const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth() + 1;
-  const ym = `${y}-${String(m).padStart(2, "0")}`;
-  const periodLabel = periodLabelFrom(y, m);
+  const seed = (agent.quota_start_date && /^\d{4}-\d{2}-\d{2}/.test(agent.quota_start_date))
+    ? agent.quota_start_date.slice(0, 10)
+    : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const win = computePeriodWindow(seed, cadence, now);
   const base: AgentQuotaSnapshot = {
     configured: false,
-    periodYm: ym,
-    periodLabel,
+    periodYm: win.periodYm,
+    periodLabel: win.periodLabel,
+    periodStart: isoDate(win.start),
+    periodEnd: isoDate(win.end),
+    cadence,
     billableMinutes: 0,
-    includedMinutes: INCLUDED_MINUTES_PER_MONTH,
-    warnMinutes: QUOTA_WARN_MINUTES,
+    includedMinutes,
+    warnMinutes,
     percent: 0,
     status: "ok",
     overageMinutes: 0,
@@ -240,36 +321,32 @@ export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSn
   const sub = agent.twilio_subaccount_sid || "";
   if (!isTwilioAuthConfigured() || !sub) return base;
 
-  const start = new Date(y, m - 1, 1);
-  const endFilter = new Date(y, m, 1); // exclusive: first day of next month
-  // TEMPORARY: drop the date filter during the all-time test mode so the
-  // billable count here matches the Billing tab's all-time view.
-  const dateOpts = QUOTA_USE_ALL_TIME_FOR_TEST
-    ? {}
-    : { startDate: ymd(start), endDate: ymd(endFilter) };
   const { calls, error } = await getAllCallsForSubaccount(sub, {
     max: 1000,
-    ...dateOpts,
+    startDate: isoDate(win.start),
+    endDate: isoDate(win.end),
   });
   if (error) return { ...base, configured: true, error };
 
   const billableMinutes = calls.reduce((s, c) => s + (c.durationSec > 0 ? Math.ceil(c.durationSec / 60) : 0), 0);
-  const overageMinutes = Math.max(0, billableMinutes - INCLUDED_MINUTES_PER_MONTH);
-  const status: QuotaStatus = billableMinutes >= INCLUDED_MINUTES_PER_MONTH
+  const overageMinutes = Math.max(0, billableMinutes - includedMinutes);
+  const status: QuotaStatus = billableMinutes >= includedMinutes
     ? "exceeded"
-    : billableMinutes >= QUOTA_WARN_MINUTES
+    : billableMinutes >= warnMinutes
       ? "warn"
       : "ok";
-  // Debug breadcrumb so Vercel function logs make threshold misses
-  // obvious — log only when quota is non-trivial so noise stays low.
+  // Debug breadcrumb in Vercel function logs.
   if (billableMinutes > 0 || status !== "ok") {
     console.log("[quota]", {
       agent: agent.id,
-      period: ym,
+      cadence,
+      periodYm: win.periodYm,
+      periodStart: base.periodStart,
+      periodEnd: base.periodEnd,
       callsCount: calls.length,
       billableMinutes,
-      includedMinutes: INCLUDED_MINUTES_PER_MONTH,
-      warnMinutes: QUOTA_WARN_MINUTES,
+      includedMinutes,
+      warnMinutes,
       status,
     });
   }
@@ -278,7 +355,7 @@ export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSn
     configured: true,
     error: null,
     billableMinutes,
-    percent: Math.min(999, Math.round((billableMinutes / INCLUDED_MINUTES_PER_MONTH) * 100)),
+    percent: Math.min(999, Math.round((billableMinutes / includedMinutes) * 100)),
     status,
     overageMinutes,
     overageCost: overageMinutes * RATE_PER_MINUTE,
@@ -302,9 +379,10 @@ export async function recordQuotaNoticeIfNeeded(agent: DbAgent, snap: AgentQuota
   const inclLabel = incl >= 60 && incl % 60 === 0
     ? `${incl / 60}h`
     : `${Math.floor(incl / 60)}h ${incl % 60}m`;
+  const cadenceLabel = snap.cadence === "weekly" ? "weekly" : snap.cadence === "none" ? "lifetime" : "monthly";
   const summary = snap.status === "exceeded"
     ? `${agent.name}: ${inclLabel} included calls used for ${snap.periodLabel} — now pay-as-you-go at Rs.${RATE_PER_MINUTE}/min.`
-    : `${agent.name}: 80% of monthly ${inclLabel} call quota used for ${snap.periodLabel} (${usedLabel} of ${inclLabel}).`;
+    : `${agent.name}: 80% of ${cadenceLabel} ${inclLabel} call quota used for ${snap.periodLabel} (${usedLabel} of ${inclLabel}).`;
   try {
     await sql`INSERT INTO sentinel_audit (id, admin_name, action, type, target, summary)
               VALUES (${id}, ${"System"}, ${action}, ${"quota"}, ${agent.id}, ${summary})
