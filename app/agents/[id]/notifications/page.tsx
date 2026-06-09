@@ -4,11 +4,18 @@ import { Bell, Gauge, TriangleAlert } from "lucide-react";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient } from "@/lib/adminDb";
 import { formatTs } from "@/lib/twilio";
+import { getAgentMonthlyQuota } from "@/lib/billing";
 import {
   listAgentNotifications,
   type NotificationsRange,
   type QuotaNotification,
 } from "@/lib/notifications";
+
+function fmtHm(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -34,10 +41,29 @@ export default async function NotificationsPage({
 
   let range = (searchParams.range as NotificationsRange) || "total";
   if (!["total", "today", "week", "month", "custom"].includes(range)) range = "total";
-  const { items, customMissing } = await listAgentNotifications(agent.id, range, {
-    customStart: searchParams.start,
-    customEnd: searchParams.end,
-  });
+  const [{ items, customMissing }, quota] = await Promise.all([
+    listAgentNotifications(agent.id, range, {
+      customStart: searchParams.start,
+      customEnd: searchParams.end,
+    }),
+    getAgentMonthlyQuota(agent),
+  ]);
+
+  const cadenceLabel = quota.cadence === "weekly"
+    ? "Weekly"
+    : quota.cadence === "none"
+      ? "Lifetime (no reset)"
+      : "Monthly";
+  const statusLabel = quota.status === "exceeded"
+    ? "Pay-as-you-go"
+    : quota.status === "warn"
+      ? "80% used"
+      : "Within plan";
+  const statusTone = quota.status === "exceeded"
+    ? "bg-rose-500/15 text-rose-200 ring-rose-500/30"
+    : quota.status === "warn"
+      ? "bg-amber-500/15 text-amber-200 ring-amber-500/30"
+      : "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30";
 
   return (
     <div className="space-y-6">
@@ -64,6 +90,70 @@ export default async function NotificationsPage({
           ))}
         </div>
       </div>
+
+      {/* Read-only quota panel — clients can see the billing period &
+          included minutes but cannot edit (only admins configure quota). */}
+      {quota.configured && (
+        <div className="card p-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <div className="stat-label mb-1">Billing period</div>
+              <div className="text-base font-semibold text-white">{quota.periodLabel}</div>
+              <div className="text-xs text-slate-500 mt-1 font-mono">
+                {quota.periodStart} → {quota.periodEnd}
+                <span className="mx-2 text-slate-700">·</span>
+                {cadenceLabel}
+              </div>
+            </div>
+            <span className={`pill ${statusTone} ring-1`}>{statusLabel}</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+            <div>
+              <div className="stat-label">Included</div>
+              <div className="text-sm font-semibold text-white mt-0.5">{fmtHm(quota.includedMinutes)}</div>
+              <div className="text-[11px] text-slate-500">{quota.includedMinutes.toLocaleString()} min</div>
+            </div>
+            <div>
+              <div className="stat-label">Used so far</div>
+              <div className="text-sm font-semibold text-white mt-0.5">{fmtHm(quota.billableMinutes)}</div>
+              <div className="text-[11px] text-slate-500">{quota.billableMinutes.toLocaleString()} min · {quota.percent}%</div>
+            </div>
+            <div>
+              <div className="stat-label">Remaining</div>
+              <div className="text-sm font-semibold text-white mt-0.5">
+                {fmtHm(Math.max(0, quota.includedMinutes - quota.billableMinutes))}
+              </div>
+              <div className="text-[11px] text-slate-500">Resets {quota.cadence === "none" ? "never" : quota.periodEnd}</div>
+            </div>
+            <div>
+              <div className="stat-label">Overage</div>
+              <div className="text-sm font-semibold text-white mt-0.5">
+                {quota.overageMinutes ? fmtHm(quota.overageMinutes) : "—"}
+              </div>
+              <div className="text-[11px] text-slate-500">
+                {quota.overageCost ? `Rs. ${quota.overageCost.toLocaleString()}` : "Within plan"}
+              </div>
+            </div>
+          </div>
+
+          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mt-4">
+            <div
+              className={`h-full rounded-full ${
+                quota.status === "exceeded"
+                  ? "bg-gradient-to-r from-rose-500 to-amber-500"
+                  : quota.status === "warn"
+                    ? "bg-gradient-to-r from-amber-400 to-amber-500"
+                    : "bg-accent-gradient"
+              }`}
+              style={{ width: `${Math.min(100, quota.percent)}%` }}
+            />
+          </div>
+          <div className="text-[11px] text-slate-500 mt-2">
+            Billing period &amp; included minutes are configured by your account admin. Contact them to change.
+          </div>
+        </div>
+      )}
 
       {range === "custom" && (
         <form method="GET" className="card p-3 flex items-end gap-2 flex-wrap">
