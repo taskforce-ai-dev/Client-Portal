@@ -7,10 +7,11 @@ const RATE_PER_MINUTE = 3;
 const CURRENCY = "Rs.";
 
 // Package inclusion: each agent gets 40 hours of voice calls per calendar
-// month. Warn the client at 80% (32h) so they aren't surprised.
-// TEMPORARY: set to 1 minute for end-to-end testing of the threshold
-// notification pipeline — REVERT to 40 * 60 (= 2400) before production.
-export const INCLUDED_MINUTES_PER_MONTH = 1;
+// month. Warn the client at 80% so they aren't surprised.
+// TEMPORARY: set to 568 minutes so a 2-minute test call (current usage
+// 566 min + 2 = 568) tips the agent into "exceeded" for a fresh popup
+// test — REVERT to 40 * 60 (= 2400) before production.
+export const INCLUDED_MINUTES_PER_MONTH = 568;
 export const QUOTA_WARN_MINUTES = Math.max(1, Math.floor(INCLUDED_MINUTES_PER_MONTH * 0.8));
 
 export function billingRate() {

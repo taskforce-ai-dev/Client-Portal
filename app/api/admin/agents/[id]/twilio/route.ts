@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthed } from "@/lib/adminAuth";
-import { findAgentById, isDbConfigured } from "@/lib/adminDb";
+import { findAgentById, isDbConfigured, listCallSummaries } from "@/lib/adminDb";
 import {
   bucketCallsByDayRange,
   bucketCallsByHour,
@@ -10,6 +10,7 @@ import {
   isTwilioAuthConfigured,
 } from "@/lib/twilio";
 import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded, type AgentQuotaSnapshot } from "@/lib/billing";
+import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,11 +62,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   // Twilio's StartTime<= is GMT-day based; add a day so the end day is inclusive.
   const endFilter = new Date(endDate.getTime() + 86400000);
 
-  const { calls, error } = await getAllCallsForSubaccount(sub, {
-    max: 1000,
-    ...(useDateFilter && !customMissing
-      ? { startDate: ymd(start), endDate: ymd(endFilter) }
-      : {}),
+  const [{ calls: rawCalls, error }, summariesRaw] = await Promise.all([
+    getAllCallsForSubaccount(sub, {
+      max: 1000,
+      ...(useDateFilter && !customMissing
+        ? { startDate: ymd(start), endDate: ymd(endFilter) }
+        : {}),
+    }),
+    listCallSummaries(agent.id, { limit: 1000 }),
+  ]);
+
+  // Reclassify Completed calls as "Handed over" when the transcript or
+  // summary contains a handover phrase — matches the client portal so
+  // both UIs label the same calls the same way.
+  const summaryByCall = new Map(summariesRaw.filter((s) => s.twilio_call_sid).map((s) => [s.twilio_call_sid as string, s]));
+  const calls = rawCalls.map((c) => {
+    if (c.outcome !== "Completed") return c;
+    const sum = summaryByCall.get(c.id);
+    return sum && isHandoverCall({ transcript: sum.transcript, summary: sum.summary, action_items: sum.action_items })
+      ? { ...c, outcome: HANDOVER_OUTCOME }
+      : c;
   });
 
   const stats = callStats(calls);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthed } from "@/lib/adminAuth";
-import { findAgentById, findClientById, isDbConfigured } from "@/lib/adminDb";
+import { findAgentById, findClientById, getSql, isDbConfigured } from "@/lib/adminDb";
 import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
 import { listAgentNotifications, type NotificationsRange } from "@/lib/notifications";
 
@@ -41,4 +41,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     customMissing,
     range,
   });
+}
+
+// Wipe every stored quota notification for this agent so the admin can
+// re-test the threshold from a clean slate. Idempotent — running it
+// twice just returns 0 the second time.
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  if (!isAuthed()) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  if (!isDbConfigured()) return NextResponse.json({ message: "Database not connected." }, { status: 503 });
+  const agent = await findAgentById(params.id);
+  if (!agent) return NextResponse.json({ message: "Agent not found" }, { status: 404 });
+  const sql = getSql();
+  if (!sql) return NextResponse.json({ message: "Database not configured" }, { status: 503 });
+  try {
+    const rows = (await sql`DELETE FROM sentinel_audit
+                            WHERE target = ${agent.id}
+                              AND action LIKE 'client.quota.%'
+                            RETURNING id`) as { id: string }[];
+    return NextResponse.json({ ok: true, deleted: rows.length });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Delete failed";
+    return NextResponse.json({ message: msg }, { status: 500 });
+  }
 }

@@ -2138,13 +2138,40 @@ const AgentConfigPage = ({ agentId, onBack }) => {
 
       {tab === "notifications" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Header: range chips */}
+          {/* Header: range chips + clear */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
               {[["total", "All"], ["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
                 <button key={k} className={"btn btn-xs " + (notifRange === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: notifRange === k ? "var(--border-strong)" : "transparent" }} onClick={() => setNotifRange(k)}>{l}</button>
               ))}
             </div>
+            <div style={{ flex: 1 }} />
+            <button
+              className="btn btn-ghost btn-sm"
+              title="Wipe every stored quota notification for this agent and unblock the one-shot pop-up so you can test from a clean state."
+              onClick={async () => {
+                if (!window.confirm("Clear all stored notifications for " + (agent?.name || "this agent") + "?")) return;
+                try {
+                  const r = await fetch(`/api/admin/agents/${agentId}/notifications`, { method: "DELETE", credentials: "include" });
+                  const d = await r.json();
+                  if (!r.ok) throw new Error(d.message || "Failed");
+                  // Also clear any sessionStorage popup-dismissal keys so the
+                  // modal re-pops next time the threshold is crossed.
+                  try {
+                    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+                      const k = sessionStorage.key(i);
+                      if (k && k.indexOf("quota_popup_") === 0 && k.indexOf(agentId) !== -1) sessionStorage.removeItem(k);
+                    }
+                  } catch (e) {}
+                  toast("Cleared " + (d.deleted || 0) + " notification" + ((d.deleted === 1) ? "" : "s"), "success");
+                  // Refetch so the empty state shows immediately.
+                  setNotifLoading(true);
+                  const qs = notifRange === "custom" ? `range=custom&start=${notifCStart}&end=${notifCEnd}` : `range=${notifRange}`;
+                  const rr = await fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" }).then((r) => r.json());
+                  setNotif(rr); setNotifLoading(false);
+                } catch (e) { toast(e.message, "error"); }
+              }}
+            >Clear notifications</button>
             {notifRange === "custom" && (
               <>
                 <input type="date" className="input" style={{ width: 150 }} value={notifCStart} onChange={(e) => setNotifCStart(e.target.value)} />
