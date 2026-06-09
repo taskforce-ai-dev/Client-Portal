@@ -915,21 +915,44 @@ const AgentBars = ({ data }) => {
   );
 };
 
-const AgentOutcomes = ({ data }) => {
+const AgentOutcomes = ({ data, onSeeList }) => {
   const total = data.reduce((s, d) => s + d.count, 0) || 1;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {data.map((o, i) => (
-        <div key={i}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, marginBottom: 4, fontFamily: "var(--ff-mono)" }}>
-            <span style={{ color: "var(--text-1)" }}>{o.outcome}</span>
-            <span style={{ color: "var(--text-0)" }}>{o.count}</span>
+      {data.map((o, i) => {
+        const empty = o.count === 0;
+        return (
+          <div key={i}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11.5, marginBottom: 4, fontFamily: "var(--ff-mono)" }}>
+              <span style={{ color: empty ? "var(--text-3)" : "var(--text-1)" }}>{o.outcome}</span>
+              <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <span style={{ color: empty ? "var(--text-3)" : "var(--text-0)" }}>{o.count}</span>
+                {onSeeList && (
+                  <button
+                    type="button"
+                    disabled={empty}
+                    onClick={() => onSeeList(o.outcome)}
+                    title={empty ? "No calls in this category yet" : "Open the call list for this category"}
+                    style={{
+                      background: "transparent",
+                      border: 0,
+                      padding: 0,
+                      color: empty ? "var(--text-3)" : "#a78bfa",
+                      fontSize: 11,
+                      fontFamily: "inherit",
+                      cursor: empty ? "not-allowed" : "pointer",
+                      textDecoration: empty ? "none" : "underline",
+                    }}
+                  >See full list →</button>
+                )}
+              </span>
+            </div>
+            <div style={{ height: 5, background: "rgba(255,255,255,0.05)", borderRadius: 3 }}>
+              <div style={{ width: (o.count / total * 100) + "%", height: "100%", background: o.color, borderRadius: 3 }} />
+            </div>
           </div>
-          <div style={{ height: 5, background: "rgba(255,255,255,0.05)", borderRadius: 3 }}>
-            <div style={{ width: (o.count / total * 100) + "%", height: "100%", background: o.color, borderRadius: 3 }} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
       {data.length === 0 && <div style={{ fontSize: 12, color: "var(--text-3)" }}>No calls yet.</div>}
     </div>
   );
@@ -979,6 +1002,9 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [notifRange, setNotifRange] = useState("total");
   const [notifCStart, setNotifCStart] = useState("");
   const [notifCEnd, setNotifCEnd] = useState("");
+  // Outcome drill-in: { outcome, scope } where scope = "overview" | "analytics" | "callLog"
+  // so the modal can pull from the right loaded dataset.
+  const [categoryModal, setCategoryModal] = useState(null);
   useEffect(() => {
     if (!transcriptModal) return;
     const onKey = (e) => { if (e.key === "Escape") setTranscriptModal(null); };
@@ -1140,6 +1166,32 @@ const AgentConfigPage = ({ agentId, onBack }) => {
     return () => { active = false; };
   }, [tab, billRange, billCStart, billCEnd, agentId]);
 
+  const openCategoryList = async (outcome) => {
+    setCategoryModal({ outcome, loading: true, calls: [] });
+    try {
+      const [twR, sumR] = await Promise.all([
+        fetch(`/api/admin/agents/${agentId}/twilio?range=total`, { credentials: "include" }).then((r) => r.json()),
+        fetch(`/api/admin/agents/${agentId}/summaries?limit=500`, { credentials: "include" }).then((r) => r.json()),
+      ]);
+      const summariesArr = Array.isArray(sumR?.summaries) ? sumR.summaries : [];
+      const summaryMap = new Map(summariesArr.map((s) => [s.twilio_call_sid, s]));
+      const merged = (twR?.calls || []).map((c) => ({ ...c, summary: summaryMap.get(c.id) || null }));
+      const filtered = merged.filter((c) => c.outcome === outcome);
+      setCategoryModal({ outcome, loading: false, calls: filtered });
+    } catch (e) {
+      setCategoryModal({ outcome, loading: false, calls: [], error: e.message });
+    }
+  };
+
+  useEffect(() => {
+    if (!categoryModal) return;
+    const onKey = (e) => { if (e.key === "Escape") setCategoryModal(null); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [categoryModal]);
+
   useEffect(() => {
     if (tab !== "notifications") return;
     if (notifRange === "custom" && (!notifCStart || !notifCEnd)) return;
@@ -1240,7 +1292,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </div>
                 <div className="panel" style={{ padding: 14 }}>
                   <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Call outcomes</div>
-                  <AgentOutcomes data={tw.outcomes} />
+                  <AgentOutcomes data={tw.outcomes} onSeeList={openCategoryList} />
                 </div>
               </div>
             </>
@@ -1421,7 +1473,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </div>
                 <div className="panel" style={{ padding: 14 }}>
                   <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Outcomes</div>
-                  <AgentOutcomes data={twA.outcomes} />
+                  <AgentOutcomes data={twA.outcomes} onSeeList={openCategoryList} />
                 </div>
               </div>
               <div style={{ fontSize: 11.5, color: "var(--text-3)", textAlign: "right" }}>
@@ -1558,6 +1610,72 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </tbody>
               </table>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Category modal — list of calls in a single outcome bucket */}
+      {categoryModal && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 998, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
+          onClick={() => setCategoryModal(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "100%", maxWidth: 1100, maxHeight: "92vh", display: "flex", flexDirection: "column", background: "#0d1117", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7)" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "14px 18px", borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Call list · {categoryModal.outcome}</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-0)", marginTop: 4 }}>
+                  {categoryModal.loading ? "Loading…" : (categoryModal.calls.length + " " + (categoryModal.calls.length === 1 ? "call" : "calls"))}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4 }}>
+                  Click <span style={{ color: "#a78bfa" }}>View transcript</span> on any row to read the full call.
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setCategoryModal(null)}>✕ Close</button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+              {categoryModal.loading && (
+                <div style={{ padding: 30, textAlign: "center", color: "var(--text-3)" }}>Loading calls…</div>
+              )}
+              {!categoryModal.loading && categoryModal.calls.length === 0 && (
+                <div style={{ padding: 40, textAlign: "center", color: "var(--text-3)" }}>
+                  No <span style={{ textTransform: "lowercase" }}>{categoryModal.outcome}</span> calls yet.
+                </div>
+              )}
+              {!categoryModal.loading && categoryModal.calls.length > 0 && (
+                <table className="data-table">
+                  <thead>
+                    <tr><th>Caller</th><th>When</th><th>Direction</th><th>Duration</th><th>Outcome</th><th style={{ textAlign: "right" }}>Transcript</th></tr>
+                  </thead>
+                  <tbody>
+                    {categoryModal.calls.map((c) => (
+                      <tr key={c.id}>
+                        <td style={{ color: "var(--text-0)" }}>{(c.summary && c.summary.caller_name) || c.caller}</td>
+                        <td style={{ color: "var(--text-3)", fontFamily: "var(--ff-mono)", fontSize: 11 }}>{c.startedAt}</td>
+                        <td style={{ color: "var(--text-2)", textTransform: "capitalize" }}>{c.direction}</td>
+                        <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.duration}</td>
+                        <td style={{ color: "var(--text-1)" }}>{c.outcome}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {c.summary ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              style={{ color: "#a78bfa" }}
+                              onClick={() => setTranscriptModal(c.summary)}
+                            >View transcript</button>
+                          ) : (
+                            <span style={{ color: "var(--text-3)", fontSize: 11 }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1908,13 +2026,56 @@ const AgentConfigPage = ({ agentId, onBack }) => {
 
       {tab === "notifications" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Header: range chips */}
+          {/* Header: range chips + test fire */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
               {[["total", "All"], ["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
                 <button key={k} className={"btn btn-xs " + (notifRange === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: notifRange === k ? "var(--border-strong)" : "transparent" }} onClick={() => setNotifRange(k)}>{l}</button>
               ))}
             </div>
+            <div style={{ flex: 1 }} />
+            <button
+              className="btn btn-secondary btn-sm"
+              title="Insert a synthetic 80% warning so you can verify the notifications pipeline end-to-end without crossing the real 32h threshold."
+              onClick={async () => {
+                try {
+                  const r = await fetch(`/api/admin/agents/${agentId}/notifications/test`, {
+                    method: "POST", credentials: "include",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ kind: "warn" }),
+                  });
+                  const d = await r.json();
+                  if (!r.ok) throw new Error(d.message || "Failed");
+                  toast("Test warning fired", "success");
+                  // Trigger a refetch by bumping the range chip's identity.
+                  setNotifRange((cur) => cur);
+                  setNotifLoading(true);
+                  const qs = notifRange === "custom" ? `range=custom&start=${notifCStart}&end=${notifCEnd}` : `range=${notifRange}`;
+                  const rr = await fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" }).then((r) => r.json());
+                  setNotif(rr); setNotifLoading(false);
+                } catch (e) { toast(e.message, "error"); }
+              }}
+            >Fire test (80% warn)</button>
+            <button
+              className="btn btn-secondary btn-sm"
+              title="Insert a synthetic over-quota event."
+              onClick={async () => {
+                try {
+                  const r = await fetch(`/api/admin/agents/${agentId}/notifications/test`, {
+                    method: "POST", credentials: "include",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ kind: "exceeded" }),
+                  });
+                  const d = await r.json();
+                  if (!r.ok) throw new Error(d.message || "Failed");
+                  toast("Test exceeded fired", "success");
+                  setNotifLoading(true);
+                  const qs = notifRange === "custom" ? `range=custom&start=${notifCStart}&end=${notifCEnd}` : `range=${notifRange}`;
+                  const rr = await fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" }).then((r) => r.json());
+                  setNotif(rr); setNotifLoading(false);
+                } catch (e) { toast(e.message, "error"); }
+              }}
+            >Fire test (exceeded)</button>
             {notifRange === "custom" && (
               <>
                 <input type="date" className="input" style={{ width: 150 }} value={notifCStart} onChange={(e) => setNotifCStart(e.target.value)} />
@@ -1983,7 +2144,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           )}
 
           <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-            Quota notifications fire once per (agent, month, threshold) when the agent crosses 80% or 100% of its included 40h. They land here and in the client portal&apos;s Notifications tab simultaneously.
+            Quota notifications fire once per (agent, month, threshold) when the agent crosses 80% or 100% of its included 40h — a single 1-min call alone won&apos;t trigger one. Use the &quot;Fire test&quot; buttons above to verify the pipeline. Real and test events land here and in the client portal&apos;s Notifications tab simultaneously.
           </div>
         </div>
       )}
