@@ -8,11 +8,18 @@ const CURRENCY = "Rs.";
 
 // Package inclusion: each agent gets 40 hours of voice calls per calendar
 // month. Warn the client at 80% so they aren't surprised.
-// TEMPORARY: set to 571 minutes so a 1-minute test call (current usage
-// 570 min + 1 = 571) tips the agent into "exceeded" for a fresh popup
-// test — REVERT to 40 * 60 (= 2400) before production.
-export const INCLUDED_MINUTES_PER_MONTH = 571;
+// TEMPORARY for end-to-end test: set to 572 minutes so a 1-minute test
+// call (current all-time billable 571 + 1 = 572) tips the agent into
+// "exceeded" — REVERT to 40 * 60 (= 2400) before production.
+export const INCLUDED_MINUTES_PER_MONTH = 572;
 export const QUOTA_WARN_MINUTES = Math.max(1, Math.floor(INCLUDED_MINUTES_PER_MONTH * 0.8));
+
+// TEMPORARY for end-to-end test: when true, the quota counts every
+// billable minute the agent has ever logged (matches the Billing tab's
+// "Total" view). When false (production), counts only current calendar
+// month — so the quota resets on the 1st of every month. Flip back to
+// false before production.
+const QUOTA_USE_ALL_TIME_FOR_TEST = true;
 
 export function billingRate() {
   return { perMinute: RATE_PER_MINUTE, currency: CURRENCY };
@@ -235,10 +242,14 @@ export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSn
 
   const start = new Date(y, m - 1, 1);
   const endFilter = new Date(y, m, 1); // exclusive: first day of next month
+  // TEMPORARY: drop the date filter during the all-time test mode so the
+  // billable count here matches the Billing tab's all-time view.
+  const dateOpts = QUOTA_USE_ALL_TIME_FOR_TEST
+    ? {}
+    : { startDate: ymd(start), endDate: ymd(endFilter) };
   const { calls, error } = await getAllCallsForSubaccount(sub, {
     max: 1000,
-    startDate: ymd(start),
-    endDate: ymd(endFilter),
+    ...dateOpts,
   });
   if (error) return { ...base, configured: true, error };
 
