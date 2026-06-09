@@ -1019,24 +1019,34 @@ const AgentConfigPage = ({ agentId, onBack }) => {
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
   }, [transcriptModal]);
 
-  // Auto-check quota on mount (and when agentId changes). If the agent is
-  // at or past 80% / 100%, pop the modal unless this admin already
-  // dismissed it for the current (agent, period, status) in this session.
+  // Always-on quota state, regardless of which tab the admin is looking at.
+  // We hit /notifications?range=today on mount because that endpoint also
+  // calls recordQuotaNoticeIfNeeded server-side, so the audit row gets
+  // written as a side-effect of just opening the agent.
+  const [agentQuota, setAgentQuota] = useState(null);
   useEffect(() => {
     let active = true;
     fetch(`/api/admin/agents/${agentId}/notifications?range=today`, { credentials: "include" })
       .then((r) => r.json())
       .then((d) => {
-        if (!active || !d || !d.quota) return;
-        const q = d.quota;
-        if (!q.configured || q.status === "ok") return;
-        const key = "quota_popup_admin_" + agentId + "_" + q.periodYm + "_" + q.status;
-        try { if (sessionStorage.getItem(key) === "1") return; } catch (e) {}
-        setQuotaPopup(q);
+        if (!active) return;
+        if (d && d.quota) setAgentQuota(d.quota);
       })
       .catch(() => {});
     return () => { active = false; };
   }, [agentId]);
+
+  // Pop the modal whenever the latest known quota crosses a threshold,
+  // gated by sessionStorage so a dismiss doesn't re-pop on every refresh.
+  // This fires for both the initial mount fetch above AND for any refetch
+  // (e.g. after clearing notifications) — single source of truth.
+  useEffect(() => {
+    const q = agentQuota || (notif && notif.quota);
+    if (!q || !q.configured || q.status === "ok") return;
+    const key = "quota_popup_admin_" + agentId + "_" + q.periodYm + "_" + q.status;
+    try { if (sessionStorage.getItem(key) === "1") return; } catch (e) {}
+    setQuotaPopup(q);
+  }, [agentQuota, notif, agentId]);
 
   useEffect(() => {
     if (!quotaPopup) return;
@@ -1310,6 +1320,27 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           <div style={{ fontSize: 17, fontWeight: 600, color: "var(--text-0)" }}>{agent.name}</div>
           <div style={{ fontSize: 11.5, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{agent.channels} · {agent.type}</div>
         </div>
+        {agentQuota && agentQuota.configured && (
+          <div
+            title={"Month-to-date billable minutes (" + agentQuota.periodLabel + ") · click to open Notifications"}
+            onClick={() => setTab("notifications")}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "6px 10px", borderRadius: 8,
+              cursor: "pointer",
+              border: "1px solid " + (agentQuota.status === "exceeded" ? "rgba(239,68,68,0.45)" : agentQuota.status === "warn" ? "rgba(245,158,11,0.45)" : "rgba(110,231,183,0.35)"),
+              background: agentQuota.status === "exceeded" ? "rgba(239,68,68,0.10)" : agentQuota.status === "warn" ? "rgba(245,158,11,0.08)" : "rgba(110,231,183,0.06)",
+            }}
+          >
+            <span style={{ fontSize: 14 }}>{agentQuota.status === "exceeded" ? "⚠" : agentQuota.status === "warn" ? "⏱" : "✓"}</span>
+            <div style={{ fontSize: 11, lineHeight: 1.25 }}>
+              <div style={{ color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 9.5 }}>This month</div>
+              <div style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>
+                {agentQuota.billableMinutes} / {agentQuota.includedMinutes} min · <span style={{ color: agentQuota.status === "exceeded" ? "#fca5a5" : agentQuota.status === "warn" ? "#fcd34d" : "#86efac" }}>{agentQuota.status}</span>
+              </div>
+            </div>
+          </div>
+        )}
         <StatusDot status={agent.status} />
       </div>
 
@@ -2171,12 +2202,11 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   const qs = notifRange === "custom" ? `range=custom&start=${notifCStart}&end=${notifCEnd}` : `range=${notifRange}`;
                   const rr = await fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" }).then((r) => r.json());
                   setNotif(rr); setNotifLoading(false);
-                  // Re-trigger the one-shot pop-up if the agent is still over
-                  // threshold. (The mount effect already fired earlier with
-                  // an empty quota_popup key, so we explicitly re-open.)
-                  if (rr && rr.quota && rr.quota.configured && rr.quota.status !== "ok") {
-                    setQuotaPopup(rr.quota);
-                  }
+                  // Refresh the header quota pill too. The popup-trigger
+                  // useEffect watches both agentQuota and notif so it'll
+                  // re-pop the modal automatically when either changes to
+                  // a non-ok status (and sessionStorage isn't dismissed).
+                  if (rr && rr.quota) setAgentQuota(rr.quota);
                 } catch (e) { toast(e.message, "error"); }
               }}
             >Clear notifications</button>

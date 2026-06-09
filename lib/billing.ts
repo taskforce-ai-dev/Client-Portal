@@ -249,6 +249,19 @@ export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSn
     : billableMinutes >= QUOTA_WARN_MINUTES
       ? "warn"
       : "ok";
+  // Debug breadcrumb so Vercel function logs make threshold misses
+  // obvious — log only when quota is non-trivial so noise stays low.
+  if (billableMinutes > 0 || status !== "ok") {
+    console.log("[quota]", {
+      agent: agent.id,
+      period: ym,
+      callsCount: calls.length,
+      billableMinutes,
+      includedMinutes: INCLUDED_MINUTES_PER_MONTH,
+      warnMinutes: QUOTA_WARN_MINUTES,
+      status,
+    });
+  }
   return {
     ...base,
     configured: true,
@@ -289,7 +302,9 @@ export async function recordQuotaNoticeIfNeeded(agent: DbAgent, snap: AgentQuota
                     summary = EXCLUDED.summary,
                     action = EXCLUDED.action,
                     admin_name = EXCLUDED.admin_name`;
-  } catch {
+    console.log("[quota] audit upserted", { id, action, target: agent.id });
+  } catch (e) {
+    console.warn("[quota] audit upsert failed", { id, err: e instanceof Error ? e.message : String(e) });
     // Audit write is best-effort — never block a page render on it.
   }
 }
