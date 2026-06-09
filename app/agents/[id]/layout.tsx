@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import AgentSidebar from "@/components/AgentSidebar";
 import AgentTopbar from "@/components/AgentTopbar";
 import QuotaBanner from "@/components/QuotaBanner";
@@ -43,7 +44,11 @@ export default async function AgentLayout({
   const quota = await getAgentMonthlyQuota(dbAgent);
   // Fire-once-per-month audit row so the admin Activity Feed surfaces it too.
   await recordQuotaNoticeIfNeeded(dbAgent, quota);
-  const unread = await countCurrentMonthNotifications(dbAgent.id);
+  // Sidebar Bell badge respects the "last-read at" cookie set when the
+  // client opens the Notifications tab — visiting the tab clears the
+  // unread dot just like a normal inbox.
+  const lastReadCookie = cookies().get(`notif_read_${dbAgent.id}`)?.value || null;
+  const unread = await countCurrentMonthNotifications(dbAgent.id, lastReadCookie);
 
   return (
     <div className="flex min-h-screen">
@@ -57,7 +62,7 @@ export default async function AgentLayout({
       <div className="flex-1 flex flex-col min-w-0">
         <AgentTopbar current={topbarCurrent} agents={topbarAgents} unreadNotifications={unread} />
         <main className="flex-1 p-6 lg:p-8 overflow-x-hidden space-y-6">
-          <QuotaBanner quota={quota} />
+          <QuotaBanner quota={quota} agentId={dbAgent.id} />
           <QuotaPopup agentId={dbAgent.id} quota={quota} />
           {children}
         </main>

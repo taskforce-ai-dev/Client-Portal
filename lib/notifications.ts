@@ -70,17 +70,20 @@ export async function listAgentNotifications(
   return { items: rows.map(rowToNotification), range, customMissing: false };
 }
 
-// Count of notifications fired in the current calendar month — drives the
-// sidebar Bell pulse so the client sees something is unread.
-export async function countCurrentMonthNotifications(agentId: string): Promise<number> {
+// Count of notifications that arrived AFTER the client's last visit to
+// the Notifications tab (the cookie set by /api/.../notifications/mark-read).
+// Falls back to the start of the calendar month when no cookie exists, so
+// brand-new clients see their first warning/exceeded immediately.
+export async function countCurrentMonthNotifications(agentId: string, sinceIso?: string | null): Promise<number> {
   const sql = getSql();
   if (!sql) return 0;
   await ensureSeed(sql);
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const monthStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const cutoff = sinceIso && /^\d{4}-\d{2}-\d{2}T/.test(sinceIso) ? sinceIso : monthStartIso;
   const rows = (await sql`SELECT count(*)::int AS n FROM sentinel_audit
                           WHERE target = ${agentId}
                             AND action LIKE 'client.quota.%'
-                            AND occurred_at >= ${start}`) as { n: number }[];
+                            AND occurred_at > ${cutoff}`) as { n: number }[];
   return rows[0]?.n ?? 0;
 }

@@ -5,6 +5,7 @@ import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient } from "@/lib/adminDb";
 import { formatTs } from "@/lib/twilio";
 import { getAgentMonthlyQuota } from "@/lib/billing";
+import MarkNotificationsRead from "@/components/MarkNotificationsRead";
 import {
   listAgentNotifications,
   type NotificationsRange,
@@ -67,6 +68,7 @@ export default async function NotificationsPage({
 
   return (
     <div className="space-y-6">
+      <MarkNotificationsRead agentId={agent.id} />
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">Notifications</h1>
