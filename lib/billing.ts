@@ -261,23 +261,34 @@ export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSn
   };
 }
 
-// Fires once per (agent, calendar month, threshold). Writes an audit row with
-// a deterministic id so a refresh storm can't spam the feed. target=agent.id
-// so the per-agent notifications tab can filter precisely; the summary still
-// carries the client/agent name for the admin's global feed.
+// Fires once per (agent, calendar month, threshold). Writes an audit row
+// with a deterministic id so a refresh storm can't spam the feed. We UPSERT
+// on conflict to repair legacy rows that were inserted with target=client_id
+// before we switched the schema to target=agent.id — without this, the old
+// row blocks the new insert and listAgentNotifications (which filters by
+// target=agent.id) returns nothing even though a row exists.
 export async function recordQuotaNoticeIfNeeded(agent: DbAgent, snap: AgentQuotaSnapshot): Promise<void> {
   if (!snap.configured || snap.status === "ok") return;
   const sql = getSql();
   if (!sql) return;
   const id = `aud_q_${agent.id}_${snap.periodYm}_${snap.status}`;
   const action = snap.status === "exceeded" ? "client.quota.exceeded" : "client.quota.warn";
+  const incl = snap.includedMinutes;
+  const usedLabel = `${Math.floor(snap.billableMinutes / 60)}h ${snap.billableMinutes % 60}m`;
+  const inclLabel = incl >= 60 && incl % 60 === 0
+    ? `${incl / 60}h`
+    : `${Math.floor(incl / 60)}h ${incl % 60}m`;
   const summary = snap.status === "exceeded"
-    ? `${agent.name}: 40h included calls used for ${snap.periodLabel} — now pay-as-you-go at Rs.${RATE_PER_MINUTE}/min.`
-    : `${agent.name}: 80% of monthly 40h call quota used for ${snap.periodLabel} (${Math.floor(snap.billableMinutes / 60)}h ${snap.billableMinutes % 60}m of 40h).`;
+    ? `${agent.name}: ${inclLabel} included calls used for ${snap.periodLabel} — now pay-as-you-go at Rs.${RATE_PER_MINUTE}/min.`
+    : `${agent.name}: 80% of monthly ${inclLabel} call quota used for ${snap.periodLabel} (${usedLabel} of ${inclLabel}).`;
   try {
     await sql`INSERT INTO sentinel_audit (id, admin_name, action, type, target, summary)
               VALUES (${id}, ${"System"}, ${action}, ${"quota"}, ${agent.id}, ${summary})
-              ON CONFLICT (id) DO NOTHING`;
+              ON CONFLICT (id) DO UPDATE
+                SET target = EXCLUDED.target,
+                    summary = EXCLUDED.summary,
+                    action = EXCLUDED.action,
+                    admin_name = EXCLUDED.admin_name`;
   } catch {
     // Audit write is best-effort — never block a page render on it.
   }

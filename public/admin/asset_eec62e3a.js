@@ -2164,11 +2164,19 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                     }
                   } catch (e) {}
                   toast("Cleared " + (d.deleted || 0) + " notification" + ((d.deleted === 1) ? "" : "s"), "success");
-                  // Refetch so the empty state shows immediately.
+                  // Refetch so the empty state shows immediately AND so the
+                  // GET endpoint's recordQuotaNoticeIfNeeded re-writes a
+                  // fresh row when the threshold is still crossed.
                   setNotifLoading(true);
                   const qs = notifRange === "custom" ? `range=custom&start=${notifCStart}&end=${notifCEnd}` : `range=${notifRange}`;
                   const rr = await fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" }).then((r) => r.json());
                   setNotif(rr); setNotifLoading(false);
+                  // Re-trigger the one-shot pop-up if the agent is still over
+                  // threshold. (The mount effect already fired earlier with
+                  // an empty quota_popup key, so we explicitly re-open.)
+                  if (rr && rr.quota && rr.quota.configured && rr.quota.status !== "ok") {
+                    setQuotaPopup(rr.quota);
+                  }
                 } catch (e) { toast(e.message, "error"); }
               }}
             >Clear notifications</button>

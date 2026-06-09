@@ -53,10 +53,14 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!agent) return NextResponse.json({ message: "Agent not found" }, { status: 404 });
   const sql = getSql();
   if (!sql) return NextResponse.json({ message: "Database not configured" }, { status: 503 });
+  // Sweep by id pattern, NOT by target, so legacy rows that were inserted
+  // with target=client_id (before the schema change) also get wiped — those
+  // rows have ids like `aud_q_{agent.id}_{periodYm}_{status}` regardless of
+  // what's in the target column.
+  const idPattern = `aud_q_${agent.id}_%`;
   try {
     const rows = (await sql`DELETE FROM sentinel_audit
-                            WHERE target = ${agent.id}
-                              AND action LIKE 'client.quota.%'
+                            WHERE id LIKE ${idPattern}
                             RETURNING id`) as { id: string }[];
     return NextResponse.json({ ok: true, deleted: rows.length });
   } catch (e) {
