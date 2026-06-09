@@ -8,8 +8,10 @@ const CURRENCY = "Rs.";
 
 // Package inclusion: each agent gets 40 hours of voice calls per calendar
 // month. Warn the client at 80% (32h) so they aren't surprised.
-export const INCLUDED_MINUTES_PER_MONTH = 40 * 60;
-export const QUOTA_WARN_MINUTES = Math.floor(INCLUDED_MINUTES_PER_MONTH * 0.8);
+// TEMPORARY: set to 1 minute for end-to-end testing of the threshold
+// notification pipeline — REVERT to 40 * 60 (= 2400) before production.
+export const INCLUDED_MINUTES_PER_MONTH = 1;
+export const QUOTA_WARN_MINUTES = Math.max(1, Math.floor(INCLUDED_MINUTES_PER_MONTH * 0.8));
 
 export function billingRate() {
   return { perMinute: RATE_PER_MINUTE, currency: CURRENCY };

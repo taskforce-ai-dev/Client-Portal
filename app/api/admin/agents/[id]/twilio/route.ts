@@ -9,6 +9,7 @@ import {
   getAllCallsForSubaccount,
   isTwilioAuthConfigured,
 } from "@/lib/twilio";
+import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded, type AgentQuotaSnapshot } from "@/lib/billing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,6 +71,18 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const stats = callStats(calls);
   const minutes = Math.round(calls.reduce((s, c) => s + c.durationSec, 0) / 60);
 
+  // Fire the monthly threshold notification if applicable. Compute the
+  // calendar-month quota separately from the range-filtered KPIs above —
+  // the quota is always month-to-date regardless of which range chip the
+  // admin picked. Idempotent insert keyed by (agent, periodYm, status).
+  let quota: AgentQuotaSnapshot | null = null;
+  try {
+    quota = await getAgentMonthlyQuota(agent);
+    await recordQuotaNoticeIfNeeded(agent, quota);
+  } catch {
+    // Don't block the dashboard if quota lookup fails.
+  }
+
   let series: { label: string; value: number }[];
   let seriesLabel: string;
   if (range === "today") {
@@ -90,6 +103,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     range,
     start: range === "total" ? null : ymd(start),
     end: range === "total" ? null : ymd(endDate),
+    quota,
     kpis: {
       calls: calls.length,
       completed: stats.completed,

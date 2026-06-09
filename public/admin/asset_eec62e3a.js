@@ -1005,6 +1005,11 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   // Outcome drill-in: { outcome, scope } where scope = "overview" | "analytics" | "callLog"
   // so the modal can pull from the right loaded dataset.
   const [categoryModal, setCategoryModal] = useState(null);
+  // Auto pop-up when this agent has crossed its monthly threshold. Dismissed
+  // state lives in sessionStorage keyed by (agent, period, status) so it
+  // doesn't keep reappearing on every page navigation but returns fresh
+  // next month (new periodYm) or after a new admin login.
+  const [quotaPopup, setQuotaPopup] = useState(null);
   useEffect(() => {
     if (!transcriptModal) return;
     const onKey = (e) => { if (e.key === "Escape") setTranscriptModal(null); };
@@ -1013,6 +1018,45 @@ const AgentConfigPage = ({ agentId, onBack }) => {
     document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prevOverflow; };
   }, [transcriptModal]);
+
+  // Auto-check quota on mount (and when agentId changes). If the agent is
+  // at or past 80% / 100%, pop the modal unless this admin already
+  // dismissed it for the current (agent, period, status) in this session.
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/admin/agents/${agentId}/notifications?range=today`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!active || !d || !d.quota) return;
+        const q = d.quota;
+        if (!q.configured || q.status === "ok") return;
+        const key = "quota_popup_admin_" + agentId + "_" + q.periodYm + "_" + q.status;
+        try { if (sessionStorage.getItem(key) === "1") return; } catch (e) {}
+        setQuotaPopup(q);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [agentId]);
+
+  useEffect(() => {
+    if (!quotaPopup) return;
+    const onKey = (e) => { if (e.key === "Escape") closeQuotaPopup(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotaPopup]);
+
+  const closeQuotaPopup = () => {
+    if (!quotaPopup) return;
+    try {
+      sessionStorage.setItem(
+        "quota_popup_admin_" + agentId + "_" + quotaPopup.periodYm + "_" + quotaPopup.status,
+        "1",
+      );
+    } catch (e) {}
+    setQuotaPopup(null);
+  };
+
   const toast = useToast();
 
   useEffect(() => {
@@ -1614,6 +1658,74 @@ const AgentConfigPage = ({ agentId, onBack }) => {
         </div>
       )}
 
+      {/* Auto pop-up — one-shot threshold modal */}
+      {quotaPopup && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
+          onClick={closeQuotaPopup}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 460,
+              background: "linear-gradient(180deg, " + (quotaPopup.status === "exceeded" ? "rgba(239,68,68,0.18)" : "rgba(245,158,11,0.16)") + " 0%, rgba(10,15,28,0.95) 70%)",
+              border: "1px solid " + (quotaPopup.status === "exceeded" ? "rgba(239,68,68,0.35)" : "rgba(245,158,11,0.35)"),
+              borderRadius: 14,
+              boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7)",
+              padding: 18,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 14,
+                display: "grid", placeItems: "center",
+                background: quotaPopup.status === "exceeded" ? "rgba(239,68,68,0.22)" : "rgba(245,158,11,0.22)",
+                color: quotaPopup.status === "exceeded" ? "#fecaca" : "#fde68a",
+                fontSize: 22,
+                flexShrink: 0,
+              }}>{quotaPopup.status === "exceeded" ? "⚠" : "⏱"}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 14, fontWeight: 600,
+                  color: quotaPopup.status === "exceeded" ? "#fee2e2" : "#fef3c7",
+                }}>
+                  {quotaPopup.status === "exceeded"
+                    ? "Agent reached " + Math.floor(quotaPopup.includedMinutes / 60) + "h monthly quota"
+                    : "Agent at " + quotaPopup.percent + "% of monthly quota"}
+                </div>
+                <p style={{ fontSize: 12.5, color: "var(--text-1)", marginTop: 8, lineHeight: 1.55 }}>
+                  {quotaPopup.status === "exceeded"
+                    ? agent?.name + " has used all " + (() => { const m = quotaPopup.includedMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
+                      + " of included calls for " + quotaPopup.periodLabel
+                      + ". From now until the new month resets, calls are billed pay-as-you-go at " + (quotaPopup.rate?.currency || "Rs.") + " 3 per minute. Overage so far: "
+                      + (() => { const m = quotaPopup.overageMinutes || 0; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
+                      + "."
+                    : agent?.name + " has used " + (() => { const m = quotaPopup.billableMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
+                      + " of " + (() => { const m = quotaPopup.includedMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
+                      + " for " + quotaPopup.periodLabel
+                      + ". Calls after the full quota bill at Rs. 3 per minute."}
+                </p>
+              </div>
+              <button
+                onClick={closeQuotaPopup}
+                aria-label="Dismiss"
+                style={{ background: "transparent", border: 0, color: "var(--text-3)", fontSize: 16, cursor: "pointer", padding: 2 }}
+              >✕</button>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+              <button className="btn btn-ghost btn-sm" onClick={closeQuotaPopup}>Got it</button>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => { setTab("notifications"); closeQuotaPopup(); }}
+              >View notifications</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Category modal — list of calls in a single outcome bucket */}
       {categoryModal && (
         <div
@@ -2026,56 +2138,13 @@ const AgentConfigPage = ({ agentId, onBack }) => {
 
       {tab === "notifications" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Header: range chips + test fire */}
+          {/* Header: range chips */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
               {[["total", "All"], ["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
                 <button key={k} className={"btn btn-xs " + (notifRange === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: notifRange === k ? "var(--border-strong)" : "transparent" }} onClick={() => setNotifRange(k)}>{l}</button>
               ))}
             </div>
-            <div style={{ flex: 1 }} />
-            <button
-              className="btn btn-secondary btn-sm"
-              title="Insert a synthetic 80% warning so you can verify the notifications pipeline end-to-end without crossing the real 32h threshold."
-              onClick={async () => {
-                try {
-                  const r = await fetch(`/api/admin/agents/${agentId}/notifications/test`, {
-                    method: "POST", credentials: "include",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ kind: "warn" }),
-                  });
-                  const d = await r.json();
-                  if (!r.ok) throw new Error(d.message || "Failed");
-                  toast("Test warning fired", "success");
-                  // Trigger a refetch by bumping the range chip's identity.
-                  setNotifRange((cur) => cur);
-                  setNotifLoading(true);
-                  const qs = notifRange === "custom" ? `range=custom&start=${notifCStart}&end=${notifCEnd}` : `range=${notifRange}`;
-                  const rr = await fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" }).then((r) => r.json());
-                  setNotif(rr); setNotifLoading(false);
-                } catch (e) { toast(e.message, "error"); }
-              }}
-            >Fire test (80% warn)</button>
-            <button
-              className="btn btn-secondary btn-sm"
-              title="Insert a synthetic over-quota event."
-              onClick={async () => {
-                try {
-                  const r = await fetch(`/api/admin/agents/${agentId}/notifications/test`, {
-                    method: "POST", credentials: "include",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ kind: "exceeded" }),
-                  });
-                  const d = await r.json();
-                  if (!r.ok) throw new Error(d.message || "Failed");
-                  toast("Test exceeded fired", "success");
-                  setNotifLoading(true);
-                  const qs = notifRange === "custom" ? `range=custom&start=${notifCStart}&end=${notifCEnd}` : `range=${notifRange}`;
-                  const rr = await fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" }).then((r) => r.json());
-                  setNotif(rr); setNotifLoading(false);
-                } catch (e) { toast(e.message, "error"); }
-              }}
-            >Fire test (exceeded)</button>
             {notifRange === "custom" && (
               <>
                 <input type="date" className="input" style={{ width: 150 }} value={notifCStart} onChange={(e) => setNotifCStart(e.target.value)} />
@@ -2144,7 +2213,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           )}
 
           <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-            Quota notifications fire once per (agent, month, threshold) when the agent crosses 80% or 100% of its included 40h — a single 1-min call alone won&apos;t trigger one. Use the &quot;Fire test&quot; buttons above to verify the pipeline. Real and test events land here and in the client portal&apos;s Notifications tab simultaneously.
+            Quota notifications fire automatically once per (agent, month, threshold) when the agent crosses 80% or 100% of its included monthly minutes. They appear here, in the client portal&apos;s Notifications tab, and as a one-shot pop-up modal in both portals. Counters reset on the 1st of every calendar month.
           </div>
         </div>
       )}

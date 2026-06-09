@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthed } from "@/lib/adminAuth";
 import { findAgentById, findClientById, isDbConfigured } from "@/lib/adminDb";
-import { getAgentMonthlyQuota } from "@/lib/billing";
+import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
 import { listAgentNotifications, type NotificationsRange } from "@/lib/notifications";
 
 export const runtime = "nodejs";
@@ -22,11 +22,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const start = url.searchParams.get("start") || undefined;
   const end = url.searchParams.get("end") || undefined;
 
-  const [{ items, customMissing }, quota, client] = await Promise.all([
-    listAgentNotifications(agent.id, range, { customStart: start, customEnd: end }),
+  const [quota, client] = await Promise.all([
     getAgentMonthlyQuota(agent),
     findClientById(agent.client_id),
   ]);
+  // Fire-and-store the threshold notification on every admin load so the
+  // audit row gets written even if the client never opens their portal.
+  // recordQuotaNoticeIfNeeded is idempotent — deterministic id keeps it
+  // to one row per (agent, month, threshold).
+  await recordQuotaNoticeIfNeeded(agent, quota);
+  const { items, customMissing } = await listAgentNotifications(agent.id, range, { customStart: start, customEnd: end });
 
   return NextResponse.json({
     agent: { id: agent.id, name: agent.name, client_id: agent.client_id },
