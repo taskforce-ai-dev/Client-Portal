@@ -2313,7 +2313,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                       </div>
                     )}
                     <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
-                      Twilio Usage Records can lag actual calls by 1–2 hours. The category breakdown excludes the rolled-up "Total Price" line to avoid double-counting.
+                      Twilio Usage Records can lag actual calls by 1–2 hours. The breakdown shows only leaf categories (Twilio also returns parent rollups like "Voice Minutes" that already sum their children — those are filtered server-side to avoid double-counting). The headline "Twilio cost" uses Twilio&apos;s own "Total Price" line — that&apos;s the number that matches the Twilio Console.
                     </div>
                   </>
                 )}

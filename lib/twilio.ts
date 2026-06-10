@@ -395,6 +395,31 @@ type TwilioUsageRow = {
   end_date?: string | null;
 };
 
+// Known rollup categories from Twilio Usage Records. These are aggregates
+// that already include their children, so showing them alongside the
+// leaves causes visual double-counting (e.g. "Voice Minutes" + "Inbound
+// Voice Minutes" + "Inbound Calls - Local" are three rows for the same
+// money). We strip them from the breakdown sent to the UI; the official
+// roll-up total still comes from the "totalprice" row, which is kept
+// separately and not double-counted by definition.
+const TWILIO_ROLLUP_CATEGORIES = new Set([
+  "totalprice",
+  "calls",
+  "voice",
+  "calls-inbound",
+  "calls-outbound",
+  "calls-client",
+  "phonenumbers",
+  "voice-insights",
+  "recordings",
+  "transcriptions",
+  // Add more as discovered — safe to extend; uncovered children will
+  // continue to show in the breakdown like before.
+]);
+function isTwilioRollup(cat: string): boolean {
+  return TWILIO_ROLLUP_CATEGORIES.has(cat);
+}
+
 export async function getUsageRecordsForSubaccount(
   sub: string,
   opts: { startDate?: string; endDate?: string; category?: string } = {},
@@ -461,20 +486,26 @@ export async function getUsageRecordsForSubaccount(
         });
       }
     }
-    const categories = Array.from(aggregated.values());
-    const totalRow = categories.find((c) => c.category === "totalprice");
+    const allCategories = Array.from(aggregated.values());
+    const totalRow = allCategories.find((c) => c.category === "totalprice");
+    // Leaf categories only — Twilio's rollups (Voice Minutes, Inbound Voice
+    // Minutes, Phone Numbers, etc.) sum their children and would double-
+    // count visually if shown next to them. Sorting by USD desc so the
+    // big-ticket leaves bubble to the top of the breakdown.
+    const leafCategories = allCategories
+      .filter((c) => !isTwilioRollup(c.category))
+      .sort((a, b) => b.priceUsd - a.priceUsd);
     const totalUsd = totalRow
       ? totalRow.priceUsd
-      // No totalprice row (sometimes daily granularity omits it) — sum all
-      // other categories. Excludes totalprice itself to avoid double-count.
-      : categories.filter((c) => c.category !== "totalprice").reduce((s, c) => s + c.priceUsd, 0);
+      // No totalprice row (rare with Daily granularity) — sum the leaves.
+      : leafCategories.reduce((s, c) => s + c.priceUsd, 0);
     return {
       configured: true,
       subaccount: sub,
       startDate: opts.startDate || null,
       endDate: opts.endDate || null,
       totalUsd,
-      categories,
+      categories: leafCategories,
     };
   } catch (e) {
     return {
