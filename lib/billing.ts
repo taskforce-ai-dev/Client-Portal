@@ -1,24 +1,96 @@
-import { DbAgent, getSetting, getSql } from "./adminDb";
+import { DbAgent, getSetting, getSql, setSetting } from "./adminDb";
 import { getAllCallsForSubaccount, getUsageRecordsForSubaccount, isTwilioAuthConfigured, type UsageCategory } from "./twilio";
 
 // Single source of truth for the USD → LKR conversion used everywhere
-// Twilio cost is displayed. Stored in sentinel_setting so the admin can
-// update it from the UI without a redeploy. Env var USD_TO_LKR provides
-// a build-time fallback (handy for local dev).
+// Twilio cost is displayed. Auto-refreshes daily from a free public feed
+// (open.er-api.com — no API key required). Admin can also pin a manual
+// rate that overrides the auto-fetch until they switch back. Env var
+// USD_TO_LKR provides a hardcoded last-resort fallback.
 export const FX_SETTING_KEY = "usd_to_lkr";
+export const FX_SOURCE_KEY = "usd_to_lkr_source"; // "auto" | "manual"
+export const FX_UPDATED_KEY = "usd_to_lkr_updated_at"; // ISO timestamp
 export const FX_DEFAULT = Number(process.env.USD_TO_LKR) > 0
   ? Number(process.env.USD_TO_LKR)
   : 320;
+const FX_REFRESH_MS = 24 * 60 * 60 * 1000; // 24h
+const FX_FETCH_TIMEOUT_MS = 2500;
+
+async function fetchLiveUsdToLkr(): Promise<number | null> {
+  // open.er-api.com is free, no API key, daily ECB-derived rates with
+  // LKR coverage. We give it a short timeout — never block a page render
+  // on this external dependency.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FX_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch("https://open.er-api.com/v6/latest/USD", {
+      signal: ctrl.signal,
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { result?: string; rates?: Record<string, number> };
+    if (data.result !== "success") return null;
+    const lkr = data.rates?.LKR;
+    return typeof lkr === "number" && lkr > 0 ? lkr : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export type FxSnapshot = {
+  rate: number;
+  source: "auto" | "manual" | "fallback";
+  updatedAt: string | null;
+};
+
+export async function getUsdToLkrSnapshot(): Promise<FxSnapshot> {
+  try {
+    const [rawRate, rawSource, rawUpdated] = await Promise.all([
+      getSetting(FX_SETTING_KEY),
+      getSetting(FX_SOURCE_KEY),
+      getSetting(FX_UPDATED_KEY),
+    ]);
+    const stored = Number(rawRate);
+    const source: "auto" | "manual" = rawSource === "manual" ? "manual" : "auto";
+    const updatedAt = rawUpdated || null;
+    const ageMs = updatedAt ? Date.now() - new Date(updatedAt).getTime() : Infinity;
+    const isFresh = Number.isFinite(ageMs) && ageMs < FX_REFRESH_MS;
+
+    // Manual override: trust whatever the admin pinned.
+    if (source === "manual" && Number.isFinite(stored) && stored > 0) {
+      return { rate: stored, source, updatedAt };
+    }
+    // Auto mode + fresh cached value: return it.
+    if (source === "auto" && Number.isFinite(stored) && stored > 0 && isFresh) {
+      return { rate: stored, source, updatedAt };
+    }
+    // Auto mode + stale (or no cache): try a live fetch.
+    const live = await fetchLiveUsdToLkr();
+    if (live) {
+      const nowIso = new Date().toISOString();
+      try {
+        await Promise.all([
+          setSetting(FX_SETTING_KEY, String(live)),
+          setSetting(FX_SOURCE_KEY, "auto"),
+          setSetting(FX_UPDATED_KEY, nowIso),
+        ]);
+      } catch { /* best-effort cache write */ }
+      return { rate: live, source: "auto", updatedAt: nowIso };
+    }
+    // Live fetch failed — return the most recent we have, else the fallback.
+    if (Number.isFinite(stored) && stored > 0) {
+      return { rate: stored, source: "auto", updatedAt };
+    }
+    return { rate: FX_DEFAULT, source: "fallback", updatedAt: null };
+  } catch {
+    return { rate: FX_DEFAULT, source: "fallback", updatedAt: null };
+  }
+}
 
 export async function getUsdToLkr(): Promise<number> {
-  try {
-    const raw = await getSetting(FX_SETTING_KEY);
-    if (!raw) return FX_DEFAULT;
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : FX_DEFAULT;
-  } catch {
-    return FX_DEFAULT;
-  }
+  const snap = await getUsdToLkrSnapshot();
+  return snap.rate;
 }
 
 // Rate: Rs. 3 per billable minute. Each call is rounded up to the next whole
@@ -455,6 +527,8 @@ export type TwilioCostSnapshot = {
   startDate: string | null;
   endDate: string | null;
   fxRate: number;
+  fxSource: "auto" | "manual" | "fallback";
+  fxUpdatedAt: string | null;
   twilio: { totalUsd: number; totalLkr: number; categories: UsageCategory[] };
   invoiced: { billableMinutes: number; ratePerMinute: number; totalLkr: number };
   marginLkr: number;
@@ -470,12 +544,15 @@ export async function getTwilioCostForAgent(
   opts: { startDate?: string; endDate?: string } = {},
 ): Promise<TwilioCostSnapshot> {
   const sub = agent.twilio_subaccount_sid || "";
-  const fx = await getUsdToLkr();
+  const fxSnap = await getUsdToLkrSnapshot();
+  const fx = fxSnap.rate;
   const empty: TwilioCostSnapshot = {
     configured: false,
     startDate: opts.startDate || null,
     endDate: opts.endDate || null,
     fxRate: fx,
+    fxSource: fxSnap.source,
+    fxUpdatedAt: fxSnap.updatedAt,
     twilio: { totalUsd: 0, totalLkr: 0, categories: [] },
     invoiced: { billableMinutes: 0, ratePerMinute: RATE_PER_MINUTE, totalLkr: 0 },
     marginLkr: 0,
@@ -510,6 +587,8 @@ export async function getTwilioCostForAgent(
     startDate: opts.startDate || null,
     endDate: opts.endDate || null,
     fxRate: fx,
+    fxSource: fxSnap.source,
+    fxUpdatedAt: fxSnap.updatedAt,
     twilio: { totalUsd: usage.totalUsd, totalLkr: twilioLkr, categories: usage.categories },
     invoiced: { billableMinutes, ratePerMinute: RATE_PER_MINUTE, totalLkr: invoicedLkr },
     marginLkr,
