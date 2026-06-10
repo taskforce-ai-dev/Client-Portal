@@ -39,12 +39,18 @@ export default function AgentSidebar({
   minutesUsed,
   minutesLimit,
   quotaStatus,
+  quotaPeriodLabel,
+  quotaPeriodStart,
+  quotaPeriodEnd,
   unreadNotifications,
 }: {
   agent: Agent;
   minutesUsed: number;
   minutesLimit: number;
   quotaStatus: "ok" | "warn" | "exceeded";
+  quotaPeriodLabel?: string;
+  quotaPeriodStart?: string;
+  quotaPeriodEnd?: string;
   unreadNotifications: number;
 }) {
   const pathname = usePathname();
@@ -157,7 +163,7 @@ export default function AgentSidebar({
 
       <div className="p-4 border-t border-white/5">
         <div className="flex items-center justify-between text-xs mb-2">
-          <span className="text-slate-400">Included this month</span>
+          <span className="text-slate-400">{quotaPeriodLabel ? `Included · ${quotaPeriodLabel}` : "Included this month"}</span>
           <span className={clsx(
             "font-medium",
             quotaStatus === "exceeded" ? "text-rose-300" : quotaStatus === "warn" ? "text-amber-300" : "text-slate-300",
@@ -169,6 +175,11 @@ export default function AgentSidebar({
         <div className="text-[11px] text-slate-500 mt-2">
           {fmtHm(minutesUsed)} of {fmtHm(minutesLimit)} used
         </div>
+        {(quotaPeriodStart && quotaPeriodEnd) && (
+          <div className="text-[10px] text-slate-600 mt-1 font-mono" title="Billing period">
+            {quotaPeriodStart} → {quotaPeriodEnd}
+          </div>
+        )}
       </div>
     </aside>
   );

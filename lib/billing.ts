@@ -289,19 +289,40 @@ function pickCadence(raw: string | null | undefined): "monthly" | "weekly" | "no
   return "monthly";
 }
 
+function normalizeSeedDate(raw: unknown): string | null {
+  if (!raw) return null;
+  // The neon driver returns DATE columns as YYYY-MM-DD strings, but in some
+  // builds it returns a Date object — handle both. Anything else (e.g. an
+  // ISO timestamp from a JSON round-trip) just slices to the date portion.
+  if (raw instanceof Date) {
+    if (Number.isNaN(raw.getTime())) return null;
+    return raw.toISOString().slice(0, 10);
+  }
+  if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.slice(0, 10);
+  }
+  return null;
+}
+
 export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSnapshot> {
   const cadence = pickCadence(agent.quota_reset_cadence);
   const includedMinutes = agent.quota_included_minutes && agent.quota_included_minutes > 0
     ? agent.quota_included_minutes
     : INCLUDED_MINUTES_PER_MONTH;
   const warnMinutes = Math.max(1, Math.floor(includedMinutes * 0.8));
-  // Seed default: if the column came back empty (older row, freshly created
-  // before the migration applied), fall back to 1st of current month so the
-  // monthly rollover still works.
+  // Seed: prefer the agent's stored start_date. Fallback to 1st of current
+  // month so a freshly-created agent (before the migration ran) still gets
+  // a sensible monthly rollover instead of a frozen window.
   const now = new Date();
-  const seed = (agent.quota_start_date && /^\d{4}-\d{2}-\d{2}/.test(agent.quota_start_date))
-    ? agent.quota_start_date.slice(0, 10)
+  const normalizedSeed = normalizeSeedDate(agent.quota_start_date);
+  const seed = normalizedSeed
+    ? normalizedSeed
     : `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  if (!normalizedSeed && agent.quota_start_date) {
+    console.warn("[quota] could not parse quota_start_date, using month-start fallback", {
+      agent: agent.id, raw: agent.quota_start_date,
+    });
+  }
   const win = computePeriodWindow(seed, cadence, now);
   const base: AgentQuotaSnapshot = {
     configured: false,

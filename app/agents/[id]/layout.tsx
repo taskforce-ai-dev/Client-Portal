@@ -57,6 +57,9 @@ export default async function AgentLayout({
         minutesUsed={quota.billableMinutes}
         minutesLimit={quota.includedMinutes}
         quotaStatus={quota.status}
+        quotaPeriodLabel={quota.periodLabel}
+        quotaPeriodStart={quota.periodStart}
+        quotaPeriodEnd={quota.periodEnd}
         unreadNotifications={unread}
       />
       <div className="flex-1 flex flex-col min-w-0">
