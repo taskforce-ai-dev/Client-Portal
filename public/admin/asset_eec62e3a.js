@@ -2295,7 +2295,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                         <span style={{ color: "#fcd34d", fontWeight: 600 }}>Heads-up:</span>{" "}
                         Twilio also billed <span className="mono">$ {twilioCost.twilio.nonCallUsd.toFixed(4)}</span>{" "}
                         (<span className="mono">Rs. {(twilioCost.twilio.nonCallLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>){" "}
-                        for non-call services (Conversation Relay, Voice Insights, phone number rentals, recordings, TTS, etc.). Those are excluded from the margin above because the current flat Rs. 3/min invoice doesn&apos;t cover them. Twilio Console total: <span className="mono">$ {(twilioCost.twilio.allInUsd || 0).toFixed(4)}</span>.
+                        for non-call services. See breakdown below — these are NOT factored into the margin since the flat Rs. 3/min invoice doesn&apos;t cover them. Twilio Console total: <span className="mono">$ {(twilioCost.twilio.allInUsd || 0).toFixed(4)}</span>.
                       </div>
                     )}
                     {Array.isArray(twilioCost.twilio.categories) && twilioCost.twilio.categories.length > 0 && (
@@ -2320,8 +2320,45 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                         </table>
                       </div>
                     )}
+
+                    {/* Non-call Twilio overhead — surfaced separately so the
+                        admin can see what else Twilio billed without those
+                        charges contaminating the margin math. */}
+                    {Array.isArray(twilioCost.twilio.nonCallCategories) && twilioCost.twilio.nonCallCategories.length > 0 && (
+                      <div style={{ marginTop: 14, padding: 10, border: "1px dashed var(--border)", borderRadius: 8, background: "rgba(255,255,255,0.015)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+                          <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Non-call Twilio overhead · not invoiced</div>
+                          <div style={{ fontSize: 11.5, color: "var(--text-2)" }}>
+                            Subtotal <span className="mono" style={{ color: "var(--text-0)" }}>$ {(twilioCost.twilio.nonCallUsd || 0).toFixed(4)}</span>
+                            {" · "}
+                            <span className="mono" style={{ color: "var(--text-0)" }}>Rs. {(twilioCost.twilio.nonCallLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                        <table className="data-table">
+                          <thead><tr><th>Category</th><th style={{ textAlign: "right" }}>Count</th><th style={{ textAlign: "right" }}>Usage</th><th style={{ textAlign: "right" }}>USD</th><th style={{ textAlign: "right" }}>LKR</th></tr></thead>
+                          <tbody>
+                            {twilioCost.twilio.nonCallCategories
+                              .filter((c) => c.priceUsd > 0 || c.count > 0)
+                              .sort((a, b) => b.priceUsd - a.priceUsd)
+                              .map((c) => (
+                                <tr key={c.category}>
+                                  <td style={{ color: "var(--text-2)" }}>{c.description || c.category}</td>
+                                  <td style={{ color: "var(--text-3)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{c.count}{c.countUnit ? " " + c.countUnit : ""}</td>
+                                  <td style={{ color: "var(--text-3)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{c.usage}{c.usageUnit ? " " + c.usageUnit : ""}</td>
+                                  <td style={{ color: "var(--text-1)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{c.priceUsd.toFixed(4)}</td>
+                                  <td style={{ color: "var(--text-1)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{(c.priceUsd * (twilioCost.fxRate || 1)).toFixed(2)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                        <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 6, lineHeight: 1.5 }}>
+                          These charges (Conversation Relay, Voice Insights, phone-number rentals, recordings, TTS, Media Streams, etc.) are NOT part of the margin calculation — your Rs. 3/min invoice covers call minutes only. Listed here for cost visibility.
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
-                      Showing call-only Twilio cost — inbound, outbound, and SIP/client voice categories that map to the per-minute invoice. Non-call Twilio charges (Conversation Relay, Voice Insights, phone number rentals, recordings, TTS, Media Streams) are surfaced separately in the heads-up note above so the all-in Twilio Console total is still visible. Twilio Usage Records can lag actual calls by 1–2 hours.
+                      Call cost compared to invoice uses only call categories — non-call Twilio charges are listed above for visibility only. Twilio Console total = call cost + non-call overhead. Twilio Usage Records can lag actual calls by 1–2 hours.
                     </div>
                   </>
                 )}
