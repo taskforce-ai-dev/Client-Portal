@@ -402,38 +402,71 @@ export async function getUsageRecordsForSubaccount(
   if (!isTwilioAuthConfigured() || !sub) {
     return { configured: false, startDate: null, endDate: null, totalUsd: 0, categories: [] };
   }
-  const params = new URLSearchParams({ PageSize: "100" });
-  if (opts.startDate) params.set("StartDate", opts.startDate);
-  if (opts.endDate) params.set("EndDate", opts.endDate);
+  // IMPORTANT: Twilio's default /Usage/Records.json returns AllTime
+  // aggregates and silently IGNORES StartDate/EndDate. To get a real
+  // date-filtered view we have to use the /Daily.json sub-resource and
+  // sum the daily rows by category ourselves. When the caller asks for
+  // no date range, we use /AllTime.json explicitly so the response is
+  // unambiguous.
+  const hasRange = !!(opts.startDate && opts.endDate);
+  const endpointPath = hasRange
+    ? `/Accounts/${sub}/Usage/Records/Daily.json`
+    : `/Accounts/${sub}/Usage/Records/AllTime.json`;
+  const params = new URLSearchParams({ PageSize: "1000" });
+  if (hasRange) {
+    params.set("StartDate", opts.startDate!);
+    params.set("EndDate", opts.endDate!);
+  }
   if (opts.category) params.set("Category", opts.category);
+
   try {
-    const all: TwilioUsageRow[] = [];
-    let url = `${TWILIO_BASE}/Accounts/${sub}/Usage/Records.json?${params.toString()}`;
-    // Cursor-paginate via next_page_uri so we don't miss rows when an
-    // agent has many active categories.
-    for (let i = 0; i < 10; i++) { // safety cap
+    const rawRows: TwilioUsageRow[] = [];
+    let url = `${TWILIO_BASE}${endpointPath}?${params.toString()}`;
+    // Cursor-paginate. Daily-granularity over a 30-day window with many
+    // categories can easily exceed one page.
+    for (let i = 0; i < 20; i++) {
       const data = await twilioGetUrl(url) as { usage_records?: TwilioUsageRow[]; next_page_uri?: string | null };
-      if (data && Array.isArray(data.usage_records)) all.push(...data.usage_records);
+      if (data && Array.isArray(data.usage_records)) rawRows.push(...data.usage_records);
       const next = data?.next_page_uri;
       if (!next) break;
       url = TWILIO_HOST + next;
     }
-    const categories: UsageCategory[] = all.map((r) => ({
-      category: r.category,
-      description: r.description || r.category,
-      count: Number.parseFloat(r.count || "0") || 0,
-      countUnit: r.count_unit || "",
-      usage: Number.parseFloat(r.usage || "0") || 0,
-      usageUnit: r.usage_unit || "",
-      priceUsd: Math.abs(Number.parseFloat(r.price || "0") || 0),
-      startDate: r.start_date || "",
-      endDate: r.end_date || "",
-    }));
+    // Aggregate by category — daily mode returns one row per (category, day)
+    // so we sum count/usage/priceUsd to collapse to one row per category.
+    const aggregated = new Map<string, UsageCategory>();
+    for (const r of rawRows) {
+      const cat = r.category;
+      const count = Number.parseFloat(r.count || "0") || 0;
+      const usage = Number.parseFloat(r.usage || "0") || 0;
+      const priceUsd = Math.abs(Number.parseFloat(r.price || "0") || 0);
+      const existing = aggregated.get(cat);
+      if (existing) {
+        existing.count += count;
+        existing.usage += usage;
+        existing.priceUsd += priceUsd;
+        // Keep the earliest startDate / latest endDate seen for the bucket.
+        if (r.start_date && (!existing.startDate || r.start_date < existing.startDate)) existing.startDate = r.start_date;
+        if (r.end_date && (!existing.endDate || r.end_date > existing.endDate)) existing.endDate = r.end_date;
+      } else {
+        aggregated.set(cat, {
+          category: cat,
+          description: r.description || cat,
+          count,
+          countUnit: r.count_unit || "",
+          usage,
+          usageUnit: r.usage_unit || "",
+          priceUsd,
+          startDate: r.start_date || "",
+          endDate: r.end_date || "",
+        });
+      }
+    }
+    const categories = Array.from(aggregated.values());
     const totalRow = categories.find((c) => c.category === "totalprice");
     const totalUsd = totalRow
       ? totalRow.priceUsd
-      // Fallback when the master account hasn't aggregated totalprice yet —
-      // sum non-aggregate-ish rows. Excludes totalprice itself if present.
+      // No totalprice row (sometimes daily granularity omits it) — sum all
+      // other categories. Excludes totalprice itself to avoid double-count.
       : categories.filter((c) => c.category !== "totalprice").reduce((s, c) => s + c.priceUsd, 0);
     return {
       configured: true,
