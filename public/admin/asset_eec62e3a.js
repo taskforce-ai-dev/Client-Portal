@@ -985,6 +985,12 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [billRange, setBillRange] = useState("total");
   const [billCStart, setBillCStart] = useState("");
   const [billCEnd, setBillCEnd] = useState("");
+  // Twilio actual-cost panel state (admin Billing tab).
+  const [twilioCost, setTwilioCost] = useState(null);
+  const [twilioCostLoading, setTwilioCostLoading] = useState(false);
+  const [fxRate, setFxRate] = useState(null);
+  const [fxEditOpen, setFxEditOpen] = useState(false);
+  const [fxDraft, setFxDraft] = useState("");
   const [tok, setTok] = useState(null);
   const [tokA, setTokA] = useState(null);
   const [tokLoading, setTokLoading] = useState(true);
@@ -1265,14 +1271,53 @@ const AgentConfigPage = ({ agentId, onBack }) => {
     if (billRange === "custom" && (!billCStart || !billCEnd)) return;
     let active = true;
     setBillALoading(true);
+    setTwilioCostLoading(true);
     const qs = billRange === "custom" ? `range=custom&start=${billCStart}&end=${billCEnd}` : `range=${billRange}`;
     fetch(`/api/admin/agents/${agentId}/billing?${qs}`, { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { if (active) setBillA(d || { configured: false }); })
       .catch(() => { if (active) setBillA({ configured: false }); })
       .finally(() => { if (active) setBillALoading(false); });
+    fetch(`/api/admin/agents/${agentId}/twilio-cost?${qs}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setTwilioCost(d || null); })
+      .catch(() => { if (active) setTwilioCost(null); })
+      .finally(() => { if (active) setTwilioCostLoading(false); });
     return () => { active = false; };
   }, [tab, billRange, billCStart, billCEnd, agentId]);
+
+  // FX rate (USD → LKR) — fetched once per page open, used by the
+  // Twilio cost panel and editable via a small popover.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/admin/settings/fx-rate", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active && d && d.rate) setFxRate(d.rate); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const saveFx = async () => {
+    const n = Number(fxDraft);
+    if (!Number.isFinite(n) || n <= 0) { toast("FX rate must be a positive number", "error"); return; }
+    try {
+      const r = await fetch("/api/admin/settings/fx-rate", {
+        method: "PATCH", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rate: n }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      setFxRate(d.rate);
+      setFxEditOpen(false);
+      toast("FX rate updated", "success");
+      // Refetch twilio-cost so the converted LKR numbers refresh.
+      const qs = billRange === "custom" ? `range=custom&start=${billCStart}&end=${billCEnd}` : `range=${billRange}`;
+      setTwilioCostLoading(true);
+      const rr = await fetch(`/api/admin/agents/${agentId}/twilio-cost?${qs}`, { credentials: "include" }).then((r) => r.json());
+      setTwilioCost(rr); setTwilioCostLoading(false);
+    } catch (e) { toast(e.message, "error"); }
+  };
 
   const openCategoryList = async (outcome) => {
     setCategoryModal({ outcome, loading: true, calls: [] });
@@ -2136,6 +2181,93 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 <MiniStat label="Avg / billable call" value={billA.rate.currency + " " + (billA.kpis.avgCallCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
               </div>
 
+              {/* Twilio actual cost vs. invoiced */}
+              <div className="panel" style={{ padding: 14, borderColor: "var(--border)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-0)" }}>Twilio cost vs. invoiced</div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)" }}>Pulled live from Twilio Usage Records · FX rate <span className="mono">{(fxRate || 320).toFixed(2)} LKR/USD</span></div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {!fxEditOpen && (
+                      <button className="btn btn-ghost btn-xs" onClick={() => { setFxDraft(String(fxRate || 320)); setFxEditOpen(true); }}>Edit FX rate</button>
+                    )}
+                    {fxEditOpen && (
+                      <>
+                        <input
+                          className="input mono"
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={fxDraft}
+                          onChange={(e) => setFxDraft(e.target.value)}
+                          style={{ width: 110, fontSize: 11.5, padding: "4px 8px" }}
+                          autoFocus
+                        />
+                        <button className="btn btn-primary btn-xs" onClick={saveFx}>Save</button>
+                        <button className="btn btn-ghost btn-xs" onClick={() => setFxEditOpen(false)}>Cancel</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {twilioCostLoading && <div style={{ fontSize: 12, color: "var(--text-3)" }}>Loading Twilio cost…</div>}
+                {!twilioCostLoading && twilioCost && !twilioCost.configured && (
+                  <div style={{ fontSize: 12, color: "var(--text-3)" }}>Twilio not connected for this agent.</div>
+                )}
+                {!twilioCostLoading && twilioCost && twilioCost.configured && twilioCost.error && (
+                  <div style={{ fontSize: 12, color: "#fca5a5" }}>Twilio error: {twilioCost.error}</div>
+                )}
+                {!twilioCostLoading && twilioCost && twilioCost.configured && !twilioCost.error && (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                      <MiniStat
+                        label="Twilio cost (USD)"
+                        value={"$ " + (twilioCost.twilio.totalUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
+                      />
+                      <MiniStat
+                        label="Twilio cost (LKR)"
+                        value={"Rs. " + (twilioCost.twilio.totalLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      />
+                      <MiniStat
+                        label="Invoiced (LKR)"
+                        value={"Rs. " + (twilioCost.invoiced.totalLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      />
+                      <MiniStat
+                        label="Margin"
+                        value={"Rs. " + (twilioCost.marginLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " · " + (twilioCost.marginPct || 0) + "%"}
+                        tone={(twilioCost.marginLkr || 0) >= 0 ? "emerald" : "rose"}
+                      />
+                    </div>
+                    {Array.isArray(twilioCost.twilio.categories) && twilioCost.twilio.categories.length > 0 && (
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Twilio category breakdown</div>
+                        <table className="data-table">
+                          <thead><tr><th>Category</th><th style={{ textAlign: "right" }}>Count</th><th style={{ textAlign: "right" }}>Usage</th><th style={{ textAlign: "right" }}>USD</th><th style={{ textAlign: "right" }}>LKR</th></tr></thead>
+                          <tbody>
+                            {twilioCost.twilio.categories
+                              .filter((c) => c.category !== "totalprice" && (c.priceUsd > 0 || c.count > 0))
+                              .sort((a, b) => b.priceUsd - a.priceUsd)
+                              .map((c) => (
+                                <tr key={c.category}>
+                                  <td style={{ color: "var(--text-1)" }}>{c.description || c.category}</td>
+                                  <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{c.count}{c.countUnit ? " " + c.countUnit : ""}</td>
+                                  <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{c.usage}{c.usageUnit ? " " + c.usageUnit : ""}</td>
+                                  <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{c.priceUsd.toFixed(4)}</td>
+                                  <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{(c.priceUsd * (twilioCost.fxRate || 1)).toFixed(2)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
+                      Twilio Usage Records can lag actual calls by 1–2 hours. The category breakdown excludes the rolled-up "Total Price" line to avoid double-counting.
+                    </div>
+                  </>
+                )}
+              </div>
+
               {/* Cost trend */}
               <div className="panel" style={{ padding: 14 }}>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{billA.seriesLabel}</div>
@@ -2153,7 +2285,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </div>
                 <div style={{ maxHeight: 480, overflowY: "auto" }}>
                   <table className="data-table">
-                    <thead><tr><th>#</th><th>Call SID</th><th>When</th><th>Direction</th><th>Outcome</th><th style={{ textAlign: "right" }}>Duration</th><th style={{ textAlign: "right" }}>Bill. min</th><th style={{ textAlign: "right" }}>Cost</th></tr></thead>
+                    <thead><tr><th>#</th><th>Call SID</th><th>When</th><th>Direction</th><th>Outcome</th><th style={{ textAlign: "right" }}>Duration</th><th style={{ textAlign: "right" }}>Bill. min</th><th style={{ textAlign: "right" }}>Twilio (USD)</th><th style={{ textAlign: "right" }}>Cost</th></tr></thead>
                     <tbody>
                       {billA.lineItems.map((l, i) => (
                         <tr key={l.id}>
@@ -2164,6 +2296,9 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                           <td style={{ color: "var(--text-1)" }}>{l.outcome}</td>
                           <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{l.duration}</td>
                           <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{l.billableMinutes}</td>
+                          <td style={{ color: l.twilioPriceUsd == null ? "var(--text-3)" : "var(--text-2)", fontFamily: "var(--ff-mono)", textAlign: "right" }} title={l.twilioPriceUsd == null ? "Twilio billing hasn't posted for this call yet (typically a few minutes delay)" : ""}>
+                            {l.twilioPriceUsd == null ? "—" : "$ " + l.twilioPriceUsd.toFixed(4)}
+                          </td>
                           <td style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)", textAlign: "right" }}>{billA.rate.currency} {(l.cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                       ))}

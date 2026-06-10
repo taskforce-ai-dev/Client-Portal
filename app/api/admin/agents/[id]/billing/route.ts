@@ -70,7 +70,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       : {}),
   });
 
-  // Per-call billing: round each call's duration up to the next whole minute.
+  // Per-call billing: round each call's duration up to the next whole
+  // minute. Also surfaces Twilio's own per-call USD price so the admin
+  // Billing tab can show margin per row (price is null for very fresh
+  // calls — Twilio's billing pipeline lags by a few minutes).
   const lineItems = calls.map((c) => {
     const billableMin = c.durationSec > 0 ? Math.ceil(c.durationSec / 60) : 0;
     return {
@@ -84,6 +87,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       billableMinutes: billableMin,
       cost: billableMin * RATE_PER_MINUTE,
       outcome: c.outcome,
+      twilioPriceUsd: c.twilioPriceUsd,
+      twilioPriceUnit: c.twilioPriceUnit ?? null,
     };
   });
 

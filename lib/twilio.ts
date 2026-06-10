@@ -13,6 +13,8 @@ export type DisplayCall = {
   sentiment: "positive" | "neutral" | "negative";
   direction: "inbound" | "outbound";
   recordingUrl?: string | null;
+  twilioPriceUsd: number | null; // absolute USD charge Twilio billed for this one call (null if not yet posted)
+  twilioPriceUnit?: string; // typically "USD"
 };
 
 export type CallsResult = {
@@ -126,12 +128,19 @@ type TwilioCall = {
   status: string;
   duration: string;
   start_time: string;
+  price?: string | null; // negative string like "-0.00850" once billing is processed; null while pending
+  price_unit?: string | null; // "USD"
 };
 
 function mapCall(c: TwilioCall): DisplayCall {
   const dur = parseInt(c.duration || "0", 10);
   const direction = (c.direction || "").startsWith("inbound") ? "inbound" : "outbound";
   const other = direction === "inbound" ? c.from_formatted || c.from : c.to_formatted || c.to;
+  // Twilio returns price as a negative string (debit); store the absolute
+  // value so the UI can render "USD 0.0085" instead of "-0.0085". Null if
+  // billing hasn't posted yet (typically a few minutes after the call ends).
+  const rawPrice = c.price != null ? parseFloat(c.price) : NaN;
+  const twilioPriceUsd = Number.isFinite(rawPrice) ? Math.abs(rawPrice) : null;
   return {
     id: c.sid,
     caller: other,
@@ -143,6 +152,8 @@ function mapCall(c: TwilioCall): DisplayCall {
     outcome: prettyStatus(c.status),
     sentiment: "neutral",
     direction,
+    twilioPriceUsd,
+    twilioPriceUnit: c.price_unit || undefined,
   };
 }
 
@@ -341,4 +352,105 @@ export function callStats(calls: DisplayCall[]) {
   const avgSec = total ? Math.round(calls.reduce((s, c) => s + c.durationSec, 0) / total) : 0;
   const avgDuration = `${Math.floor(avgSec / 60)}:${String(avgSec % 60).padStart(2, "0")}`;
   return { total, completed, completionRate, avgSec, avgDuration };
+}
+
+// ===== Twilio Usage Records (aggregated billing) =====
+// Hits /2010-04-01/Accounts/{SubSid}/Usage/Records.json. Returns what
+// Twilio actually charged this subaccount per category for the chosen
+// window. We use it to surface the master cost in the admin Billing tab
+// alongside our flat Rs.3/min invoice so the operator can see margin.
+
+export type UsageCategory = {
+  category: string; // e.g. "calls-inbound-local", "phonenumbers", "totalprice"
+  description: string;
+  count: number;       // number of items (calls / numbers / etc.)
+  countUnit: string;   // "calls", "numbers", ""
+  usage: number;       // quantity used (minutes, etc.)
+  usageUnit: string;   // "minutes", "numbers", "usd"
+  priceUsd: number;    // absolute USD charge for this category
+  startDate: string;   // YYYY-MM-DD
+  endDate: string;     // YYYY-MM-DD
+};
+
+export type UsageRecordsResult = {
+  configured: boolean;
+  error?: string | null;
+  subaccount?: string;
+  startDate: string | null;
+  endDate: string | null;
+  totalUsd: number;
+  categories: UsageCategory[];
+};
+
+type TwilioUsageRow = {
+  category: string;
+  description?: string;
+  count?: string | null;
+  count_unit?: string | null;
+  usage?: string | null;
+  usage_unit?: string | null;
+  price?: string | null;
+  price_unit?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+};
+
+export async function getUsageRecordsForSubaccount(
+  sub: string,
+  opts: { startDate?: string; endDate?: string; category?: string } = {},
+): Promise<UsageRecordsResult> {
+  if (!isTwilioAuthConfigured() || !sub) {
+    return { configured: false, startDate: null, endDate: null, totalUsd: 0, categories: [] };
+  }
+  const params = new URLSearchParams({ PageSize: "100" });
+  if (opts.startDate) params.set("StartDate", opts.startDate);
+  if (opts.endDate) params.set("EndDate", opts.endDate);
+  if (opts.category) params.set("Category", opts.category);
+  try {
+    const all: TwilioUsageRow[] = [];
+    let url = `${TWILIO_BASE}/Accounts/${sub}/Usage/Records.json?${params.toString()}`;
+    // Cursor-paginate via next_page_uri so we don't miss rows when an
+    // agent has many active categories.
+    for (let i = 0; i < 10; i++) { // safety cap
+      const data = await twilioGetUrl(url) as { usage_records?: TwilioUsageRow[]; next_page_uri?: string | null };
+      if (data && Array.isArray(data.usage_records)) all.push(...data.usage_records);
+      const next = data?.next_page_uri;
+      if (!next) break;
+      url = TWILIO_HOST + next;
+    }
+    const categories: UsageCategory[] = all.map((r) => ({
+      category: r.category,
+      description: r.description || r.category,
+      count: Number.parseFloat(r.count || "0") || 0,
+      countUnit: r.count_unit || "",
+      usage: Number.parseFloat(r.usage || "0") || 0,
+      usageUnit: r.usage_unit || "",
+      priceUsd: Math.abs(Number.parseFloat(r.price || "0") || 0),
+      startDate: r.start_date || "",
+      endDate: r.end_date || "",
+    }));
+    const totalRow = categories.find((c) => c.category === "totalprice");
+    const totalUsd = totalRow
+      ? totalRow.priceUsd
+      // Fallback when the master account hasn't aggregated totalprice yet —
+      // sum non-aggregate-ish rows. Excludes totalprice itself if present.
+      : categories.filter((c) => c.category !== "totalprice").reduce((s, c) => s + c.priceUsd, 0);
+    return {
+      configured: true,
+      subaccount: sub,
+      startDate: opts.startDate || null,
+      endDate: opts.endDate || null,
+      totalUsd,
+      categories,
+    };
+  } catch (e) {
+    return {
+      configured: true,
+      error: e instanceof Error ? e.message : "Twilio usage fetch failed",
+      startDate: opts.startDate || null,
+      endDate: opts.endDate || null,
+      totalUsd: 0,
+      categories: [],
+    };
+  }
 }

@@ -1,5 +1,25 @@
-import { DbAgent, getSql } from "./adminDb";
-import { getAllCallsForSubaccount, isTwilioAuthConfigured } from "./twilio";
+import { DbAgent, getSetting, getSql } from "./adminDb";
+import { getAllCallsForSubaccount, getUsageRecordsForSubaccount, isTwilioAuthConfigured, type UsageCategory } from "./twilio";
+
+// Single source of truth for the USD → LKR conversion used everywhere
+// Twilio cost is displayed. Stored in sentinel_setting so the admin can
+// update it from the UI without a redeploy. Env var USD_TO_LKR provides
+// a build-time fallback (handy for local dev).
+export const FX_SETTING_KEY = "usd_to_lkr";
+export const FX_DEFAULT = Number(process.env.USD_TO_LKR) > 0
+  ? Number(process.env.USD_TO_LKR)
+  : 320;
+
+export async function getUsdToLkr(): Promise<number> {
+  try {
+    const raw = await getSetting(FX_SETTING_KEY);
+    if (!raw) return FX_DEFAULT;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : FX_DEFAULT;
+  } catch {
+    return FX_DEFAULT;
+  }
+}
 
 // Rate: Rs. 3 per billable minute. Each call is rounded up to the next whole
 // minute. Change once and both admin + client portal pick it up.
@@ -427,4 +447,72 @@ export function fmtDurSec(sec: number) {
   if (h) return `${h}h ${m}m ${r}s`;
   if (m) return `${m}m ${r}s`;
   return `${r}s`;
+}
+
+export type TwilioCostSnapshot = {
+  configured: boolean;
+  error?: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  fxRate: number;
+  twilio: { totalUsd: number; totalLkr: number; categories: UsageCategory[] };
+  invoiced: { billableMinutes: number; ratePerMinute: number; totalLkr: number };
+  marginLkr: number;
+  marginPct: number;
+};
+
+// Pulls Twilio's actual aggregate cost for a subaccount in a given window
+// and pairs it with our flat-rate invoice (Rs.3/min × billable minutes
+// summed via per-call ceiling). Used by the admin Billing tab "Twilio
+// cost vs. invoiced" panel.
+export async function getTwilioCostForAgent(
+  agent: DbAgent,
+  opts: { startDate?: string; endDate?: string } = {},
+): Promise<TwilioCostSnapshot> {
+  const sub = agent.twilio_subaccount_sid || "";
+  const fx = await getUsdToLkr();
+  const empty: TwilioCostSnapshot = {
+    configured: false,
+    startDate: opts.startDate || null,
+    endDate: opts.endDate || null,
+    fxRate: fx,
+    twilio: { totalUsd: 0, totalLkr: 0, categories: [] },
+    invoiced: { billableMinutes: 0, ratePerMinute: RATE_PER_MINUTE, totalLkr: 0 },
+    marginLkr: 0,
+    marginPct: 0,
+  };
+  if (!isTwilioAuthConfigured() || !sub) return empty;
+
+  const [usage, callsRes] = await Promise.all([
+    getUsageRecordsForSubaccount(sub, opts),
+    getAllCallsForSubaccount(sub, {
+      max: 1000,
+      ...(opts.startDate ? { startDate: opts.startDate } : {}),
+      ...(opts.endDate ? { endDate: opts.endDate } : {}),
+    }),
+  ]);
+  if (usage.error) {
+    return { ...empty, configured: true, error: usage.error };
+  }
+  const billableMinutes = callsRes.calls.reduce(
+    (s, c) => s + (c.durationSec > 0 ? Math.ceil(c.durationSec / 60) : 0),
+    0,
+  );
+  const invoicedLkr = billableMinutes * RATE_PER_MINUTE;
+  const twilioLkr = Math.round(usage.totalUsd * fx * 100) / 100;
+  const marginLkr = Math.round((invoicedLkr - twilioLkr) * 100) / 100;
+  const marginPct = invoicedLkr > 0
+    ? Math.round((marginLkr / invoicedLkr) * 1000) / 10
+    : 0;
+  return {
+    configured: true,
+    error: null,
+    startDate: opts.startDate || null,
+    endDate: opts.endDate || null,
+    fxRate: fx,
+    twilio: { totalUsd: usage.totalUsd, totalLkr: twilioLkr, categories: usage.categories },
+    invoiced: { billableMinutes, ratePerMinute: RATE_PER_MINUTE, totalLkr: invoicedLkr },
+    marginLkr,
+    marginPct,
+  };
 }

@@ -128,6 +128,26 @@ export async function ensureSchema(sql: Sql) {
     occurred_at timestamptz NOT NULL DEFAULT now())`;
   await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS transcript text`;
   await sql`CREATE INDEX IF NOT EXISTS sentinel_call_summary_agent_at_idx ON sentinel_call_summary (agent_id, occurred_at DESC)`;
+  // System-wide key/value settings (FX rate, future feature flags, etc.).
+  await sql`CREATE TABLE IF NOT EXISTS sentinel_setting (
+    key text PRIMARY KEY,
+    value text NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now())`;
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const sql = getSql();
+  if (!sql) return null;
+  const rows = (await sql`SELECT value FROM sentinel_setting WHERE key = ${key} LIMIT 1`) as { value: string }[];
+  return rows[0]?.value ?? null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const sql = getSql();
+  if (!sql) return;
+  await sql`INSERT INTO sentinel_setting (key, value)
+            VALUES (${key}, ${value})
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
 }
 
 // Migrate any legacy plaintext passwords into the encrypted column, then blank
