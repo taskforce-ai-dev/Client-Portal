@@ -395,29 +395,41 @@ type TwilioUsageRow = {
   end_date?: string | null;
 };
 
-// Known rollup categories from Twilio Usage Records. These are aggregates
-// that already include their children, so showing them alongside the
-// leaves causes visual double-counting (e.g. "Voice Minutes" + "Inbound
-// Voice Minutes" + "Inbound Calls - Local" are three rows for the same
-// money). We strip them from the breakdown sent to the UI; the official
-// roll-up total still comes from the "totalprice" row, which is kept
-// separately and not double-counted by definition.
-const TWILIO_ROLLUP_CATEGORIES = new Set([
+// Top-level Twilio rollups that aggregate across everything. We always
+// strip these from the response (they'd cause visual double-count next
+// to the leaves and they include non-call charges anyway). NOT included:
+// "calls-inbound" / "calls-outbound" / "calls-client" — those are
+// call-direction rollups that the consumer keeps so it can decide
+// whether to show them when no leaf children are present.
+const TWILIO_GLOBAL_ROLLUPS = new Set([
   "totalprice",
   "calls",
   "voice",
-  "calls-inbound",
-  "calls-outbound",
-  "calls-client",
-  "phonenumbers",
-  "voice-insights",
-  "recordings",
-  "transcriptions",
-  // Add more as discovered — safe to extend; uncovered children will
-  // continue to show in the breakdown like before.
 ]);
-function isTwilioRollup(cat: string): boolean {
-  return TWILIO_ROLLUP_CATEGORIES.has(cat);
+function isTwilioGlobalRollup(cat: string): boolean {
+  return TWILIO_GLOBAL_ROLLUPS.has(cat);
+}
+
+// Categories that map 1:1 to the per-minute call traffic our invoice
+// charges for. Anything else (Conversation Relay, Voice Insights, phone
+// number rentals, recordings, transcriptions, TTS, Media Streams) is a
+// Twilio add-on cost that's not invoiced and should be excluded from the
+// margin comparison.
+export function isCallBillingCategory(cat: string): boolean {
+  return (
+    cat === "calls-inbound" ||
+    cat === "calls-outbound" ||
+    cat === "calls-client" ||
+    cat.startsWith("calls-inbound-") ||
+    cat.startsWith("calls-outbound-") ||
+    cat.startsWith("calls-client-")
+  );
+}
+
+// True when this row is a direction-rollup (calls-inbound, calls-outbound,
+// calls-client) that already sums its own children.
+export function isCallDirectionRollup(cat: string): boolean {
+  return cat === "calls-inbound" || cat === "calls-outbound" || cat === "calls-client";
 }
 
 export async function getUsageRecordsForSubaccount(
@@ -488,24 +500,24 @@ export async function getUsageRecordsForSubaccount(
     }
     const allCategories = Array.from(aggregated.values());
     const totalRow = allCategories.find((c) => c.category === "totalprice");
-    // Leaf categories only — Twilio's rollups (Voice Minutes, Inbound Voice
-    // Minutes, Phone Numbers, etc.) sum their children and would double-
-    // count visually if shown next to them. Sorting by USD desc so the
-    // big-ticket leaves bubble to the top of the breakdown.
-    const leafCategories = allCategories
-      .filter((c) => !isTwilioRollup(c.category))
+    // Strip the global "everything" rollups (totalprice / voice / calls).
+    // The consumer (getTwilioCostForAgent) handles call-specific filtering
+    // and parent-child de-duplication.
+    const usableCategories = allCategories
+      .filter((c) => !isTwilioGlobalRollup(c.category))
       .sort((a, b) => b.priceUsd - a.priceUsd);
     const totalUsd = totalRow
       ? totalRow.priceUsd
-      // No totalprice row (rare with Daily granularity) — sum the leaves.
-      : leafCategories.reduce((s, c) => s + c.priceUsd, 0);
+      // No totalprice row — sum non-rollup-able rows. (Direction rollups
+      // are kept above; we exclude them here to avoid double-count.)
+      : usableCategories.filter((c) => !isCallDirectionRollup(c.category)).reduce((s, c) => s + c.priceUsd, 0);
     return {
       configured: true,
       subaccount: sub,
       startDate: opts.startDate || null,
       endDate: opts.endDate || null,
       totalUsd,
-      categories: leafCategories,
+      categories: usableCategories,
     };
   } catch (e) {
     return {

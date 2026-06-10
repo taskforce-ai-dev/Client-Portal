@@ -2273,11 +2273,11 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   <>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                       <MiniStat
-                        label="Twilio cost (USD)"
+                        label="Twilio call cost (USD)"
                         value={"$ " + (twilioCost.twilio.totalUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
                       />
                       <MiniStat
-                        label="Twilio cost (LKR)"
+                        label="Twilio call cost (LKR)"
                         value={"Rs. " + (twilioCost.twilio.totalLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       />
                       <MiniStat
@@ -2290,9 +2290,17 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                         tone={(twilioCost.marginLkr || 0) >= 0 ? "emerald" : "rose"}
                       />
                     </div>
+                    {(twilioCost.twilio.nonCallUsd || 0) > 0 && (
+                      <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 6, background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.18)", fontSize: 11.5, color: "var(--text-2)" }}>
+                        <span style={{ color: "#fcd34d", fontWeight: 600 }}>Heads-up:</span>{" "}
+                        Twilio also billed <span className="mono">$ {twilioCost.twilio.nonCallUsd.toFixed(4)}</span>{" "}
+                        (<span className="mono">Rs. {(twilioCost.twilio.nonCallLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>){" "}
+                        for non-call services (Conversation Relay, Voice Insights, phone number rentals, recordings, TTS, etc.). Those are excluded from the margin above because the current flat Rs. 3/min invoice doesn&apos;t cover them. Twilio Console total: <span className="mono">$ {(twilioCost.twilio.allInUsd || 0).toFixed(4)}</span>.
+                      </div>
+                    )}
                     {Array.isArray(twilioCost.twilio.categories) && twilioCost.twilio.categories.length > 0 && (
                       <div style={{ marginTop: 12 }}>
-                        <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Twilio category breakdown</div>
+                        <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Call cost breakdown · invoiced categories only</div>
                         <table className="data-table">
                           <thead><tr><th>Category</th><th style={{ textAlign: "right" }}>Count</th><th style={{ textAlign: "right" }}>Usage</th><th style={{ textAlign: "right" }}>USD</th><th style={{ textAlign: "right" }}>LKR</th></tr></thead>
                           <tbody>
@@ -2313,7 +2321,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                       </div>
                     )}
                     <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
-                      Twilio Usage Records can lag actual calls by 1–2 hours. The breakdown shows only leaf categories (Twilio also returns parent rollups like "Voice Minutes" that already sum their children — those are filtered server-side to avoid double-counting). The headline "Twilio cost" uses Twilio&apos;s own "Total Price" line — that&apos;s the number that matches the Twilio Console.
+                      Showing call-only Twilio cost — inbound, outbound, and SIP/client voice categories that map to the per-minute invoice. Non-call Twilio charges (Conversation Relay, Voice Insights, phone number rentals, recordings, TTS, Media Streams) are surfaced separately in the heads-up note above so the all-in Twilio Console total is still visible. Twilio Usage Records can lag actual calls by 1–2 hours.
                     </div>
                   </>
                 )}

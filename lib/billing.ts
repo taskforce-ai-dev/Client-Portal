@@ -1,5 +1,12 @@
 import { DbAgent, getSetting, getSql, setSetting } from "./adminDb";
-import { getAllCallsForSubaccount, getUsageRecordsForSubaccount, isTwilioAuthConfigured, type UsageCategory } from "./twilio";
+import {
+  getAllCallsForSubaccount,
+  getUsageRecordsForSubaccount,
+  isCallBillingCategory,
+  isCallDirectionRollup,
+  isTwilioAuthConfigured,
+  type UsageCategory,
+} from "./twilio";
 
 // Single source of truth for the USD → LKR conversion used everywhere
 // Twilio cost is displayed. Auto-refreshes daily from a free public feed
@@ -529,7 +536,19 @@ export type TwilioCostSnapshot = {
   fxRate: number;
   fxSource: "auto" | "manual" | "fallback";
   fxUpdatedAt: string | null;
-  twilio: { totalUsd: number; totalLkr: number; categories: UsageCategory[] };
+  twilio: {
+    // Call-only totals — what's actually comparable to our per-minute invoice.
+    totalUsd: number;
+    totalLkr: number;
+    categories: UsageCategory[];
+    // Twilio cost we're NOT invoicing for (Conversation Relay, Voice Insights,
+    // Phone Numbers, recordings, TTS, etc.). Surfaced as context so the admin
+    // knows the all-in Twilio bill is bigger than the call-only number.
+    nonCallUsd: number;
+    nonCallLkr: number;
+    nonCallCategories: UsageCategory[];
+    allInUsd: number; // call + non-call (matches Twilio Console "Total Price")
+  };
   invoiced: { billableMinutes: number; ratePerMinute: number; totalLkr: number };
   marginLkr: number;
   marginPct: number;
@@ -553,7 +572,7 @@ export async function getTwilioCostForAgent(
     fxRate: fx,
     fxSource: fxSnap.source,
     fxUpdatedAt: fxSnap.updatedAt,
-    twilio: { totalUsd: 0, totalLkr: 0, categories: [] },
+    twilio: { totalUsd: 0, totalLkr: 0, categories: [], nonCallUsd: 0, nonCallLkr: 0, nonCallCategories: [], allInUsd: 0 },
     invoiced: { billableMinutes: 0, ratePerMinute: RATE_PER_MINUTE, totalLkr: 0 },
     marginLkr: 0,
     marginPct: 0,
@@ -576,7 +595,36 @@ export async function getTwilioCostForAgent(
     0,
   );
   const invoicedLkr = billableMinutes * RATE_PER_MINUTE;
-  const twilioLkr = Math.round(usage.totalUsd * fx * 100) / 100;
+
+  // Split Twilio's categories into:
+  //   • CALL categories (calls-inbound*, calls-outbound*, calls-client*) —
+  //     these map to the per-minute traffic we invoice for
+  //   • NON-CALL categories (Conversation Relay, Voice Insights, Phone
+  //     Number rentals, recordings, TTS, etc.) — Twilio add-ons NOT
+  //     invoiced under the flat Rs.3/min rate
+  // Dedup parent + child within the call set: when a direction rollup
+  // (calls-inbound / calls-outbound) is present alongside any of its
+  // leaf children, drop the rollup so we don't double-count.
+  const callRaw = usage.categories.filter((c) => isCallBillingCategory(c.category));
+  const nonCallCategories = usage.categories.filter((c) => !isCallBillingCategory(c.category));
+  const hasInboundLeaf = callRaw.some((c) => c.category.startsWith("calls-inbound-"));
+  const hasOutboundLeaf = callRaw.some((c) => c.category.startsWith("calls-outbound-"));
+  const hasClientLeaf = callRaw.some((c) => c.category.startsWith("calls-client-"));
+  const callCategories = callRaw.filter((c) => {
+    if (c.category === "calls-inbound" && hasInboundLeaf) return false;
+    if (c.category === "calls-outbound" && hasOutboundLeaf) return false;
+    if (c.category === "calls-client" && hasClientLeaf) return false;
+    return true;
+  }).sort((a, b) => b.priceUsd - a.priceUsd);
+
+  const callTotalUsd = callCategories.reduce((s, c) => s + c.priceUsd, 0);
+  const nonCallUsd = nonCallCategories
+    .filter((c) => !isCallDirectionRollup(c.category)) // safety; non-call set already excludes calls-* but keep defensive
+    .reduce((s, c) => s + c.priceUsd, 0);
+  const allInUsd = callTotalUsd + nonCallUsd;
+
+  const twilioLkr = Math.round(callTotalUsd * fx * 100) / 100;
+  const nonCallLkr = Math.round(nonCallUsd * fx * 100) / 100;
   const marginLkr = Math.round((invoicedLkr - twilioLkr) * 100) / 100;
   const marginPct = invoicedLkr > 0
     ? Math.round((marginLkr / invoicedLkr) * 1000) / 10
@@ -589,7 +637,15 @@ export async function getTwilioCostForAgent(
     fxRate: fx,
     fxSource: fxSnap.source,
     fxUpdatedAt: fxSnap.updatedAt,
-    twilio: { totalUsd: usage.totalUsd, totalLkr: twilioLkr, categories: usage.categories },
+    twilio: {
+      totalUsd: callTotalUsd,
+      totalLkr: twilioLkr,
+      categories: callCategories,
+      nonCallUsd,
+      nonCallLkr,
+      nonCallCategories,
+      allInUsd,
+    },
     invoiced: { billableMinutes, ratePerMinute: RATE_PER_MINUTE, totalLkr: invoicedLkr },
     marginLkr,
     marginPct,
