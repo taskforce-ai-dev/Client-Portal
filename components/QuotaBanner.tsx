@@ -12,10 +12,10 @@ function fmtHm(minutes: number) {
 }
 
 // Renders only when the quota is over a threshold. The close (X) button
-// hides the banner for the remainder of the browser session AND scoped
-// to the current (period, status) — a new month or a status flip from
-// warn → exceeded brings it back automatically, even if the client
-// dismissed an earlier instance.
+// hides the banner persistently for this exact (period, status) by writing
+// to localStorage — once the client closes it, it stays closed across new
+// tabs and browser restarts. A new billing period (different periodYm) or
+// a status flip (warn → exceeded) brings it back automatically.
 export default function QuotaBanner({ quota, agentId }: { quota: AgentQuotaSnapshot; agentId?: string }) {
   const [mounted, setMounted] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -29,7 +29,7 @@ export default function QuotaBanner({ quota, agentId }: { quota: AgentQuotaSnaps
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
     if (!dismissKey) { setDismissed(false); return; }
-    try { setDismissed(sessionStorage.getItem(dismissKey) === "1"); } catch { setDismissed(false); }
+    try { setDismissed(localStorage.getItem(dismissKey) === "1"); } catch { setDismissed(false); }
   }, [dismissKey]);
 
   if (!quota.configured || quota.status === "ok") return null;
@@ -37,7 +37,7 @@ export default function QuotaBanner({ quota, agentId }: { quota: AgentQuotaSnaps
 
   const close = () => {
     if (dismissKey) {
-      try { sessionStorage.setItem(dismissKey, "1"); } catch {}
+      try { localStorage.setItem(dismissKey, "1"); } catch {}
     }
     setDismissed(true);
   };
