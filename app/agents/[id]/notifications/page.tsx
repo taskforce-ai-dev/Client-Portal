@@ -6,6 +6,7 @@ import { findAgentForClient } from "@/lib/adminDb";
 import { formatTs } from "@/lib/twilio";
 import { getAgentMonthlyQuota } from "@/lib/billing";
 import MarkNotificationsRead from "@/components/MarkNotificationsRead";
+import DeleteNotificationButton from "@/components/DeleteNotificationButton";
 import {
   listAgentNotifications,
   type NotificationsRange,
@@ -185,7 +186,7 @@ export default async function NotificationsPage({
       ) : (
         <ul className="space-y-3">
           {items.map((n) => (
-            <NotificationCard key={n.id} n={n} />
+            <NotificationCard key={n.id} n={n} agentId={agent.id} agentName={agent.name} />
           ))}
         </ul>
       )}
@@ -193,7 +194,7 @@ export default async function NotificationsPage({
   );
 }
 
-function NotificationCard({ n }: { n: QuotaNotification }) {
+function NotificationCard({ n, agentId, agentName }: { n: QuotaNotification; agentId: string; agentName: string }) {
   const isExceeded = n.kind === "exceeded";
   const Icon = isExceeded ? TriangleAlert : Gauge;
   const box = isExceeded
@@ -203,7 +204,7 @@ function NotificationCard({ n }: { n: QuotaNotification }) {
     ? "bg-rose-500/15 text-rose-300"
     : "bg-amber-500/15 text-amber-300";
   const titleClr = isExceeded ? "text-rose-200" : "text-amber-200";
-  const title = isExceeded ? "Monthly 40h quota reached" : "80% of monthly quota used";
+  const title = isExceeded ? "Quota reached" : "80% of quota used";
   return (
     <li className={`card p-4 border ${box} flex items-start gap-3`}>
       <div className={`w-9 h-9 rounded-xl ${iconWrap} grid place-items-center shrink-0`}>
@@ -211,8 +212,14 @@ function NotificationCard({ n }: { n: QuotaNotification }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2 flex-wrap">
-          <div className={`font-medium text-sm ${titleClr}`}>{title}</div>
-          <div className="text-[11px] text-slate-500 font-mono">{formatTs(n.occurredAt)}</div>
+          <div className="min-w-0">
+            <div className={`font-medium text-sm ${titleClr}`}>{title}</div>
+            <div className="text-[10px] uppercase tracking-[0.08em] text-slate-500 mt-0.5">{agentName}</div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="text-[11px] text-slate-500 font-mono">{formatTs(n.occurredAt)}</div>
+            <DeleteNotificationButton agentId={agentId} notifId={n.id} />
+          </div>
         </div>
         <div className="text-sm text-slate-200/90 mt-1">{n.summary}</div>
       </div>

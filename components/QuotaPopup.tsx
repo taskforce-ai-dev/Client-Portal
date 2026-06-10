@@ -13,10 +13,12 @@ function fmtHm(minutes: number) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-// Shows once per (agent, period, status). Dismissed state lives in
-// sessionStorage so refreshes don't keep popping it back, but it returns
-// fresh on a new login.
-export default function QuotaPopup({ agentId, quota }: { agentId: string; quota: AgentQuotaSnapshot }) {
+// Shows once per (agent, period, status). "Got it" writes a localStorage
+// key so the popup stays dismissed even after closing the tab / browser —
+// it only returns when the billing period rolls over or the status flips
+// (e.g. warn → exceeded). Brand-new month → new periodYm → new key → it
+// pops again automatically.
+export default function QuotaPopup({ agentId, agentName, quota }: { agentId: string; agentName?: string; quota: AgentQuotaSnapshot }) {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -26,8 +28,8 @@ export default function QuotaPopup({ agentId, quota }: { agentId: string; quota:
     if (!quota.configured || quota.status === "ok") return;
     const key = `quota_popup_${agentId}_${quota.periodYm}_${quota.status}`;
     try {
-      if (sessionStorage.getItem(key) === "1") return;
-    } catch { /* sessionStorage may be unavailable in private mode */ }
+      if (localStorage.getItem(key) === "1") return;
+    } catch { /* private mode — fall through and pop the modal */ }
     setOpen(true);
   }, [agentId, quota.configured, quota.status, quota.periodYm]);
 
@@ -42,7 +44,7 @@ export default function QuotaPopup({ agentId, quota }: { agentId: string; quota:
   }, [open]);
 
   const close = () => {
-    try { sessionStorage.setItem(`quota_popup_${agentId}_${quota.periodYm}_${quota.status}`, "1"); } catch {}
+    try { localStorage.setItem(`quota_popup_${agentId}_${quota.periodYm}_${quota.status}`, "1"); } catch {}
     setOpen(false);
   };
 
@@ -75,6 +77,9 @@ export default function QuotaPopup({ agentId, quota }: { agentId: string; quota:
             <Icon className="w-5 h-5" />
           </div>
           <div className="min-w-0 flex-1">
+            {agentName && (
+              <div className="text-[10px] uppercase tracking-[0.08em] text-slate-400 mb-1">{agentName}</div>
+            )}
             <div className={`text-sm font-semibold ${titleClr}`}>{title}</div>
             <p className="text-xs text-slate-300/90 mt-1.5 leading-relaxed">{detail}</p>
           </div>

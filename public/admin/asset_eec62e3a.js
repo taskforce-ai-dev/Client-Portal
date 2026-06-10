@@ -1072,11 +1072,16 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       const d = await r.json();
       if (!r.ok) throw new Error(d.message || "Failed");
       if (d.quota) setAgentQuota(d.quota);
-      // Wipe sessionStorage dismissals so the new threshold can re-pop.
+      // Wipe popup dismissals (both storages — popups now live in
+      // localStorage for persistence) so the new threshold can re-pop.
       try {
         for (let i = sessionStorage.length - 1; i >= 0; i--) {
           const k = sessionStorage.key(i);
           if (k && k.indexOf("quota_popup_") === 0 && k.indexOf(agentId) !== -1) sessionStorage.removeItem(k);
+        }
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k.indexOf("quota_popup_") === 0 && k.indexOf(agentId) !== -1) localStorage.removeItem(k);
         }
       } catch (e) {}
       toast("Quota saved", "success");
@@ -1085,14 +1090,15 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   };
 
   // Pop the modal whenever the latest known quota crosses a threshold,
-  // gated by sessionStorage so a dismiss doesn't re-pop on every refresh.
+  // gated by localStorage so a "Got it" stays dismissed across new tabs
+  // and browser restarts — only a new periodYm or status flip re-pops.
   // This fires for both the initial mount fetch above AND for any refetch
   // (e.g. after clearing notifications) — single source of truth.
   useEffect(() => {
     const q = agentQuota || (notif && notif.quota);
     if (!q || !q.configured || q.status === "ok") return;
     const key = "quota_popup_admin_" + agentId + "_" + q.periodYm + "_" + q.status;
-    try { if (sessionStorage.getItem(key) === "1") return; } catch (e) {}
+    try { if (localStorage.getItem(key) === "1") return; } catch (e) {}
     setQuotaPopup(q);
   }, [agentQuota, notif, agentId]);
 
@@ -1107,7 +1113,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const closeQuotaPopup = () => {
     if (!quotaPopup) return;
     try {
-      sessionStorage.setItem(
+      localStorage.setItem(
         "quota_popup_admin_" + agentId + "_" + quotaPopup.periodYm + "_" + quotaPopup.status,
         "1",
       );
@@ -1833,12 +1839,17 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               }}>{quotaPopup.status === "exceeded" ? "⚠" : "⏱"}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{
+                  fontSize: 10.5, color: "var(--text-3)",
+                  textTransform: "uppercase", letterSpacing: "0.08em",
+                  marginBottom: 4,
+                }}>{(agent && agent.name) || "Agent"}</div>
+                <div style={{
                   fontSize: 14, fontWeight: 600,
                   color: quotaPopup.status === "exceeded" ? "#fee2e2" : "#fef3c7",
                 }}>
                   {quotaPopup.status === "exceeded"
-                    ? "Agent reached " + Math.floor(quotaPopup.includedMinutes / 60) + "h monthly quota"
-                    : "Agent at " + quotaPopup.percent + "% of monthly quota"}
+                    ? "Reached " + Math.floor(quotaPopup.includedMinutes / 60) + "h " + (quotaPopup.cadence === "weekly" ? "weekly" : quotaPopup.cadence === "none" ? "lifetime" : "monthly") + " quota"
+                    : "At " + quotaPopup.percent + "% of " + (quotaPopup.cadence === "weekly" ? "weekly" : quotaPopup.cadence === "none" ? "lifetime" : "monthly") + " quota"}
                 </div>
                 <p style={{ fontSize: 12.5, color: "var(--text-1)", marginTop: 8, lineHeight: 1.55 }}>
                   {quotaPopup.status === "exceeded"
@@ -2299,12 +2310,16 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   const r = await fetch(`/api/admin/agents/${agentId}/notifications`, { method: "DELETE", credentials: "include" });
                   const d = await r.json();
                   if (!r.ok) throw new Error(d.message || "Failed");
-                  // Also clear any sessionStorage popup-dismissal keys so the
+                  // Also clear popup-dismissal keys (both storages) so the
                   // modal re-pops next time the threshold is crossed.
                   try {
                     for (let i = sessionStorage.length - 1; i >= 0; i--) {
                       const k = sessionStorage.key(i);
                       if (k && k.indexOf("quota_popup_") === 0 && k.indexOf(agentId) !== -1) sessionStorage.removeItem(k);
+                    }
+                    for (let i = localStorage.length - 1; i >= 0; i--) {
+                      const k = localStorage.key(i);
+                      if (k && k.indexOf("quota_popup_") === 0 && k.indexOf(agentId) !== -1) localStorage.removeItem(k);
                     }
                   } catch (e) {}
                   toast("Cleared " + (d.deleted || 0) + " notification" + ((d.deleted === 1) ? "" : "s"), "success");
@@ -2322,7 +2337,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   if (rr && rr.quota) setAgentQuota(rr.quota);
                 } catch (e) { toast(e.message, "error"); }
               }}
-            >Clear notifications</button>
+            >Clear all</button>
             {notifRange === "custom" && (
               <>
                 <input type="date" className="input" style={{ width: 150 }} value={notifCStart} onChange={(e) => setNotifCStart(e.target.value)} />
@@ -2373,15 +2388,48 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 const accent = isExceeded ? "rgba(239,68,68,0.45)" : "rgba(245,158,11,0.45)";
                 const bg = isExceeded ? "rgba(239,68,68,0.06)" : "rgba(245,158,11,0.05)";
                 const dot = isExceeded ? "#ef4444" : "#f59e0b";
-                const title = isExceeded ? "Monthly 40h quota reached" : "80% of monthly quota used";
+                const title = isExceeded ? "Quota reached" : "80% of quota used";
+                const onDelete = async () => {
+                  if (!window.confirm("Delete this notification?")) return;
+                  try {
+                    const r = await fetch(`/api/admin/agents/${agentId}/notifications?id=${encodeURIComponent(n.id)}`, {
+                      method: "DELETE", credentials: "include",
+                    });
+                    const d = await r.json();
+                    if (!r.ok) throw new Error(d.message || "Failed");
+                    toast("Notification deleted", "success");
+                    setNotifLoading(true);
+                    const qs = notifRange === "custom" ? `range=custom&start=${notifCStart}&end=${notifCEnd}` : `range=${notifRange}`;
+                    const rr = await fetch(`/api/admin/agents/${agentId}/notifications?${qs}`, { credentials: "include" }).then((r) => r.json());
+                    setNotif(rr); setNotifLoading(false);
+                  } catch (e) { toast(e.message, "error"); }
+                };
                 return (
-                  <div key={n.id} className="panel" style={{ padding: 12, borderLeft: `3px solid ${accent}`, background: bg }}>
+                  <div key={n.id} className="panel" style={{ padding: 12, borderLeft: `3px solid ${accent}`, background: bg, position: "relative" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, boxShadow: `0 0 8px ${dot}` }} />
                         <div style={{ fontSize: 12.5, fontWeight: 600, color: isExceeded ? "#fecaca" : "#fde68a" }}>{title}</div>
                       </div>
-                      <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{n.occurredAt ? n.occurredAt.replace("T", " ").slice(0, 19) : ""}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{n.occurredAt ? n.occurredAt.replace("T", " ").slice(0, 19) : ""}</div>
+                        <button
+                          type="button"
+                          onClick={onDelete}
+                          title="Delete this notification"
+                          aria-label="Delete"
+                          style={{
+                            background: "transparent",
+                            border: 0,
+                            color: "var(--text-3)",
+                            cursor: "pointer",
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            fontSize: 14,
+                            lineHeight: 1,
+                          }}
+                        >✕</button>
+                      </div>
                     </div>
                     <div style={{ fontSize: 12.5, color: "var(--text-1)", marginTop: 6 }}>{n.summary}</div>
                   </div>
