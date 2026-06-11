@@ -67,23 +67,85 @@ export function classifyConversion(s: Pick<DbCallSummary, "transcript" | "summar
   return "none";
 }
 
+// Match a single token (or short phrase) against the 3-bucket vocabulary.
+// Cancelled / declined intentionally maps to "no_booking" since the UI
+// only surfaces Confirmed / Inquiry / Dropped (per spec — cancellations
+// are functionally non-conversions, no separate bucket).
+function tokenToStatus(tok: string): BookingStatus | null {
+  const t = tok.toLowerCase().trim();
+  if (!t) return null;
+  // Confirmed
+  if (/\b(?:booking\s+confirmed|confirmed\s+booking|booking\s+complete|booking\s+secured|reservation\s+confirmed|booking\s+done|booked|completed|won|conversion|converted)\b/.test(t)) return "confirmed";
+  // Dropped / cancelled / not-interested — all roll into "dropped" bucket
+  if (/\b(?:dropped|hung\s+up|disconnect(?:ed)?|abandoned|not\s+interested|wrong\s+number|spam|no[\s-]*booking|lost|cancel(?:led|ation)?|declined|rejected)\b/.test(t)) return "no_booking";
+  // Inquiry / followup / lead / pending — and bare "info" / "availability"
+  if (/\b(?:booking\s+inquiry|booking\s+enquiry|inquiry|enquiry|information|availability|rate\s+inquiry|price\s+inquiry|general\s+inquiry|follow[\s-]*up|lead|pending|interested|info)\b/.test(t)) return "inquiry";
+  return null;
+}
+
 // Classify from the `topics` field. AI workflows commonly emit one of a
 // small vocabulary as a label here ("booking confirmed", "booking inquiry",
-// "dropped", "cancelled", "wrong number"). This signal is HIGHER priority
-// than free-text regex because it's the AI's own deliberate label.
+// "dropped"). This signal is HIGHER priority than free-text regex.
 export function classifyFromTopics(topics: string | null): BookingStatus | null {
   if (!topics) return null;
-  const tokens = topics.toLowerCase().split(/[,;|/\n]+/).map((s) => s.trim()).filter(Boolean);
+  const tokens = topics.split(/[,;|/\n]+/);
+  // Check confirmed first (a list of "booking inquiry, booking confirmed"
+  // should classify as confirmed — the actual outcome).
   for (const tok of tokens) {
-    // Confirmed
-    if (/\b(?:booking\s+confirmed|confirmed\s+booking|booking\s+complete|booking\s+secured|reservation\s+confirmed|booked|completed|won)\b/.test(tok)) return "confirmed";
-    // Cancelled (check before inquiry — "cancellation inquiry" should still count as cancellation intent)
-    if (/\b(?:cancel(?:led|ation)?|declined\s+booking|rejected)\b/.test(tok)) return "cancelled";
-    // Inquiry
-    if (/\b(?:booking\s+inquiry|booking\s+enquiry|inquiry|enquiry|information|availability|rate\s+inquiry|price\s+inquiry|general\s+inquiry|follow[\s-]*up|lead|pending)\b/.test(tok)) return "inquiry";
-    // Dropped / not interested / wrong number
-    if (/\b(?:dropped|hung\s+up|disconnect(?:ed)?|abandoned|not\s+interested|wrong\s+number|spam|no[\s-]*booking|lost)\b/.test(tok)) return "no_booking";
+    const s = tokenToStatus(tok);
+    if (s === "confirmed") return "confirmed";
   }
+  for (const tok of tokens) {
+    const s = tokenToStatus(tok);
+    if (s === "no_booking") return "no_booking";
+  }
+  for (const tok of tokens) {
+    const s = tokenToStatus(tok);
+    if (s === "inquiry") return "inquiry";
+  }
+  return null;
+}
+
+// Classify from the BOTTOM of the transcript. AI agents commonly append
+// the call's topic/tag as the last few lines of the transcript itself
+// (rather than in the separate `topics` column). We scan the final
+// portion of the text for explicit "Topic:" / "Tag:" / bracketed labels
+// and bare topic phrases that occupy their own line.
+export function classifyFromTranscriptBottom(transcript: string | null): BookingStatus | null {
+  if (!transcript) return null;
+  // Look at the LAST chunk of the transcript — that's where the AI's
+  // wrap-up tag typically sits. 2000 chars gives plenty of headroom for
+  // a structured summary block.
+  const bottom = transcript.length > 2000 ? transcript.slice(-2000) : transcript;
+
+  // 1) Explicit label: "Topic: booking confirmed" / "Tag = X" / "Category: X"
+  const labelRe = /(?:^|\n|\r|\s{2,}|\*|-|•)\s*\*{0,2}(?:topic|topics|category|categories|tag|tags|label|labels|classification|class|kind|type|outcome|result|booking[\s_-]*outcome|call[\s_-]*outcome)\*{0,2}\s*[:=]\s*([^\n\r]+)/i;
+  const labelM = bottom.match(labelRe);
+  if (labelM) {
+    const tokens = labelM[1].split(/[,;|/]+/);
+    // confirmed wins, then dropped, then inquiry
+    for (const t of tokens) { if (tokenToStatus(t) === "confirmed") return "confirmed"; }
+    for (const t of tokens) { if (tokenToStatus(t) === "no_booking") return "no_booking"; }
+    for (const t of tokens) { if (tokenToStatus(t) === "inquiry") return "inquiry"; }
+  }
+
+  // 2) Bracketed tag: [BOOKING CONFIRMED], [DROPPED], [INQUIRY]
+  const bracket = bottom.match(/\[\s*(booking[\s_-]*confirmed|confirmed[\s_-]*booking|confirmed|booking[\s_-]*inquiry|booking[\s_-]*enquiry|inquiry|enquiry|dropped|hung[\s_-]*up|wrong[\s_-]*number|not[\s_-]*interested|cancel(?:led|ation)?|abandoned)\s*\]/i);
+  if (bracket) {
+    const s = tokenToStatus(bracket[1]);
+    if (s) return s;
+  }
+
+  // 3) Bare topic phrase on its own line — typical AI footer pattern.
+  // Walk lines from the end backwards looking for one that matches.
+  const lines = bottom.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 8); i--) {
+    const line = lines[i];
+    if (line.length > 120) continue; // skip dialogue lines
+    const s = tokenToStatus(line);
+    if (s) return s;
+  }
+
   return null;
 }
 
@@ -331,6 +393,13 @@ const GUEST_PATTERNS: RegExp[] = [
 
 export function extractGuests(text: string | null): number | null {
   if (!text) return null;
+  // "X adults and Y children" → sum (check first — beats single-bucket match)
+  const split = text.match(/\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+adults?\s+(?:and|with|\+|plus)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:child(?:ren)?|kids?|infants?)\b/i);
+  if (split) {
+    const a = wordToNum(split[1]) || 0;
+    const c = wordToNum(split[2]) || 0;
+    if (a + c > 0 && a + c <= 50) return a + c;
+  }
   for (const re of GUEST_PATTERNS) {
     const m = text.match(re);
     if (m) {
@@ -338,13 +407,14 @@ export function extractGuests(text: string | null): number | null {
       if (n && n <= 50) return n;
     }
   }
-  // "X adults and Y children" → sum
-  const split = text.match(/\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+adults?\s+(?:and|with|\+)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+child(?:ren)?\b/i);
-  if (split) {
-    const a = wordToNum(split[1]) || 0;
-    const c = wordToNum(split[2]) || 0;
-    if (a + c > 0) return a + c;
+  // Standalone "we are X" / "there's X of us"
+  const standalone = text.match(/\b(?:we\s+(?:are|have|will\s+be)|there(?:'s|\s+are)|its)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:of\s+us)?\b/i);
+  if (standalone) {
+    const n = wordToNum(standalone[1]);
+    if (n && n >= 1 && n <= 20) return n;
   }
+  // "couple" = 2
+  if (/\b(?:my\s+wife\s+and\s+I|just\s+(?:the\s+)?two\s+of\s+us|a\s+couple|me\s+and\s+(?:my\s+)?(?:husband|wife|partner|boyfriend|girlfriend))\b/i.test(text)) return 2;
   return null;
 }
 
@@ -364,22 +434,19 @@ const ROOM_PATTERNS: RegExp[] = [
 
 export function extractRoomType(text: string | null): string | null {
   if (!text) return null;
+  // Run all patterns and collect matches. Prefer the longest, most
+  // specific phrase (a 3-word match wins over a 1-word match).
+  const hits: string[] = [];
   for (const re of ROOM_PATTERNS) {
-    const m = text.match(re);
-    if (m) {
-      const clean = m[1].replace(/\s+/g, " ").trim();
-      // Skip generic single-word matches if a quality adjective shows up
-      // later in the text — we'd rather wait for the better pattern.
-      if (clean.split(/\s+/).length === 1) {
-        for (const re2 of ROOM_PATTERNS.slice(0, 3)) {
-          const m2 = text.match(re2);
-          if (m2) return titleCase(m2[1].replace(/\s+/g, " ").trim());
-        }
-      }
-      return titleCase(clean);
+    const all = [...text.matchAll(new RegExp(re.source, re.flags + "g"))];
+    for (const m of all) {
+      const v = m[1].replace(/\s+/g, " ").trim();
+      if (v.length >= 2 && v.length <= 60) hits.push(v);
     }
   }
-  return null;
+  if (!hits.length) return null;
+  hits.sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length);
+  return titleCase(hits[0]);
 }
 
 // Date extraction. Handles ISO ("2026-08-12"), "August 12-17", "12-17
@@ -544,20 +611,54 @@ function applyKShorthand(rawText: string, matchedNumber: string): number | null 
 
 export function extractValueLkr(text: string | null): number | null {
   if (!text) return null;
-  for (const re of VALUE_PATTERNS) {
-    const m = text.match(re);
-    if (m) {
-      const n = applyKShorthand(text, m[1]);
-      if (n) return n;
+  // Strategy: collect every plausible LKR amount with a context score,
+  // return the highest-scoring one. Lets us pick "total is 25000" over
+  // a stray "25" elsewhere in the transcript.
+  const candidates: Array<{ value: number; score: number }> = [];
+
+  // Tier A — explicit currency marker (highest trust)
+  for (const m of text.matchAll(/(?:Rs\.?|LKR|₨)\s*([\d,]+(?:\.\d+)?)\s*(k|K)?\b/g)) {
+    const raw = Number(m[1].replace(/,/g, ""));
+    if (!Number.isFinite(raw)) continue;
+    const v = m[2] ? Math.round(raw * 1000) : Math.round(raw);
+    if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 100 });
+  }
+  for (const m of text.matchAll(/([\d,]+(?:\.\d+)?)\s*(?:LKR|lkr|rupees?)\b/g)) {
+    const raw = Number(m[1].replace(/,/g, ""));
+    if (!Number.isFinite(raw)) continue;
+    const v = Math.round(raw);
+    if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 100 });
+  }
+
+  // Tier B — contextual: "total/price/cost/rate/comes to" + number
+  for (const m of text.matchAll(/(?:total|grand[\s_]*total|booking[\s_]*total|booking[\s_]*value|price|amount(?:\s+due)?|cost|charges?|fee|rate|tariff|comes?\s+to|will\s+be|that(?:'ll|\s+will)\s+be|book\s+(?:that|it|this)\s+for|for\s+a\s+total\s+of|all\s+together|altogether|payable)\s*(?:is\s+|of\s+|comes\s+to\s+|@\s*|:\s*|=\s*)?(?:Rs\.?|LKR)?\s*([\d,]+(?:\.\d+)?)\s*(k|K)?\b/gi)) {
+    const raw = Number(m[1].replace(/,/g, ""));
+    if (!Number.isFinite(raw)) continue;
+    const v = m[2] ? Math.round(raw * 1000) : Math.round(raw);
+    if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 80 });
+  }
+
+  // Tier C — "Nk" / "N K" shorthand near hospitality context
+  for (const m of text.matchAll(/([\d,]+(?:\.\d+)?)\s*(?:k|K)(?=\s+(?:per\s+night|for\s+(?:the\s+)?(?:night|stay)|total|all\s+together|altogether|nett|net))/g)) {
+    const raw = Number(m[1].replace(/,/g, ""));
+    if (!Number.isFinite(raw)) continue;
+    const v = Math.round(raw * 1000);
+    if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 70 });
+  }
+
+  // Tier D — word-form: "twenty-five thousand"
+  for (const m of text.matchAll(/\b((?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|and)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|and))*)\s+thousand\b/gi)) {
+    const base = parseWordNumber(m[1]);
+    if (base) {
+      const v = base * 1000;
+      if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 60 });
     }
   }
-  // Word-form: "twenty-five thousand (rupees)?"
-  const word = text.match(/((?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|and)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|and))*)\s+thousand(?:\s+(?:rupees?|LKR|Rs))?/i);
-  if (word) {
-    const base = parseWordNumber(word[1]);
-    if (base) return base * 1000;
-  }
-  return null;
+
+  if (!candidates.length) return null;
+  // Highest score wins; on ties, take the largest value (most likely the grand total).
+  candidates.sort((a, b) => b.score - a.score || b.value - a.value);
+  return candidates[0].value;
 }
 
 const REF_PATTERNS: RegExp[] = [
@@ -607,32 +708,39 @@ export function toConversion(s: DbCallSummary): Conversion {
     .filter(Boolean)
     .join("\n");
 
-  // Four-tier classification:
+  // Five-tier classification:
   //   1) explicit AI-posted booking_status   (always wins)
-  //   2) `topics` field labels               (AI's own deliberate tag —
-  //      "booking confirmed", "booking inquiry", "dropped", "cancelled")
-  //   3) structured KEY: value parser        (catches "Status: confirmed"
-  //      style footers at the end of transcripts)
-  //   4) conversational regex matchers       (catches "you're booked"
-  //      style phrases inside dialogue)
+  //   2) topics field label                  (AI's deliberate tag in the
+  //      `topics` column — "booking confirmed", "dropped", etc.)
+  //   3) topic at BOTTOM of the transcript   (same vocabulary inline at
+  //      the end of the transcript text — common AI footer pattern)
+  //   4) structured KEY: value parser        ("Status: confirmed" anywhere)
+  //   5) conversational regex matchers       (free-text fallback)
   const explicit = s.booking_status as BookingStatus | null;
   const fromTopics = classifyFromTopics(s.topics);
+  const fromBottom = classifyFromTranscriptBottom(s.transcript);
   const struct = parseStructured(haystack, s.occurred_at);
-  let status: BookingStatus;
+  let rawStatus: BookingStatus;
   let statusSource: "explicit" | "inferred";
   if (explicit && ["confirmed", "inquiry", "cancelled", "no_booking"].includes(explicit)) {
-    status = explicit;
+    rawStatus = explicit;
     statusSource = "explicit";
   } else if (fromTopics) {
-    status = fromTopics;
-    statusSource = "explicit"; // topics is the AI's own label, treat as authoritative
+    rawStatus = fromTopics;
+    statusSource = "explicit";
+  } else if (fromBottom) {
+    rawStatus = fromBottom;
+    statusSource = "explicit";
   } else if (struct.status) {
-    status = struct.status;
+    rawStatus = struct.status;
     statusSource = "inferred";
   } else {
-    status = classifyConversion(s);
-    statusSource = status === "none" ? "explicit" : "inferred";
+    rawStatus = classifyConversion(s);
+    statusSource = rawStatus === "none" ? "explicit" : "inferred";
   }
+  // 3-bucket UI: cancellations and "cancelled" classifications fold into
+  // "dropped" since the spec asked to remove the Cancelled bucket entirely.
+  const status: BookingStatus = rawStatus === "cancelled" ? "no_booking" : rawStatus;
 
   // Field precedence: explicit AI > structured KEY:value > free-text regex.
   const valueLkr = s.booking_value_lkr ?? struct.valueLkr ?? extractValueLkr(haystack);

@@ -197,13 +197,13 @@ export default async function ConversionsPage({
         </div>
         <div className="lg:col-span-2 card p-5">
           <div className="stat-label mb-3">Funnel</div>
-          <FunnelView confirmed={stats.confirmed} inquiries={statusCounts["inquiry"] ?? 0} cancelled={statusCounts["cancelled"] ?? 0} noBooking={statusCounts["no_booking"] ?? 0} unclassified={statusCounts["none"] ?? 0} totalCalls={stats.totalCalls} />
+          <FunnelView confirmed={stats.confirmed} inquiries={statusCounts["inquiry"] ?? 0} noBooking={statusCounts["no_booking"] ?? 0} totalCalls={(statusCounts["confirmed"] ?? 0) + (statusCounts["inquiry"] ?? 0) + (statusCounts["no_booking"] ?? 0)} />
         </div>
       </div>
 
-      {/* Status filter chips */}
+      {/* Status filter chips — three buckets the AI emits as topics. */}
       <div className="flex items-center gap-2 flex-wrap">
-        {["confirmed", "inquiry", "cancelled", "no_booking", "none", "all"].map((s) => {
+        {["confirmed", "inquiry", "no_booking", "all"].map((s) => {
           const count = statusCounts[s] ?? 0;
           if (s !== "all" && s !== "confirmed" && count === 0) return null;
           const active = statusFilter === s;
@@ -362,29 +362,25 @@ function summaryToCallSummary(s: import("@/lib/adminDb").DbCallSummary | null): 
 }
 
 function buildStatusSlices(counts: Record<string, number>): StatusSlice[] {
-  // Order + colors picked to feel like a sales funnel:
-  // green = won, cyan = open, amber = at risk, rose = lost, slate = unknown.
+  // Only the three buckets the AI's `topics` field emits:
+  // confirmed (won) → inquiry (open pipeline) → dropped (lost).
   return [
     { key: "confirmed", label: "Confirmed bookings", count: counts["confirmed"] ?? 0, color: "#34D399" },
     { key: "inquiry", label: "Inquiries", count: counts["inquiry"] ?? 0, color: "#22D3EE" },
-    { key: "cancelled", label: "Cancelled", count: counts["cancelled"] ?? 0, color: "#FB7185" },
-    { key: "no_booking", label: "Dropped", count: counts["no_booking"] ?? 0, color: "#94A3B8" },
-    { key: "none", label: "Unclassified", count: counts["none"] ?? 0, color: "#475569" },
+    { key: "no_booking", label: "Dropped", count: counts["no_booking"] ?? 0, color: "#FB7185" },
   ];
 }
 
 // Horizontal stacked bar funnel — left-to-right gradient from open
 // pipeline → confirmed. Each segment shows its share of the total with
 // a tooltip on hover. Matches the bar UX in CallsByDayChart etc.
-function FunnelView({ confirmed, inquiries, cancelled, noBooking, unclassified, totalCalls }: {
-  confirmed: number; inquiries: number; cancelled: number; noBooking: number; unclassified: number; totalCalls: number;
+function FunnelView({ confirmed, inquiries, noBooking, totalCalls }: {
+  confirmed: number; inquiries: number; noBooking: number; totalCalls: number;
 }) {
   const segs = [
     { label: "Confirmed", count: confirmed, color: "#34D399" },
     { label: "Inquiries", count: inquiries, color: "#22D3EE" },
-    { label: "Cancelled", count: cancelled, color: "#FB7185" },
-    { label: "Dropped", count: noBooking, color: "#94A3B8" },
-    { label: "Unclassified", count: unclassified, color: "#475569" },
+    { label: "Dropped", count: noBooking, color: "#FB7185" },
   ];
   const total = totalCalls || segs.reduce((s, x) => s + x.count, 0) || 1;
   return (
@@ -405,7 +401,7 @@ function FunnelView({ confirmed, inquiries, cancelled, noBooking, unclassified, 
           );
         })}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {segs.map((s) => {
           const pct = total > 0 ? (s.count / total) * 100 : 0;
           return (
