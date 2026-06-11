@@ -87,11 +87,13 @@ export default async function ConversionsPage({
   const all: Conversion[] = rawSummaries.map(toConversion);
   const stats = computeStats(all);
   const filtered = statusFilter === "all" ? all : all.filter((c) => c.status === statusFilter);
-  // Confirmed rows sorted by check-in date when available, then by call date desc.
-  const sorted = [...filtered].sort((a, b) => {
-    if (statusFilter === "confirmed" && a.checkIn && b.checkIn) return a.checkIn.localeCompare(b.checkIn);
-    return new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime();
-  });
+  // Sort newest call first. Previously the Confirmed view tried to sort by
+  // check-in date (next-arrival-first, like a hotel front desk), but the
+  // spec is to show the most recent call at the top — same behaviour as
+  // the Calls log and Notifications tabs.
+  const sorted = [...filtered].sort((a, b) =>
+    new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+  );
 
   const statusCounts: Record<string, number> = { all: all.length };
   for (const c of all) statusCounts[c.status] = (statusCounts[c.status] ?? 0) + 1;
