@@ -1,15 +1,24 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Hexagon, Loader2, Lock, Mail } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const search = useSearchParams();
   const [email, setEmail] = useState("hello@treehousechalets.com");
   const [password, setPassword] = useState("treehouse2026");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Surface the reason a server-side redirect kicked the user back here.
+  useEffect(() => {
+    const msg = search?.get("msg");
+    if (msg === "disabled") {
+      setError("Portal access for this account is disabled. Contact your account manager.");
+    }
+  }, [search]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

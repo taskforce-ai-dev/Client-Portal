@@ -716,7 +716,10 @@ const NewClientPage = () => {
         credentials: "include",
         body: JSON.stringify({
           company: company.trim(), contact: contact.trim(), email: email.trim(), password: password,
-          plan: plan, status: "active", mrr_cents: sel ? sel.price * 100 : undefined,
+          // When the "Client portal access enabled" toggle is OFF, mark the
+          // client as blocked so the login endpoint rejects sign-in. Was
+          // hardcoded to "active" before, which silently ignored the toggle.
+          plan: plan, status: portal ? "active" : "blocked", mrr_cents: sel ? sel.price * 100 : undefined,
           provisionAgent: addAgent && !!agentName.trim(),
           agentName: agentName.trim(),
           agentRole: agentType === "Call Center" ? "Call Center Agent" : agentType + " Agent",

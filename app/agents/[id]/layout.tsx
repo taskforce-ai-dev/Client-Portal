@@ -5,7 +5,7 @@ import AgentTopbar from "@/components/AgentTopbar";
 import QuotaBanner from "@/components/QuotaBanner";
 import QuotaPopup from "@/components/QuotaPopup";
 import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient, listAgentsByClient } from "@/lib/adminDb";
+import { findAgentForClient, findClientById, listAgentsByClient } from "@/lib/adminDb";
 import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
 import { countCurrentMonthNotifications } from "@/lib/notifications";
 
@@ -20,10 +20,16 @@ export default async function AgentLayout({
 }) {
   const session = getClientSession();
   if (!session) redirect("/login");
-  const [dbAgent, dbAgents] = await Promise.all([
+  // Defense in depth: even if the session cookie is still valid, kick the
+  // client back to /login if their account status has flipped to non-active
+  // (admin disabled portal access, suspended, etc.) since they last signed
+  // in. The login endpoint enforces the same allow-list at the door.
+  const [client, dbAgent, dbAgents] = await Promise.all([
+    findClientById(session.clientId),
     findAgentForClient(params.id, session.clientId),
     listAgentsByClient(session.clientId),
   ]);
+  if (!client || client.status !== "active") redirect("/login?msg=disabled");
   if (!dbAgent) redirect("/select");
 
   const agent = {

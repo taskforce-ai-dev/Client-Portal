@@ -16,6 +16,8 @@ export default async function SelectAgentPage() {
   if (!session) redirect("/login");
   const client = await findClientById(session.clientId);
   if (!client) redirect("/login");
+  // Mirror the layout-level allow-list — only "active" clients past this point.
+  if (client.status !== "active") redirect("/login?msg=disabled");
 
   const agentRows = await listAgentsByClient(client.id);
   const agents = agentRows.map((a) => ({

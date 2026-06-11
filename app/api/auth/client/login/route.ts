@@ -27,8 +27,17 @@ export async function POST(req: NextRequest) {
   if (!client || !verifyPassword(body.password, client.password_hash)) {
     return NextResponse.json({ message: "Invalid email or password" }, { status: 401 });
   }
-  if (client.status === "blocked" || client.status === "suspended") {
-    return NextResponse.json({ message: "This account is not active. Contact support." }, { status: 403 });
+  // Allow-list: only "active" clients can sign in. Was deny-list before
+  // ("blocked" / "suspended" only) — meant new statuses like "pending"
+  // or admin-created clients with portal access disabled (status:
+  // "blocked") would silently still grant access if the value drifted.
+  if (client.status !== "active") {
+    const msg = client.status === "pending"
+      ? "Your account is pending approval. Contact your account manager."
+      : client.status === "suspended"
+        ? "Your account is temporarily suspended. Contact support."
+        : "Portal access is disabled for this account. Contact support.";
+    return NextResponse.json({ message: msg }, { status: 403 });
   }
 
   const res = NextResponse.json({ ok: true, company: client.company });
