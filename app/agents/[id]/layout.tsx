@@ -48,8 +48,10 @@ export default async function AgentLayout({
   const topbarCurrent = { id: agent.id, name: agent.name, role: agent.role, gradient: agent.gradient, initial: agent.initial };
 
   const quota = await getAgentMonthlyQuota(dbAgent);
-  // Fire-once-per-month audit row so the admin Activity Feed surfaces it too.
-  await recordQuotaNoticeIfNeeded(dbAgent, quota);
+  // Fire-and-forget the audit-row write. ON CONFLICT DO UPDATE makes it
+  // idempotent; we don't want the page render to wait on a DB roundtrip
+  // for a side-effect that doesn't affect what's displayed.
+  void recordQuotaNoticeIfNeeded(dbAgent, quota).catch(() => {});
   // Sidebar Bell badge respects the "last-read at" cookie set when the
   // client opens the Notifications tab — visiting the tab clears the
   // unread dot just like a normal inbox.

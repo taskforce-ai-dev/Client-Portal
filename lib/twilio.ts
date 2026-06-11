@@ -1,6 +1,32 @@
 const TWILIO_HOST = "https://api.twilio.com";
 const TWILIO_BASE = TWILIO_HOST + "/2010-04-01";
 
+// Cheap server-side cache for Twilio API responses, scoped per Vercel
+// function instance. Twilio's REST API takes 0.5–3s per call and most
+// client-portal pages need the same call list, so without caching every
+// tab navigation re-fetches everything. 30s TTL is short enough that a
+// new call appears within half a minute on AutoRefresh-enabled tabs.
+type CacheEntry<T> = { value: T; expiresAt: number };
+const __cache = new Map<string, CacheEntry<unknown>>();
+const TWILIO_CACHE_TTL_MS = 30_000;
+
+function cacheKey(parts: (string | number | undefined)[]): string {
+  return parts.map((p) => (p === undefined ? "_" : String(p))).join("|");
+}
+
+async function memoize<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const hit = __cache.get(key) as CacheEntry<T> | undefined;
+  if (hit && hit.expiresAt > now) return hit.value;
+  const value = await fn();
+  __cache.set(key, { value, expiresAt: now + ttlMs });
+  // Soft cap to avoid unbounded growth in long-lived warm instances.
+  if (__cache.size > 500) {
+    for (const k of __cache.keys()) { __cache.delete(k); if (__cache.size <= 250) break; }
+  }
+  return value;
+}
+
 export type DisplayCall = {
   id: string;
   caller: string;
@@ -185,25 +211,27 @@ export async function getAllCallsForSubaccount(
 ): Promise<CallsResult> {
   if (!isTwilioAuthConfigured() || !sub) return { calls: [], configured: false };
   const max = opts.max ?? 1000;
-  let path = `/Accounts/${sub}/Calls.json?PageSize=200`;
-  if (opts.startDate) path += `&StartTime>=${opts.startDate}`;
-  if (opts.endDate) path += `&StartTime<=${opts.endDate}`;
-  let url: string | null = TWILIO_BASE + path;
-  const out: DisplayCall[] = [];
-  try {
-    while (url && out.length < max) {
-      const data = await twilioGetUrl(url);
-      const raw = (data.calls ?? []) as TwilioCall[];
-      for (const c of raw) {
-        out.push(mapCall(c));
-        if (out.length >= max) break;
+  return memoize(cacheKey(["calls", sub, max, opts.startDate, opts.endDate]), TWILIO_CACHE_TTL_MS, async () => {
+    let path = `/Accounts/${sub}/Calls.json?PageSize=200`;
+    if (opts.startDate) path += `&StartTime>=${opts.startDate}`;
+    if (opts.endDate) path += `&StartTime<=${opts.endDate}`;
+    let url: string | null = TWILIO_BASE + path;
+    const out: DisplayCall[] = [];
+    try {
+      while (url && out.length < max) {
+        const data = await twilioGetUrl(url);
+        const raw = (data.calls ?? []) as TwilioCall[];
+        for (const c of raw) {
+          out.push(mapCall(c));
+          if (out.length >= max) break;
+        }
+        url = data.next_page_uri ? TWILIO_HOST + data.next_page_uri : null;
       }
-      url = data.next_page_uri ? TWILIO_HOST + data.next_page_uri : null;
+      return { calls: out, configured: true };
+    } catch (e) {
+      return { calls: out, configured: true, error: e instanceof Error ? e.message : String(e) };
     }
-    return { calls: out, configured: true };
-  } catch (e) {
-    return { calls: out, configured: true, error: e instanceof Error ? e.message : String(e) };
-  }
+  });
 }
 
 // Calls bucketed per day across an explicit [startMs, endMs] window.
@@ -439,6 +467,13 @@ export async function getUsageRecordsForSubaccount(
   if (!isTwilioAuthConfigured() || !sub) {
     return { configured: false, startDate: null, endDate: null, totalUsd: 0, categories: [] };
   }
+  return memoize(cacheKey(["usage", sub, opts.startDate, opts.endDate, opts.category]), TWILIO_CACHE_TTL_MS, () => fetchUsageRecordsImpl(sub, opts));
+}
+
+async function fetchUsageRecordsImpl(
+  sub: string,
+  opts: { startDate?: string; endDate?: string; category?: string },
+): Promise<UsageRecordsResult> {
   // IMPORTANT: Twilio's default /Usage/Records.json returns AllTime
   // aggregates and silently IGNORES StartDate/EndDate. To get a real
   // date-filtered view we have to use the /Daily.json sub-resource and
