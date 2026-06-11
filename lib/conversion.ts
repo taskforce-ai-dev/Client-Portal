@@ -333,8 +333,7 @@ export function parseStructured(text: string | null, callDate?: string): Structu
   let reference: string | null = null;
   if (refRaw) {
     const cleaned = refRaw.split(/\s/)[0].replace(/[^A-Za-z0-9\-_/]/g, "");
-    // Min length 2 — matches short numeric IDs like "39".
-    if (cleaned.length >= 2 && /[A-Z0-9]/i.test(cleaned)) reference = cleaned.toUpperCase();
+    if (isValidReference(cleaned)) reference = cleaned.toUpperCase();
   }
 
   // ---- Check-in / Check-out / Nights -------------------------------
@@ -701,11 +700,25 @@ const REF_PATTERNS: RegExp[] = [
   /\b(?:booking|reservation|confirmation)\s+(?:is\s+)?#\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
 ];
 
+// Confirmation/reference numbers always contain at least one digit in
+// practice. Pure-letter captures like "NUMBER", "REFERENCE", "CODE",
+// "ID" are false positives from greedy regex matches against text like
+// "the reference number" with no value after — reject them.
+const REF_BLOCKLIST = new Set([
+  "NUMBER", "NUMBERS", "CODE", "CODES", "REFERENCE", "REFERENCES",
+  "ID", "IDS", "REF", "REFS", "BOOKING", "RESERVATION", "CONFIRMATION",
+]);
+function isValidReference(s: string): boolean {
+  if (!s || s.length < 2) return false;
+  if (REF_BLOCKLIST.has(s.toUpperCase())) return false;
+  return /\d/.test(s);
+}
+
 export function extractReference(text: string | null): string | null {
   if (!text) return null;
   for (const re of REF_PATTERNS) {
     const m = text.match(re);
-    if (m && /[A-Z0-9]/i.test(m[1])) return m[1].toUpperCase();
+    if (m && isValidReference(m[1])) return m[1].toUpperCase();
   }
   return null;
 }
