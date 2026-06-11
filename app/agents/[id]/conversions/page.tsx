@@ -13,6 +13,7 @@ import {
 import AutoRefresh from "@/components/AutoRefresh";
 import type { CallSummary } from "@/components/CallLogTable";
 import ViewTranscriptButton from "@/components/ViewTranscriptButton";
+import ConversionStatusChart, { type StatusSlice } from "@/components/ConversionStatusChart";
 
 export const dynamic = "force-dynamic";
 
@@ -189,6 +190,17 @@ export default async function ConversionsPage({
         />
       </div>
 
+      {/* Status distribution chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-1">
+          <ConversionStatusChart slices={buildStatusSlices(statusCounts)} />
+        </div>
+        <div className="lg:col-span-2 card p-5">
+          <div className="stat-label mb-3">Funnel</div>
+          <FunnelView confirmed={stats.confirmed} inquiries={statusCounts["inquiry"] ?? 0} cancelled={statusCounts["cancelled"] ?? 0} noBooking={statusCounts["no_booking"] ?? 0} unclassified={statusCounts["none"] ?? 0} totalCalls={stats.totalCalls} />
+        </div>
+      </div>
+
       {/* Status filter chips */}
       <div className="flex items-center gap-2 flex-wrap">
         {["confirmed", "inquiry", "cancelled", "no_booking", "none", "all"].map((s) => {
@@ -347,4 +359,67 @@ function summaryToCallSummary(s: import("@/lib/adminDb").DbCallSummary | null): 
     topics: s.topics,
     transcript: s.transcript,
   };
+}
+
+function buildStatusSlices(counts: Record<string, number>): StatusSlice[] {
+  // Order + colors picked to feel like a sales funnel:
+  // green = won, cyan = open, amber = at risk, rose = lost, slate = unknown.
+  return [
+    { key: "confirmed", label: "Confirmed bookings", count: counts["confirmed"] ?? 0, color: "#34D399" },
+    { key: "inquiry", label: "Inquiries", count: counts["inquiry"] ?? 0, color: "#22D3EE" },
+    { key: "cancelled", label: "Cancelled", count: counts["cancelled"] ?? 0, color: "#FB7185" },
+    { key: "no_booking", label: "Not interested", count: counts["no_booking"] ?? 0, color: "#94A3B8" },
+    { key: "none", label: "Unclassified", count: counts["none"] ?? 0, color: "#475569" },
+  ];
+}
+
+// Horizontal stacked bar funnel — left-to-right gradient from open
+// pipeline → confirmed. Each segment shows its share of the total with
+// a tooltip on hover. Matches the bar UX in CallsByDayChart etc.
+function FunnelView({ confirmed, inquiries, cancelled, noBooking, unclassified, totalCalls }: {
+  confirmed: number; inquiries: number; cancelled: number; noBooking: number; unclassified: number; totalCalls: number;
+}) {
+  const segs = [
+    { label: "Confirmed", count: confirmed, color: "#34D399" },
+    { label: "Inquiries", count: inquiries, color: "#22D3EE" },
+    { label: "Cancelled", count: cancelled, color: "#FB7185" },
+    { label: "Not interested", count: noBooking, color: "#94A3B8" },
+    { label: "Unclassified", count: unclassified, color: "#475569" },
+  ];
+  const total = totalCalls || segs.reduce((s, x) => s + x.count, 0) || 1;
+  return (
+    <div className="space-y-4">
+      <div className="flex h-10 rounded-lg overflow-hidden border border-white/5 bg-white/[0.02]">
+        {segs.map((s) => {
+          const pct = (s.count / total) * 100;
+          if (pct <= 0) return null;
+          return (
+            <div
+              key={s.label}
+              className="flex items-center justify-center text-[10px] font-mono text-ink-950 font-semibold"
+              style={{ width: `${pct}%`, background: s.color, minWidth: pct >= 4 ? undefined : "0" }}
+              title={`${s.label}: ${s.count} (${pct.toFixed(1)}%)`}
+            >
+              {pct >= 8 ? `${pct.toFixed(0)}%` : ""}
+            </div>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {segs.map((s) => {
+          const pct = total > 0 ? (s.count / total) * 100 : 0;
+          return (
+            <div key={s.label} className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                <span className="text-[10px] uppercase tracking-[0.08em] text-slate-500 font-medium">{s.label}</span>
+              </div>
+              <div className="text-lg font-semibold text-white mt-1">{s.count}</div>
+              <div className="text-[11px] text-slate-500 font-mono">{pct.toFixed(1)}%</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }

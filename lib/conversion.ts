@@ -6,16 +6,25 @@ import type { DbCallSummary } from "./adminDb";
 // ============================================================
 
 const CONFIRMED_PATTERNS: RegExp[] = [
-  /\b(?:booking|reservation)\s+(?:is\s+)?(?:confirmed|complete|completed|made|secured|done|finalized|finalised)\b/i,
-  /\b(?:I(?:'ve|\s+have))?\s*confirmed\s+(?:your|the)\s+(?:booking|reservation|stay|room)\b/i,
-  /\b(?:I(?:'ve|\s+have))?\s*booked\s+(?:you|them|it|your|the)\b/i,
-  /\bconfirmation\s+(?:number|code|id|reference)\s+(?:is|:)\s*[A-Za-z0-9-]/i,
-  /\breservation\s+(?:number|code|id|reference)\s+(?:is|:)\s*[A-Za-z0-9-]/i,
-  /\b(?:booking|reservation)\s+(?:number|code|id|reference)\s+(?:is|:)\s*[A-Za-z0-9-]/i,
-  /\byou(?:'re|\s+are)\s+(?:all\s+)?(?:booked|confirmed|set)\b/i,
+  /\b(?:booking|reservation)\s+(?:is\s+)?(?:confirmed|complete|completed|made|secured|done|finalized|finalised|placed)\b/i,
+  /\b(?:I(?:'ve|\s+have))?\s*confirmed\s+(?:your|the|her|his|their)\s+(?:booking|reservation|stay|room|villa|chalet|suite|cabin)\b/i,
+  /\b(?:I(?:'ve|\s+have))?\s*booked\s+(?:you|them|it|your|the|her|him|us)\b/i,
+  /\bconfirmation\s+(?:number|code|id|reference|details?)\s+(?:is|are|:)\s*[A-Za-z0-9]/i,
+  /\breservation\s+(?:number|code|id|reference)\s+(?:is|:)\s*[A-Za-z0-9]/i,
+  /\b(?:booking|reservation)\s+(?:number|code|id|reference)\s+(?:is|:)\s*[A-Za-z0-9]/i,
+  /\byou(?:'re|\s+are)\s+(?:all\s+)?(?:booked|confirmed|set|good\s+to\s+go)\b/i,
   /\b(?:successfully|now|just)\s+(?:booked|reserved|confirmed)\b/i,
-  /\bI(?:'ll|\s+will)\s+(?:go\s+ahead\s+and\s+)?(?:book|reserve|confirm)\s+(?:you|that|this|the)\b/i,
-  /\b(?:room|suite|villa|chalet|cabin|bungalow|cottage)\s+(?:is\s+)?(?:booked|reserved|confirmed)\s+(?:for|under)\b/i,
+  /\bI(?:'ll|\s+will)\s+(?:go\s+ahead\s+and\s+)?(?:book|reserve|confirm)\s+(?:you|that|this|the|her|him|them)\b/i,
+  /\b(?:room|suite|villa|chalet|cabin|bungalow|cottage|treehouse|tree\s+house)\s+(?:is\s+|has\s+been\s+)?(?:booked|reserved|confirmed)\b/i,
+  // Explicit structured-output markers — common AI footer phrasing
+  /\b(?:booking[_\s]*)?status\s*[:=]\s*(?:confirmed|booked|complete)\b/i,
+  /\b(?:outcome|result|final[_\s]*outcome|booking[_\s]*outcome|conversion)\s*[:=]\s*(?:confirmed|booked|complete|success(?:ful)?|won)\b/i,
+  /\b(?:reservation|booking|stay)\s*[:=]\s*(?:confirmed|booked|complete|yes)\b/i,
+  /\b\[(?:booking[_\s]*)?(?:confirmed|booked|complete)\]/i,
+  // Action items that imply a confirmed booking
+  /\b(?:send|email|share)\s+(?:the\s+)?(?:confirmation|booking\s+details?|invoice|receipt)\b/i,
+  /\bsave\s+(?:the\s+)?(?:booking|reservation)\b/i,
+  /\b(?:added|entered|recorded|saved)\s+(?:the\s+)?(?:booking|reservation)\b/i,
 ];
 
 const CANCELLED_PATTERNS: RegExp[] = [
@@ -56,6 +65,211 @@ export function classifyConversion(s: Pick<DbCallSummary, "transcript" | "summar
   if (matchesAny(haystack, INQUIRY_PATTERNS)) return "inquiry";
   if (matchesAny(haystack, NO_BOOKING_PATTERNS)) return "no_booking";
   return "none";
+}
+
+// ============================================================
+// Structured parser — pulls KEY: value / KEY = value pairs out of
+// text. AI agents commonly append a structured summary block at the
+// end of a transcript ("Booking status: confirmed", "Total: Rs.
+// 24500", "Room: Treetop Suite", etc.). This catches anything the
+// conversational regex misses. Runs over the WHOLE haystack, not just
+// the end, so a structured header at the top works too.
+// ============================================================
+
+const STATUS_NORMALISE: Record<string, BookingStatus> = {
+  confirmed: "confirmed",
+  booked: "confirmed",
+  complete: "confirmed",
+  completed: "confirmed",
+  success: "confirmed",
+  successful: "confirmed",
+  won: "confirmed",
+  yes: "confirmed",
+  inquiry: "inquiry",
+  enquiry: "inquiry",
+  pending: "inquiry",
+  lead: "inquiry",
+  followup: "inquiry",
+  "follow-up": "inquiry",
+  cancelled: "cancelled",
+  canceled: "cancelled",
+  declined: "cancelled",
+  rejected: "cancelled",
+  no_booking: "no_booking",
+  "no-booking": "no_booking",
+  none: "no_booking",
+  lost: "no_booking",
+  not_interested: "no_booking",
+  "not-interested": "no_booking",
+};
+
+export type StructuredBooking = {
+  status: BookingStatus | null;
+  room: string | null;
+  guests: number | null;
+  valueLkr: number | null;
+  reference: string | null;
+  checkIn: string | null;
+  checkOut: string | null;
+  nights: number | null;
+};
+
+// Match "key: value" or "key = value" tolerant of various separators
+// (label can include underscores, hyphens, spaces; value runs to the
+// end of the line).
+function matchLabeled(text: string, labels: string[]): string | null {
+  for (const lab of labels) {
+    const re = new RegExp(`(?:^|\\n|\\r|\\s{2,}|\\*|-|\\u2022)\\s*\\*{0,2}${lab}\\*{0,2}\\s*[:=]\\s*([^\\n\\r]+)`, "i");
+    const m = text.match(re);
+    if (m) {
+      const v = m[1].trim().replace(/^[*"'\s-]+|[*"'\s.,;]+$/g, "");
+      if (v) return v;
+    }
+  }
+  return null;
+}
+
+function parseValueNumber(raw: string | null): number | null {
+  if (!raw) return null;
+  // Strip currency markers, words, then parse
+  const cleaned = raw
+    .replace(/Rs\.?|LKR|rupees?|USD|\$|EUR|€/gi, "")
+    .replace(/[,\s]/g, "")
+    .trim();
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n >= 500 ? Math.round(n) : null;
+}
+
+function parseDateMaybe(raw: string | null, fallbackYear?: number): string | null {
+  if (!raw) return null;
+  const text = raw.trim();
+  // ISO direct
+  const isoM = text.match(/^(\d{4}-\d{2}-\d{2})\b/);
+  if (isoM) return isoM[1];
+  // DD/MM/YYYY
+  const ddmm = text.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+  if (ddmm) {
+    const d = Number(ddmm[1]);
+    const m = Number(ddmm[2]);
+    let y = ddmm[3] ? Number(ddmm[3]) : (fallbackYear || new Date().getUTCFullYear());
+    if (y < 100) y += 2000;
+    return iso(y, m, d);
+  }
+  // "August 12 2026" / "12 August 2026" / "August 12"
+  const monthFirst = text.match(new RegExp(`^${MONTH_RE}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s*(\\d{4}))?`, "i"));
+  if (monthFirst) {
+    const m = MONTHS[monthFirst[1].toLowerCase()];
+    const d = Number(monthFirst[2]);
+    const y = monthFirst[3] ? Number(monthFirst[3]) : (fallbackYear || new Date().getUTCFullYear());
+    return iso(y, m, d);
+  }
+  const dayFirst = text.match(new RegExp(`^(\\d{1,2})(?:st|nd|rd|th)?\\s+${MONTH_RE}(?:,?\\s*(\\d{4}))?`, "i"));
+  if (dayFirst) {
+    const d = Number(dayFirst[1]);
+    const m = MONTHS[dayFirst[2].toLowerCase()];
+    const y = dayFirst[3] ? Number(dayFirst[3]) : (fallbackYear || new Date().getUTCFullYear());
+    return iso(y, m, d);
+  }
+  return null;
+}
+
+export function parseStructured(text: string | null, callDate?: string): StructuredBooking {
+  const empty: StructuredBooking = {
+    status: null, room: null, guests: null, valueLkr: null,
+    reference: null, checkIn: null, checkOut: null, nights: null,
+  };
+  if (!text) return empty;
+  const fbYear = callDate ? new Date(callDate).getUTCFullYear() : undefined;
+
+  // ---- Status -------------------------------------------------------
+  const statusRaw = matchLabeled(text, [
+    "booking[_\\s-]*status", "reservation[_\\s-]*status", "status",
+    "outcome", "result", "final[_\\s-]*outcome", "booking[_\\s-]*outcome",
+    "conversion", "booking", "reservation",
+  ]);
+  let status: BookingStatus | null = null;
+  if (statusRaw) {
+    const key = statusRaw.toLowerCase().replace(/\s+/g, "_").replace(/[^\w-]/g, "");
+    status = STATUS_NORMALISE[key] ?? null;
+  }
+  // Bracketed tags: [CONFIRMED] / [BOOKED] / [INQUIRY]
+  if (!status) {
+    const tag = text.match(/\[(?:booking[_\s]*)?(confirmed|booked|complete|success(?:ful)?|won|inquiry|enquiry|pending|cancelled|canceled|no[_\s]*booking|lost)\]/i);
+    if (tag) {
+      const key = tag[1].toLowerCase().replace(/\s+/g, "_");
+      status = STATUS_NORMALISE[key] ?? null;
+    }
+  }
+
+  // ---- Room ---------------------------------------------------------
+  const roomRaw = matchLabeled(text, [
+    "room[_\\s-]*type", "room", "unit[_\\s-]*type", "unit",
+    "accommodation", "accomodation", "category", "villa", "suite", "chalet",
+  ]);
+  let room: string | null = null;
+  if (roomRaw) {
+    // Cap at ~40 chars; strip trailing punctuation
+    room = roomRaw.slice(0, 60).replace(/\s+/g, " ").trim();
+    if (room.length < 2) room = null;
+    else room = titleCase(room);
+  }
+
+  // ---- Guests -------------------------------------------------------
+  const guestsRaw = matchLabeled(text, [
+    "guests?", "no\\.?[_\\s]*of[_\\s]*guests", "number[_\\s]*of[_\\s]*guests",
+    "adults?", "pax", "occupancy", "headcount", "people", "persons?",
+  ]);
+  let guests: number | null = null;
+  if (guestsRaw) {
+    const n = wordToNum(guestsRaw.split(/[\s,]/)[0]);
+    if (n && n <= 50) guests = n;
+  }
+
+  // ---- Value --------------------------------------------------------
+  const valueRaw = matchLabeled(text, [
+    "total", "total[_\\s]*amount", "amount", "amount[_\\s]*due",
+    "price", "cost", "total[_\\s]*cost", "total[_\\s]*price",
+    "booking[_\\s]*value", "value", "charges?", "rate", "grand[_\\s]*total",
+    "total[_\\s]*lkr", "booking[_\\s]*total",
+  ]);
+  let valueLkr = parseValueNumber(valueRaw);
+
+  // ---- Reference ----------------------------------------------------
+  const refRaw = matchLabeled(text, [
+    "confirmation[_\\s]*number", "confirmation[_\\s]*code", "confirmation[_\\s]*id",
+    "confirmation[_\\s]*reference", "confirmation",
+    "booking[_\\s]*number", "booking[_\\s]*reference", "booking[_\\s]*id", "booking[_\\s]*ref",
+    "reservation[_\\s]*number", "reservation[_\\s]*reference", "reservation[_\\s]*id",
+    "reference[_\\s]*number", "reference[_\\s]*code", "reference",
+    "ref", "id",
+  ]);
+  let reference: string | null = null;
+  if (refRaw) {
+    const cleaned = refRaw.split(/\s/)[0].replace(/[^A-Za-z0-9\-_/]/g, "");
+    if (cleaned.length >= 3 && /[A-Z0-9]/i.test(cleaned)) reference = cleaned.toUpperCase();
+  }
+
+  // ---- Check-in / Check-out / Nights -------------------------------
+  const ciRaw = matchLabeled(text, [
+    "check[_\\s-]*in", "check[_\\s-]*in[_\\s-]*date", "arrival", "arrival[_\\s-]*date",
+    "from", "start[_\\s-]*date", "stay[_\\s-]*start",
+  ]);
+  const coRaw = matchLabeled(text, [
+    "check[_\\s-]*out", "check[_\\s-]*out[_\\s-]*date", "departure", "departure[_\\s-]*date",
+    "to", "until", "end[_\\s-]*date", "stay[_\\s-]*end",
+  ]);
+  const nightsRaw = matchLabeled(text, [
+    "nights?", "no\\.?[_\\s]*of[_\\s]*nights", "length[_\\s]*of[_\\s]*stay", "duration", "stay[_\\s]*duration",
+  ]);
+  const checkIn = parseDateMaybe(ciRaw, fbYear);
+  const checkOut = parseDateMaybe(coRaw, fbYear);
+  let nights: number | null = null;
+  if (nightsRaw) {
+    const n = wordToNum(nightsRaw.split(/[\s,]/)[0]);
+    if (n && n <= 365) nights = n;
+  }
+
+  return { status, room, guests, valueLkr, reference, checkIn, checkOut, nights };
 }
 
 // ============================================================
@@ -321,37 +535,53 @@ export type Conversion = {
 };
 
 export function toConversion(s: DbCallSummary): Conversion {
-  const explicit = s.booking_status as BookingStatus | null;
-  let status: BookingStatus;
-  let statusSource: "explicit" | "inferred";
-  if (explicit && ["confirmed", "inquiry", "cancelled", "no_booking"].includes(explicit)) {
-    status = explicit;
-    statusSource = "explicit";
-  } else {
-    status = classifyConversion(s);
-    statusSource = status === "none" ? "explicit" : "inferred";
-  }
-
   // Build the haystack — combine transcript + structured fields so we can
   // extract guests/room/dates from anywhere.
   const haystack = [s.transcript, s.summary, s.action_items, s.key_points, s.mentioned_dates]
     .filter(Boolean)
     .join("\n");
 
-  // Explicit AI fields ALWAYS win. Extraction only fills the gaps.
-  const valueLkr = s.booking_value_lkr ?? extractValueLkr(haystack);
-  const reference = s.booking_reference || extractReference(haystack);
-  const roomType = s.booking_room_type || extractRoomType(haystack);
-  const guests = s.booking_guests ?? extractGuests(haystack);
+  // Three-tier classification:
+  //   1) explicit AI-posted booking_status  (always wins)
+  //   2) structured KEY: value parser       (catches "Status: confirmed"
+  //      style footers that the AI puts at the end of transcripts)
+  //   3) conversational regex matchers      (catches "you're booked"
+  //      style phrases inside dialogue)
+  const explicit = s.booking_status as BookingStatus | null;
+  const struct = parseStructured(haystack, s.occurred_at);
+  let status: BookingStatus;
+  let statusSource: "explicit" | "inferred";
+  if (explicit && ["confirmed", "inquiry", "cancelled", "no_booking"].includes(explicit)) {
+    status = explicit;
+    statusSource = "explicit";
+  } else if (struct.status) {
+    status = struct.status;
+    statusSource = "inferred";
+  } else {
+    status = classifyConversion(s);
+    statusSource = status === "none" ? "explicit" : "inferred";
+  }
 
-  let checkIn = s.booking_check_in;
-  let checkOut = s.booking_check_out;
+  // Field precedence: explicit AI > structured KEY:value > free-text regex.
+  const valueLkr = s.booking_value_lkr ?? struct.valueLkr ?? extractValueLkr(haystack);
+  const reference = s.booking_reference || struct.reference || extractReference(haystack);
+  const roomType = s.booking_room_type || struct.room || extractRoomType(haystack);
+  const guests = s.booking_guests ?? struct.guests ?? extractGuests(haystack);
+
+  let checkIn = s.booking_check_in || struct.checkIn;
+  let checkOut = s.booking_check_out || struct.checkOut;
   if (!checkIn || !checkOut) {
     const dates = extractDates(haystack, s.occurred_at);
     if (!checkIn) checkIn = dates.checkIn;
     if (!checkOut) checkOut = dates.checkOut;
   }
-  const nights = computeNights(checkIn, checkOut);
+  let nights = computeNights(checkIn, checkOut) ?? struct.nights;
+  // If we have nights + check-in but no check-out, derive it.
+  if (checkIn && !checkOut && nights) {
+    const d = new Date(checkIn + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + nights);
+    checkOut = iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+  }
 
   return {
     id: s.id,
