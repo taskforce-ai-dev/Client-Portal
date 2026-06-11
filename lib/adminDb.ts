@@ -127,6 +127,17 @@ export async function ensureSchema(sql: Sql) {
     duration_sec integer,
     occurred_at timestamptz NOT NULL DEFAULT now())`;
   await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS transcript text`;
+  // Booking / conversion outcome — populated either by the AI agent in its
+  // structured summary post OR inferred from existing transcript / summary
+  // text via the keyword fallback in lib/conversion.ts. All nullable so
+  // legacy rows still load fine.
+  await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_status text`;
+  await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_value_lkr integer`;
+  await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_reference text`;
+  await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_check_in text`;
+  await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_check_out text`;
+  await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_guests integer`;
+  await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_room_type text`;
   await sql`CREATE INDEX IF NOT EXISTS sentinel_call_summary_agent_at_idx ON sentinel_call_summary (agent_id, occurred_at DESC)`;
   // System-wide key/value settings (FX rate, future feature flags, etc.).
   await sql`CREATE TABLE IF NOT EXISTS sentinel_setting (
@@ -571,6 +582,15 @@ export type DbCallSummary = {
   duration_sec: number | null;
   transcript: string | null;
   occurred_at: string;
+  // Booking outcome (nullable). Populated by the AI agent's structured
+  // post OR by the keyword fallback in lib/conversion.ts when missing.
+  booking_status: string | null; // "confirmed" | "inquiry" | "cancelled" | "no_booking" | null
+  booking_value_lkr: number | null;
+  booking_reference: string | null;
+  booking_check_in: string | null;
+  booking_check_out: string | null;
+  booking_guests: number | null;
+  booking_room_type: string | null;
 };
 
 export async function recordCallSummary(input: {
@@ -589,6 +609,15 @@ export async function recordCallSummary(input: {
   durationSec?: number | null;
   transcript?: string | null;
   occurredAt?: Date | null;
+  // Booking fields — all optional. If the AI agent provides them they get
+  // saved verbatim; otherwise the conversions tab uses keyword fallback.
+  bookingStatus?: string | null;
+  bookingValueLkr?: number | null;
+  bookingReference?: string | null;
+  bookingCheckIn?: string | null;
+  bookingCheckOut?: string | null;
+  bookingGuests?: number | null;
+  bookingRoomType?: string | null;
 }): Promise<{ inserted: boolean }> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
@@ -598,13 +627,17 @@ export async function recordCallSummary(input: {
   try {
     const rows = (await sql`
       INSERT INTO sentinel_call_summary
-        (id, agent_id, client_id, twilio_call_sid, caller_name, caller_phone, summary, key_points, action_items, mentioned_dates, sentiment, topics, duration_sec, transcript, occurred_at)
+        (id, agent_id, client_id, twilio_call_sid, caller_name, caller_phone, summary, key_points, action_items, mentioned_dates, sentiment, topics, duration_sec, transcript, occurred_at,
+         booking_status, booking_value_lkr, booking_reference, booking_check_in, booking_check_out, booking_guests, booking_room_type)
       VALUES (${input.id}, ${input.agentId}, ${input.clientId},
               ${input.twilioCallSid ?? null}, ${input.callerName ?? null}, ${input.callerPhone ?? null},
               ${input.summary}, ${input.keyPoints ?? null}, ${input.actionItems ?? null},
               ${input.mentionedDates ?? null}, ${input.sentiment ?? null}, ${input.topics ?? null},
               ${input.durationSec ?? null}, ${input.transcript ?? null},
-              ${input.occurredAt ? input.occurredAt.toISOString() : new Date().toISOString()})
+              ${input.occurredAt ? input.occurredAt.toISOString() : new Date().toISOString()},
+              ${input.bookingStatus ?? null}, ${input.bookingValueLkr ?? null}, ${input.bookingReference ?? null},
+              ${input.bookingCheckIn ?? null}, ${input.bookingCheckOut ?? null},
+              ${input.bookingGuests ?? null}, ${input.bookingRoomType ?? null})
       ON CONFLICT (id) DO NOTHING
       RETURNING id`) as { id: string }[];
     return { inserted: rows.length > 0 };

@@ -12,6 +12,7 @@ import {
   Library,
   Phone,
   Settings,
+  TrendingUp,
 } from "lucide-react";
 import clsx from "clsx";
 import { type Agent } from "@/lib/data";
@@ -21,6 +22,7 @@ const mainTop = (id: string) => [
   { href: `/agents/${id}/calls`, label: "Call Logs", icon: Phone },
   { href: `/agents/${id}/knowledge`, label: "Knowledge Base", icon: Library },
   { href: `/agents/${id}/analytics`, label: "Analytics", icon: BarChart3 },
+  { href: `/agents/${id}/conversions`, label: "Conversions", icon: TrendingUp },
 ];
 
 const account = (id: string) => [

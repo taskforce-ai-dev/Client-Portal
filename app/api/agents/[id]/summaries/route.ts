@@ -27,7 +27,15 @@ function safeEqual(a: string, b: string): boolean {
 //     "topics": "booking,pricing",
 //     "duration_sec": 154,
 //     "occurred_at": "2026-06-02T12:34:56Z",
-//     "request_id": "msg_xxx"   // optional — overrides id for idempotent retries
+//     "request_id": "msg_xxx",   // optional — overrides id for idempotent retries
+//     // ===== Optional booking fields (drive the Conversions tab) =====
+//     "booking_status": "confirmed",   // "confirmed" | "inquiry" | "cancelled" | "no_booking"
+//     "booking_value_lkr": 24500,      // total price discussed (integer LKR)
+//     "booking_reference": "THC-2026-417",
+//     "booking_check_in": "2026-08-12",
+//     "booking_check_out": "2026-08-17",
+//     "booking_guests": 2,
+//     "booking_room_type": "Treetop suite"
 //   }
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isDbConfigured()) return NextResponse.json({ message: "Database not connected." }, { status: 503 });
@@ -55,6 +63,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     transcript?: string;
     occurred_at?: string;
     request_id?: string;
+    booking_status?: string;
+    booking_value_lkr?: number;
+    booking_reference?: string;
+    booking_check_in?: string;
+    booking_check_out?: string;
+    booking_guests?: number;
+    booking_room_type?: string;
   };
   try {
     body = await req.json();
@@ -70,6 +85,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const occurredAt = body.occurred_at ? new Date(body.occurred_at) : new Date();
   if (isNaN(occurredAt.getTime())) return NextResponse.json({ message: "Invalid occurred_at" }, { status: 400 });
   const id = (body.request_id && body.request_id.trim()) || body.call_sid || ("sum_" + crypto.randomBytes(10).toString("hex"));
+
+  const VALID_BOOKING_STATUS = new Set(["confirmed", "inquiry", "cancelled", "no_booking"]);
+  const bookingStatus = body.booking_status && VALID_BOOKING_STATUS.has(body.booking_status)
+    ? body.booking_status
+    : null;
+  const bookingValue = typeof body.booking_value_lkr === "number" && Number.isFinite(body.booking_value_lkr) && body.booking_value_lkr >= 0
+    ? Math.round(body.booking_value_lkr)
+    : null;
+  const bookingGuests = typeof body.booking_guests === "number" && Number.isFinite(body.booking_guests) && body.booking_guests > 0
+    ? Math.round(body.booking_guests)
+    : null;
 
   const { inserted } = await recordCallSummary({
     id,
@@ -87,6 +113,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     durationSec: typeof body.duration_sec === "number" ? Math.floor(body.duration_sec) : null,
     transcript: body.transcript || null,
     occurredAt,
+    bookingStatus,
+    bookingValueLkr: bookingValue,
+    bookingReference: body.booking_reference || null,
+    bookingCheckIn: body.booking_check_in || null,
+    bookingCheckOut: body.booking_check_out || null,
+    bookingGuests,
+    bookingRoomType: body.booking_room_type || null,
   });
 
   return NextResponse.json({ ok: true, id, duplicate: !inserted });
