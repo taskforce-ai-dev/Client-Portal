@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import KnowledgeEditor from "@/components/KnowledgeEditor";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient } from "@/lib/adminDb";
+import { guardClientFeature } from "@/lib/featureAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export default async function KnowledgeBasePage({ params }: { params: { id: stri
   if (!session) redirect("/login");
   const agent = await findAgentForClient(params.id, session.clientId);
   if (!agent) redirect("/select");
+  await guardClientFeature("knowledge", params.id);
 
   return (
     <div className="space-y-6">

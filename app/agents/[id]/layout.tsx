@@ -5,7 +5,7 @@ import AgentTopbar from "@/components/AgentTopbar";
 import QuotaBanner from "@/components/QuotaBanner";
 import QuotaPopup from "@/components/QuotaPopup";
 import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient, findClientById, listAgentsByClient } from "@/lib/adminDb";
+import { findAgentForClient, findClientById, listAgentsByClient, parseAllowedFeatures } from "@/lib/adminDb";
 import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
 import { countCurrentMonthNotifications } from "@/lib/notifications";
 
@@ -31,6 +31,12 @@ export default async function AgentLayout({
   ]);
   if (!client || client.status !== "active") redirect("/login?msg=disabled");
   if (!dbAgent) redirect("/select");
+
+  // Parse the comma-separated allowed_features list. Empty = back-compat
+  // (all features enabled). The sidebar filters items by key; the
+  // individual page-level guards (each disabled feature's page) redirect
+  // direct-URL attempts back to Overview.
+  const allowedFeatures = parseAllowedFeatures(client.allowed_features);
 
   const agent = {
     id: dbAgent.id,
@@ -69,6 +75,7 @@ export default async function AgentLayout({
         quotaPeriodStart={quota.periodStart}
         quotaPeriodEnd={quota.periodEnd}
         unreadNotifications={unread}
+        allowedFeatures={allowedFeatures}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <AgentTopbar current={topbarCurrent} agents={topbarAgents} unreadNotifications={unread} />

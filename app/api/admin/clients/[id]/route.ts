@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   if (!isAuthed()) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   if (!isDbConfigured()) return NextResponse.json({ message: "Database not connected." }, { status: 503 });
-  let body: { company?: string; contact?: string; email?: string; plan?: string; status?: string; mrr_cents?: number };
+  let body: { company?: string; contact?: string; email?: string; plan?: string; status?: string; mrr_cents?: number; country?: string; allowed_features?: string | string[] };
   try {
     body = await req.json();
   } catch {
@@ -41,6 +41,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       plan: body.plan,
       status: body.status,
       mrrCents: body.mrr_cents,
+      country: body.country,
+      allowedFeatures: body.allowed_features,
     });
     if (!updated) return NextResponse.json({ message: "Not found" }, { status: 404 });
     return NextResponse.json({ ok: true });

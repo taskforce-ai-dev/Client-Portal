@@ -689,10 +689,29 @@ const NewClientPage = () => {
   const [agentSub, setAgentSub] = useState("");
   const [portal, setPortal] = useState(true);
   const [api, setApi] = useState(false);
-  const [features, setFeatures] = useState({ Analytics: true, "Knowledge Base": true, Transcripts: true, "Billing View": true, "Team Members": false });
+  // Feature keys mirror the client portal's sidebar nav. Unchecking a
+  // feature hides its tab AND blocks direct URL access in the client
+  // portal layout. Overview / Notifications / Settings are always on.
+  const [features, setFeatures] = useState({
+    callLog: true,
+    knowledge: true,
+    analytics: true,
+    conversions: true,
+    billing: true,
+    transcripts: true,
+  });
+  const FEATURE_LABELS = {
+    callLog: "Call Logs",
+    knowledge: "Knowledge Base",
+    analytics: "Analytics",
+    conversions: "Conversions",
+    billing: "Billing",
+    transcripts: "Call transcripts",
+  };
   const [autoInvoice, setAutoInvoice] = useState(true);
   const [company, setCompany] = useState("");
   const [contact, setContact] = useState("");
+  const [country, setCountry] = useState("Sri Lanka");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState(suggestPassword());
   const [busy, setBusy] = useState(false);
@@ -716,6 +735,11 @@ const NewClientPage = () => {
         credentials: "include",
         body: JSON.stringify({
           company: company.trim(), contact: contact.trim(), email: email.trim(), password: password,
+          country: country,
+          // Only checked features are passed through — unchecked features
+          // get hidden in the client portal sidebar AND blocked at the
+          // page level if the client tries to visit the URL directly.
+          allowed_features: Object.keys(features).filter((k) => features[k]),
           // When the "Client portal access enabled" toggle is OFF, mark the
           // client as blocked so the login endpoint rejects sign-in. Was
           // hardcoded to "active" before, which silently ignored the toggle.
@@ -761,8 +785,46 @@ const NewClientPage = () => {
           <Field label="Email address"><input className="input" type="email" placeholder="jane@acme.com" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
           <Field label="Phone number"><input className="input mono" placeholder="+1 ___-___-____" /></Field>
           <Field label="Country">
-            <select className="input">
-              <option>United States</option><option>Canada</option><option>United Kingdom</option><option>Germany</option><option>India</option><option>Singapore</option><option>Mexico</option>
+            <select className="input" value={country} onChange={(e) => setCountry(e.target.value)}>
+              <optgroup label="South Asia">
+                <option>Sri Lanka</option>
+                <option>India</option>
+                <option>Pakistan</option>
+                <option>Bangladesh</option>
+                <option>Maldives</option>
+                <option>Nepal</option>
+              </optgroup>
+              <optgroup label="Middle East">
+                <option>United Arab Emirates</option>
+                <option>Saudi Arabia</option>
+                <option>Qatar</option>
+                <option>Kuwait</option>
+                <option>Bahrain</option>
+                <option>Oman</option>
+                <option>Jordan</option>
+                <option>Lebanon</option>
+                <option>Israel</option>
+                <option>Turkey</option>
+                <option>Iraq</option>
+                <option>Iran</option>
+                <option>Egypt</option>
+              </optgroup>
+              <optgroup label="South-East Asia">
+                <option>Singapore</option>
+                <option>Malaysia</option>
+                <option>Thailand</option>
+                <option>Indonesia</option>
+                <option>Philippines</option>
+                <option>Vietnam</option>
+              </optgroup>
+              <optgroup label="Other">
+                <option>United States</option>
+                <option>Canada</option>
+                <option>United Kingdom</option>
+                <option>Germany</option>
+                <option>Australia</option>
+                <option>Mexico</option>
+              </optgroup>
             </select>
           </Field>
           <Field label="Timezone"><select className="input"><option>America/Los_Angeles</option><option>America/New_York</option><option>Europe/London</option><option>Asia/Singapore</option></select></Field>
@@ -853,14 +915,17 @@ const NewClientPage = () => {
           <span style={{ fontSize: 12.5 }}>API access enabled</span>
         </div>
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>Allowed features</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>Allowed features in client portal</div>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
             {Object.keys(features).map((f) => (
               <label key={f} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5 }} onClick={() => setFeatures({ ...features, [f]: !features[f] })}>
                 <div className={"checkbox" + (features[f] ? " checked" : "")} />
-                <span>{f}</span>
+                <span>{FEATURE_LABELS[f] || f}</span>
               </label>
             ))}
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 8, lineHeight: 1.5 }}>
+            Unchecked features won&apos;t appear in the client&apos;s sidebar and direct URL access will redirect. Overview, Notifications, and Settings are always visible.
           </div>
         </div>
       </FormSection>

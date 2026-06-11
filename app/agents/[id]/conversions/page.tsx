@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { BedDouble, CheckCircle2, Coins, TrendingUp, Users } from "lucide-react";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
+import { getAllowedFeatures, guardClientFeature } from "@/lib/featureAccess";
 import { formatTs } from "@/lib/twilio";
 import {
   computeStats,
@@ -58,6 +59,8 @@ export default async function ConversionsPage({
   if (!session) redirect("/login");
   const agent = await findAgentForClient(params.id, session.clientId);
   if (!agent) redirect("/select");
+  await guardClientFeature("conversions", params.id);
+  const transcriptsAllowed = (await getAllowedFeatures()).has("transcripts");
 
   let range = (searchParams.range as string) || "total";
   if (!["total", "today", "week", "month", "custom"].includes(range)) range = "total";
@@ -228,7 +231,7 @@ export default async function ConversionsPage({
 
       {/* Booking table */}
       <div className="card overflow-hidden">
-        <BookingTable rows={sorted} statusFilter={statusFilter} emptyMessage={
+        <BookingTable rows={sorted} statusFilter={statusFilter} transcriptsAllowed={transcriptsAllowed} emptyMessage={
           customMissing
             ? "Pick a start and end date."
             : statusFilter === "confirmed"
@@ -262,7 +265,7 @@ function Kpi({ label, value, hint, tone, icon }: { label: string; value: string;
   );
 }
 
-function BookingTable({ rows, statusFilter, emptyMessage }: { rows: Conversion[]; statusFilter: string; emptyMessage: string }) {
+function BookingTable({ rows, statusFilter, emptyMessage, transcriptsAllowed }: { rows: Conversion[]; statusFilter: string; emptyMessage: string; transcriptsAllowed: boolean }) {
   if (!rows.length) {
     return (
       <div className="py-12 text-center">
@@ -294,14 +297,14 @@ function BookingTable({ rows, statusFilter, emptyMessage }: { rows: Conversion[]
           </tr>
         </thead>
         <tbody>
-          {rows.map((c) => <BookingRow key={c.id} c={c} />)}
+          {rows.map((c) => <BookingRow key={c.id} c={c} transcriptsAllowed={transcriptsAllowed} />)}
         </tbody>
       </table>
     </div>
   );
 }
 
-function BookingRow({ c }: { c: Conversion }) {
+function BookingRow({ c, transcriptsAllowed }: { c: Conversion; transcriptsAllowed: boolean }) {
   const pill = STATUS_PILL[c.status] ?? "pill-slate";
   const label = STATUS_LABELS[c.status] ?? c.status;
   const stay = formatStayRange(c.checkIn, c.checkOut);
@@ -342,7 +345,7 @@ function BookingRow({ c }: { c: Conversion }) {
       </td>
       <td className="py-3 px-4 text-slate-300 font-mono text-xs">{c.reference || "—"}</td>
       <td className="py-3 px-4 text-right">
-        <ViewTranscriptButton summary={summaryToCallSummary(c.summary)} />
+        <ViewTranscriptButton summary={summaryToCallSummary(c.summary)} allowed={transcriptsAllowed} />
       </td>
     </tr>
   );

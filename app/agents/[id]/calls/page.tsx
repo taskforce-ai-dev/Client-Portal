@@ -6,6 +6,7 @@ import TwilioNotice from "@/components/TwilioNotice";
 import CallLogTable, { CallRow } from "@/components/CallLogTable";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
+import { getAllowedFeatures, guardClientFeature } from "@/lib/featureAccess";
 import { formatTs, getAllCallsForSubaccount, isTwilioAuthConfigured } from "@/lib/twilio";
 import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
 
@@ -32,6 +33,9 @@ export default async function CallLogsPage({
   if (!session) redirect("/login");
   const agent = await findAgentForClient(params.id, session.clientId);
   if (!agent) redirect("/select");
+  await guardClientFeature("callLog", params.id);
+  const allowedFeatures = await getAllowedFeatures();
+  const transcriptsAllowed = allowedFeatures.has("transcripts");
 
   let range = (searchParams.range as string) || "total";
   if (!["total", "today", "week", "month", "custom"].includes(range)) range = "total";
@@ -202,6 +206,7 @@ export default async function CallLogsPage({
         <CallLogTable
           calls={allRows}
           emptyMessage={customMissing ? "Pick a start and end date to see calls." : "No calls in this period."}
+          transcriptsAllowed={transcriptsAllowed}
         />
       </div>
     </div>

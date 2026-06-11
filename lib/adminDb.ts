@@ -26,8 +26,24 @@ export type DbClient = {
   plan: string;
   mrr_cents: number;
   contact: string | null;
+  country: string;
+  allowed_features: string; // comma-separated feature keys; "" = all features
   created_at: string;
 };
+
+// All feature keys the client portal supports. Used to validate the
+// allowed_features list and to drive the admin form's checkbox grid.
+// Overview / Notifications / Settings are always on, not listed here.
+export const CLIENT_FEATURE_KEYS = ["callLog", "knowledge", "analytics", "conversions", "billing", "transcripts"] as const;
+export type ClientFeatureKey = (typeof CLIENT_FEATURE_KEYS)[number];
+
+// Convenience: parse the stored CSV → Set. Empty value means all enabled.
+export function parseAllowedFeatures(csv: string | null | undefined): Set<ClientFeatureKey> {
+  if (!csv) return new Set(CLIENT_FEATURE_KEYS); // back-compat: empty = all enabled
+  const tokens = csv.split(",").map((t) => t.trim()).filter(Boolean) as ClientFeatureKey[];
+  const valid = tokens.filter((t) => (CLIENT_FEATURE_KEYS as readonly string[]).includes(t));
+  return new Set(valid as ClientFeatureKey[]);
+}
 
 export type DbAdmin = {
   id: string;
@@ -62,6 +78,15 @@ export async function ensureSchema(sql: Sql) {
     created_at timestamptz NOT NULL DEFAULT now())`;
   // Reversible-encrypted password (replaces the plaintext `password` column).
   await sql`ALTER TABLE sentinel_client ADD COLUMN IF NOT EXISTS password_enc text`;
+  // Country of operation (ISO short name). New clients pick from a dropdown
+  // in the admin SPA; existing rows default to '' so reads stay safe.
+  await sql`ALTER TABLE sentinel_client ADD COLUMN IF NOT EXISTS country text NOT NULL DEFAULT ''`;
+  // Comma-separated list of feature keys the client is allowed to see in
+  // their portal. Empty = all features allowed (back-compat with existing
+  // clients before this column was added). Keys are sidebar tab IDs:
+  // callLog, knowledge, analytics, conversions, billing, transcripts.
+  // Overview, Notifications, and Settings are always on.
+  await sql`ALTER TABLE sentinel_client ADD COLUMN IF NOT EXISTS allowed_features text NOT NULL DEFAULT ''`;
   await sql`CREATE TABLE IF NOT EXISTS sentinel_audit (
     id text PRIMARY KEY, admin_name text NOT NULL DEFAULT 'System', action text NOT NULL,
     type text NOT NULL DEFAULT 'system', target text, summary text NOT NULL,
@@ -689,6 +714,16 @@ export async function listClients(): Promise<DbClient[]> {
 
 const PLAN_FEES: Record<string, number> = { Starter: 97600, Growth: 199000, Scale: 148000, Trial: 0 };
 
+// Validate + normalise an allowed_features list. Drops unknown keys.
+function normaliseAllowedFeatures(raw: string | string[] | null | undefined): string {
+  if (raw == null) return "";
+  const arr = Array.isArray(raw) ? raw : String(raw).split(",");
+  const valid = arr
+    .map((s) => s.trim())
+    .filter((s) => (CLIENT_FEATURE_KEYS as readonly string[]).includes(s));
+  return Array.from(new Set(valid)).join(",");
+}
+
 export async function createClient(input: {
   company: string;
   email: string;
@@ -697,6 +732,8 @@ export async function createClient(input: {
   status?: string;
   contact?: string;
   mrrCents?: number;
+  country?: string;
+  allowedFeatures?: string | string[];
 }): Promise<DbClient> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
@@ -704,10 +741,13 @@ export async function createClient(input: {
   const plan = input.plan || "Growth";
   const mrrCents = typeof input.mrrCents === "number" && input.mrrCents >= 0 ? Math.round(input.mrrCents) : (PLAN_FEES[plan] ?? 0);
   const id = "cli_" + crypto.randomBytes(8).toString("hex");
+  const country = (input.country || "").trim();
+  const allowedFeatures = normaliseAllowedFeatures(input.allowedFeatures);
   const rows = (await sql`
-    INSERT INTO sentinel_client (id, company, email, password, password_enc, password_hash, status, plan, mrr_cents, contact)
+    INSERT INTO sentinel_client (id, company, email, password, password_enc, password_hash, status, plan, mrr_cents, contact, country, allowed_features)
     VALUES (${id}, ${input.company}, ${input.email.toLowerCase()}, ${""}, ${encryptSecret(input.password)}, ${hashPassword(input.password)},
-            ${input.status || "active"}, ${plan}, ${mrrCents}, ${input.contact ?? "—"})
+            ${input.status || "active"}, ${plan}, ${mrrCents}, ${input.contact ?? "—"},
+            ${country}, ${allowedFeatures})
     RETURNING *`) as DbClient[];
   await audit(sql, "client.create", "client", input.company, "Created client " + input.company);
   return rows[0];
@@ -727,6 +767,8 @@ export async function updateClient(id: string, fields: {
   plan?: string;
   status?: string;
   mrrCents?: number;
+  country?: string;
+  allowedFeatures?: string | string[];
 }): Promise<DbClient | null> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
@@ -739,9 +781,12 @@ export async function updateClient(id: string, fields: {
   const plan = fields.plan || current.plan;
   const status = fields.status && ALLOWED_STATUS.has(fields.status) ? fields.status : current.status;
   const mrr = typeof fields.mrrCents === "number" && fields.mrrCents >= 0 ? Math.round(fields.mrrCents) : current.mrr_cents;
+  const country = fields.country !== undefined ? fields.country.trim() : current.country;
+  const allowedFeatures = fields.allowedFeatures !== undefined ? normaliseAllowedFeatures(fields.allowedFeatures) : current.allowed_features;
   const rows = (await sql`
     UPDATE sentinel_client
-    SET company = ${company}, contact = ${contact}, email = ${email}, plan = ${plan}, status = ${status}, mrr_cents = ${mrr}
+    SET company = ${company}, contact = ${contact}, email = ${email}, plan = ${plan}, status = ${status}, mrr_cents = ${mrr},
+        country = ${country}, allowed_features = ${allowedFeatures}
     WHERE id = ${id} RETURNING *`) as DbClient[];
   await audit(sql, "client.update", "client", company, "Updated client " + company);
   return rows[0] ?? null;

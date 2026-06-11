@@ -13,7 +13,7 @@ const sentimentPill: Record<string, string> = {
 
 // Same transcript modal UX as CallLogTable but standalone — usable from
 // any row in any table (Conversions, Call Log, future tables).
-export default function ViewTranscriptButton({ summary, label = "View transcript" }: { summary: CallSummary | null; label?: string }) {
+export default function ViewTranscriptButton({ summary, label = "View transcript", allowed = true }: { summary: CallSummary | null; label?: string; allowed?: boolean }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -28,7 +28,7 @@ export default function ViewTranscriptButton({ summary, label = "View transcript
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [open]);
 
-  if (!summary) {
+  if (!summary || !allowed) {
     return <span className="text-slate-600 text-xs">—</span>;
   }
 

@@ -10,6 +10,7 @@ import TwilioNotice from "@/components/TwilioNotice";
 import { Phone } from "lucide-react";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
+import { getAllowedFeatures } from "@/lib/featureAccess";
 import { getAgentMonthlyQuota } from "@/lib/billing";
 import CallLogTable, { CallRow } from "@/components/CallLogTable";
 import {
@@ -30,6 +31,7 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
   if (!session) redirect("/login");
   const agentDb = await findAgentForClient(params.id, session.clientId);
   if (!agentDb) redirect("/select");
+  const transcriptsAllowed = (await getAllowedFeatures()).has("transcripts");
   const agent = {
     id: agentDb.id,
     name: agentDb.name,
@@ -159,6 +161,7 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
         <CallLogTable
           calls={recentCalls}
           emptyMessage={configured ? "No calls yet." : "Connect Twilio to see calls."}
+          transcriptsAllowed={transcriptsAllowed}
         />
       </div>
     </div>

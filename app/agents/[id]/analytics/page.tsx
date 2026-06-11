@@ -9,6 +9,7 @@ import AutoRefresh from "@/components/AutoRefresh";
 import TwilioNotice from "@/components/TwilioNotice";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
+import { guardClientFeature } from "@/lib/featureAccess";
 import {
   bucketCallsByDayRange,
   bucketCallsByHour,
@@ -44,6 +45,7 @@ export default async function AnalyticsPage({
   if (!session) redirect("/login");
   const agent = await findAgentForClient(params.id, session.clientId);
   if (!agent) redirect("/select");
+  await guardClientFeature("analytics", params.id);
 
   const sub = agent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
   const configured = isTwilioAuthConfigured() && !!sub;

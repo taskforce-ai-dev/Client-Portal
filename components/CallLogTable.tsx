@@ -47,10 +47,14 @@ export default function CallLogTable({
   calls,
   emptyMessage = "No calls in this period.",
   maxHeight,
+  transcriptsAllowed = true,
 }: {
   calls: CallRow[];
   emptyMessage?: string;
   maxHeight?: number;
+  /** When false, hides "View transcript" buttons and the transcript modal —
+   *  used to honour the per-client allowed_features setting. */
+  transcriptsAllowed?: boolean;
 }) {
   const [modal, setModal] = useState<CallSummary | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -97,7 +101,7 @@ export default function CallLogTable({
                   <span className={outcomePill[c.outcome] ?? "pill-slate"}>{c.outcome}</span>
                 </td>
                 <td className="py-2.5 px-4 text-right">
-                  {c.summary ? (
+                  {c.summary && transcriptsAllowed ? (
                     <button
                       type="button"
                       onClick={() => setModal(c.summary)}

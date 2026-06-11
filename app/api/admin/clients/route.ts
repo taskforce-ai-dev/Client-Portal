@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
   }
   let body: {
     company?: string; email?: string; password?: string; plan?: string; status?: string; contact?: string; mrr_cents?: number;
+    country?: string; allowed_features?: string | string[];
     provisionAgent?: boolean; agentName?: string; agentRole?: string; agentChannels?: string; agentTwilioSubaccountSid?: string;
   };
   try {
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
       status: body.status,
       contact: body.contact,
       mrrCents: body.mrr_cents,
+      country: body.country,
+      allowedFeatures: body.allowed_features,
     });
     if (body.provisionAgent && body.agentName) {
       await createAgent({

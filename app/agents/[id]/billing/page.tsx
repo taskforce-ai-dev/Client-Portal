@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient } from "@/lib/adminDb";
+import { guardClientFeature } from "@/lib/featureAccess";
 import { BillingRange, fmtDurSec, getBillingSnapshot, moneyLKR } from "@/lib/billing";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ export default async function BillingPage({
   if (!session) redirect("/login");
   const agent = await findAgentForClient(params.id, session.clientId);
   if (!agent) redirect("/select");
+  await guardClientFeature("billing", params.id);
 
   let range = (searchParams.range as BillingRange) || "total";
   if (!["total", "today", "week", "month", "custom"].includes(range)) range = "total";

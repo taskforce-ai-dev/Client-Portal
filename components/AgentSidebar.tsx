@@ -18,16 +18,16 @@ import clsx from "clsx";
 import { type Agent } from "@/lib/data";
 
 const mainTop = (id: string) => [
-  { href: `/agents/${id}`, label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: `/agents/${id}/calls`, label: "Call Logs", icon: Phone },
-  { href: `/agents/${id}/knowledge`, label: "Knowledge Base", icon: Library },
-  { href: `/agents/${id}/analytics`, label: "Analytics", icon: BarChart3 },
-  { href: `/agents/${id}/conversions`, label: "Conversions", icon: TrendingUp },
+  { href: `/agents/${id}`, label: "Overview", icon: LayoutDashboard, exact: true, key: "overview" as const },
+  { href: `/agents/${id}/calls`, label: "Call Logs", icon: Phone, key: "callLog" as const },
+  { href: `/agents/${id}/knowledge`, label: "Knowledge Base", icon: Library, key: "knowledge" as const },
+  { href: `/agents/${id}/analytics`, label: "Analytics", icon: BarChart3, key: "analytics" as const },
+  { href: `/agents/${id}/conversions`, label: "Conversions", icon: TrendingUp, key: "conversions" as const },
 ];
 
 const account = (id: string) => [
-  { href: `/agents/${id}/billing`, label: "Billing", icon: CreditCard },
-  { href: `/agents/${id}/settings`, label: "Settings", icon: Settings },
+  { href: `/agents/${id}/billing`, label: "Billing", icon: CreditCard, key: "billing" as const },
+  { href: `/agents/${id}/settings`, label: "Settings", icon: Settings, key: "settings" as const },
 ];
 
 function fmtHm(minutes: number) {
@@ -45,6 +45,7 @@ export default function AgentSidebar({
   quotaPeriodStart,
   quotaPeriodEnd,
   unreadNotifications,
+  allowedFeatures,
 }: {
   agent: Agent;
   minutesUsed: number;
@@ -53,6 +54,10 @@ export default function AgentSidebar({
   quotaPeriodLabel?: string;
   quotaPeriodStart?: string;
   quotaPeriodEnd?: string;
+  /** Set of feature keys the client is allowed to see. Items whose `key`
+   *  isn't in this set are hidden from the sidebar. Overview / Settings /
+   *  Notifications are never filtered out — they're always shown. */
+  allowedFeatures?: Set<string>;
   unreadNotifications: number;
 }) {
   const pathname = usePathname();
@@ -139,9 +144,11 @@ export default function AgentSidebar({
             Main
           </div>
           <div className="space-y-1">
-            {mainTop(agent.id).map(({ href, label, icon, exact }) => (
-              <Item key={href} href={href} label={label} Icon={icon} exact={exact} />
-            ))}
+            {mainTop(agent.id)
+              .filter(({ key }) => !allowedFeatures || key === "overview" || allowedFeatures.has(key))
+              .map(({ href, label, icon, exact }) => (
+                <Item key={href} href={href} label={label} Icon={icon} exact={exact} />
+              ))}
             <Item
               href={`/agents/${agent.id}/notifications`}
               label="Notifications"
@@ -156,9 +163,11 @@ export default function AgentSidebar({
             Account
           </div>
           <div className="space-y-1">
-            {account(agent.id).map(({ href, label, icon }) => (
-              <Item key={href} href={href} label={label} Icon={icon} />
-            ))}
+            {account(agent.id)
+              .filter(({ key }) => !allowedFeatures || key === "settings" || allowedFeatures.has(key))
+              .map(({ href, label, icon }) => (
+                <Item key={href} href={href} label={label} Icon={icon} />
+              ))}
           </div>
         </div>
       </nav>
