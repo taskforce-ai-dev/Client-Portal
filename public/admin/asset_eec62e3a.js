@@ -1008,6 +1008,13 @@ const AgentConfigPage = ({ agentId, onBack }) => {
   const [notifRange, setNotifRange] = useState("total");
   const [notifCStart, setNotifCStart] = useState("");
   const [notifCEnd, setNotifCEnd] = useState("");
+  // Conversions tab — mirrors the client portal's /conversions page.
+  const [conv, setConv] = useState(null);
+  const [convLoading, setConvLoading] = useState(false);
+  const [convRange, setConvRange] = useState("total");
+  const [convCStart, setConvCStart] = useState("");
+  const [convCEnd, setConvCEnd] = useState("");
+  const [convStatus, setConvStatus] = useState("confirmed");
   // Outcome drill-in: { outcome, scope } where scope = "overview" | "analytics" | "callLog"
   // so the modal can pull from the right loaded dataset.
   const [categoryModal, setCategoryModal] = useState(null);
@@ -1395,6 +1402,25 @@ const AgentConfigPage = ({ agentId, onBack }) => {
     return () => { active = false; };
   }, [tab, notifRange, notifCStart, notifCEnd, agentId]);
 
+  // Conversions fetch — mirrors the client portal's /conversions endpoint
+  // so the admin sees the exact same classification, price, room, guests,
+  // confirmation #, etc. for every call.
+  useEffect(() => {
+    if (tab !== "conversions") return;
+    if (convRange === "custom" && (!convCStart || !convCEnd)) return;
+    let active = true;
+    setConvLoading(true);
+    const qs = convRange === "custom"
+      ? `range=custom&start=${convCStart}&end=${convCEnd}&status=${convStatus}`
+      : `range=${convRange}&status=${convStatus}`;
+    fetch(`/api/admin/agents/${agentId}/conversions?${qs}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (active) setConv(d || { items: [], stats: null, statusCounts: {} }); })
+      .catch(() => { if (active) setConv({ items: [], stats: null, statusCounts: {} }); })
+      .finally(() => { if (active) setConvLoading(false); });
+    return () => { active = false; };
+  }, [tab, convRange, convCStart, convCEnd, convStatus, agentId]);
+
   useEffect(() => {
     if (tab !== "analytics") return;
     if (range === "custom" && (!cStart || !cEnd)) return;
@@ -1479,7 +1505,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       </div>
 
       <div className="tabs">
-        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["callLog", "Call Log"], ["analytics", "Analytics"], ["billing", "Billing"], ["notifications", "Notifications"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
+        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["callLog", "Call Log"], ["analytics", "Analytics"], ["conversions", "Conversions"], ["billing", "Billing"], ["notifications", "Notifications"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
           <div key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -2137,6 +2163,179 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "conversions" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Header: date range chips + status chips */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
+              {[["total", "Total"], ["today", "Today"], ["week", "7 days"], ["month", "30 days"], ["custom", "Custom"]].map(([k, l]) => (
+                <button key={k} className={"btn btn-xs " + (convRange === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: convRange === k ? "var(--border-strong)" : "transparent" }} onClick={() => setConvRange(k)}>{l}</button>
+              ))}
+            </div>
+            {convRange === "custom" && (
+              <>
+                <input type="date" className="input" style={{ width: 150 }} value={convCStart} onChange={(e) => setConvCStart(e.target.value)} />
+                <span style={{ color: "var(--text-3)", fontSize: 12 }}>→</span>
+                <input type="date" className="input" style={{ width: 150 }} value={convCEnd} onChange={(e) => setConvCEnd(e.target.value)} />
+              </>
+            )}
+          </div>
+
+          {/* KPI strip — same metrics as client portal */}
+          {conv && conv.stats && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              <MiniStat label="Confirmed bookings" value={String(conv.stats.confirmed || 0)} tone="emerald" />
+              <MiniStat label="Revenue (LKR)" value={"Rs. " + (conv.stats.totalRevenueLkr || 0).toLocaleString()} />
+              <MiniStat label="Room nights sold" value={String(conv.stats.totalNights || 0)} />
+              <MiniStat label="Conversion rate" value={(conv.stats.conversionPct || 0) + "%"} tone={(conv.stats.conversionPct || 0) >= 25 ? "emerald" : (conv.stats.conversionPct || 0) >= 10 ? "amber" : "rose"} />
+            </div>
+          )}
+
+          {/* Status filter chips — 3 buckets only */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            {[
+              ["confirmed", "Confirmed", "#34D399"],
+              ["inquiry", "Inquiries", "#22D3EE"],
+              ["no_booking", "Dropped", "#FB7185"],
+              ["all", "All bookings", "#94A3B8"],
+            ].map(([k, l, color]) => {
+              const count = (conv && conv.statusCounts && conv.statusCounts[k]) || 0;
+              const active = convStatus === k;
+              return (
+                <button
+                  key={k}
+                  onClick={() => setConvStatus(k)}
+                  className={"btn btn-xs " + (active ? "btn-secondary" : "btn-ghost")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
+                  {l} <span style={{ color: "var(--text-3)", marginLeft: 4 }}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Funnel bar — proportional segments of the 3 buckets */}
+          {conv && conv.statusCounts && (() => {
+            const totalConv = (conv.statusCounts["confirmed"] || 0) + (conv.statusCounts["inquiry"] || 0) + (conv.statusCounts["no_booking"] || 0);
+            if (totalConv === 0) return null;
+            const segs = [
+              { label: "Confirmed", count: conv.statusCounts["confirmed"] || 0, color: "#34D399" },
+              { label: "Inquiries", count: conv.statusCounts["inquiry"] || 0, color: "#22D3EE" },
+              { label: "Dropped", count: conv.statusCounts["no_booking"] || 0, color: "#FB7185" },
+            ];
+            return (
+              <div className="panel" style={{ padding: 12 }}>
+                <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>Funnel</div>
+                <div style={{ display: "flex", height: 32, borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)" }}>
+                  {segs.map((s) => {
+                    const pct = (s.count / totalConv) * 100;
+                    if (pct <= 0) return null;
+                    return (
+                      <div
+                        key={s.label}
+                        title={`${s.label}: ${s.count} (${pct.toFixed(1)}%)`}
+                        style={{ width: pct + "%", background: s.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, color: "#0a0f1c" }}
+                      >
+                        {pct >= 8 ? pct.toFixed(0) + "%" : ""}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Booking table */}
+          {convLoading && <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--text-3)" }}>Loading conversions…</div>}
+          {!convLoading && conv && conv.customMissing && (
+            <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-3)" }}>Pick a start and end date.</div>
+          )}
+          {!convLoading && conv && !conv.customMissing && (
+            <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+              {(!conv.items || conv.items.length === 0) ? (
+                <div style={{ padding: 30, textAlign: "center", color: "var(--text-3)" }}>
+                  {convStatus === "confirmed" ? "No confirmed bookings in this period yet." : "No matching records."}
+                </div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Guest</th>
+                        <th>Call</th>
+                        <th>Status</th>
+                        <th>Stay</th>
+                        <th style={{ textAlign: "right" }}>Nights</th>
+                        <th>Room</th>
+                        <th style={{ textAlign: "right" }}>Guests</th>
+                        <th style={{ textAlign: "right" }}>Total</th>
+                        <th>Confirmation #</th>
+                        <th style={{ textAlign: "right" }}>Transcript</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conv.items.map((c) => {
+                        const statusColors = { confirmed: "#34D399", inquiry: "#22D3EE", no_booking: "#FB7185", cancelled: "#FB7185", none: "#64748b" };
+                        const statusLabels = { confirmed: "Confirmed", inquiry: "Inquiry", no_booking: "Dropped", cancelled: "Cancelled", none: "Unclassified" };
+                        const color = statusColors[c.status] || "#64748b";
+                        const stay = c.checkIn && c.checkOut
+                          ? c.checkIn + " → " + c.checkOut
+                          : (c.checkIn || c.mentionedDates || "—");
+                        return (
+                          <tr key={c.id}>
+                            <td style={{ color: "var(--text-0)" }}>
+                              <div style={{ fontWeight: 500 }}>{c.callerName || "—"}</div>
+                              {c.callerPhone && <div style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{c.callerPhone}</div>}
+                            </td>
+                            <td style={{ color: "var(--text-3)", fontFamily: "var(--ff-mono)", fontSize: 11 }}>{(c.occurredAt || "").replace("T", " ").slice(0, 19)}</td>
+                            <td>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 8px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid " + color + "55", color }}>
+                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
+                                {statusLabels[c.status] || c.status}
+                              </span>
+                              {c.statusSource === "inferred" && (
+                                <div style={{ fontSize: 9, color: "var(--text-3)", marginTop: 2 }} title="Inferred from transcript">inferred</div>
+                              )}
+                            </td>
+                            <td style={{ color: "var(--text-1)", fontSize: 11.5 }}>{stay}</td>
+                            <td style={{ textAlign: "right", color: "var(--text-2)", fontFamily: "var(--ff-mono)" }}>{c.nights != null ? c.nights : "—"}</td>
+                            <td style={{ color: "var(--text-2)" }}>{c.roomType || "—"}</td>
+                            <td style={{ textAlign: "right", color: "var(--text-2)" }}>{c.guests != null ? c.guests : "—"}</td>
+                            <td style={{ textAlign: "right", color: "var(--text-0)", fontFamily: "var(--ff-mono)", fontWeight: 600 }}>
+                              {c.valueLkr != null ? "Rs. " + c.valueLkr.toLocaleString() : "—"}
+                              {c.valueLkr && c.nights && c.nights > 0 && (
+                                <div style={{ fontSize: 10, color: "var(--text-3)", fontWeight: 400 }}>Rs. {Math.round(c.valueLkr / c.nights).toLocaleString()} / night</div>
+                              )}
+                            </td>
+                            <td style={{ color: "var(--text-2)", fontFamily: "var(--ff-mono)", fontSize: 11 }}>{c.reference || "—"}</td>
+                            <td style={{ textAlign: "right" }}>
+                              {c.summary && (c.summary.transcript || c.summary.summary) ? (
+                                <button
+                                  className="btn btn-ghost btn-xs"
+                                  onClick={() => setTranscriptModal(c.summary)}
+                                  style={{ color: "var(--accent)" }}
+                                >View transcript</button>
+                              ) : (
+                                <span style={{ color: "var(--text-3)", fontSize: 11 }}>—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>
+            Booking details (price, dates, room, guests, confirmation #) come from the AI agent&apos;s explicit fields when provided, otherwise extracted from the transcript using conservative pattern matching. Cells show — when a detail wasn&apos;t mentioned. Both admin and client portal share the same pipeline — numbers match exactly.
           </div>
         </div>
       )}
