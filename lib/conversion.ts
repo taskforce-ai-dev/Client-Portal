@@ -683,10 +683,10 @@ export function extractValueLkr(text: string | null, nights?: number | null): nu
   return best.value;
 }
 
-// Reference patterns ordered from most-specific to least. Min reference
-// length is 2 chars so bookings with numeric IDs like "39" still match;
-// we still require at least one digit OR uppercase letter so a stray
-// word doesn't trigger.
+// Reference patterns ordered from most-specific to most-permissive. Min
+// reference length is 2 chars so bookings with numeric IDs like "39" still
+// match; isValidReference (post-match) requires at least one digit and
+// rejects false-positive words like "NUMBER" / "REFERENCE".
 const REF_PATTERNS: RegExp[] = [
   // "reservation reference number 39" / "booking confirmation code XYZ-12"
   /\b(?:reservation|booking|confirmation)\s+(?:reference\s+|confirmation\s+)?(?:number|code|id|ref)\s+(?:is\s+|:\s*|#\s*)?([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
@@ -694,10 +694,17 @@ const REF_PATTERNS: RegExp[] = [
   /\bconfirmation\s+(?:number|code|id|reference)\s*[:=]\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
   /\bbooking\s+(?:number|reference|id|ref)\s*[:=]\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
   /\breservation\s+(?:number|code|reference|id|ref)\s*[:=]\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
-  // "ref #12345" / "reference: ABC-123"
-  /\bref(?:erence)?\s*[#:]?\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
   // "the booking is #39" / "your reservation #39"
   /\b(?:booking|reservation|confirmation)\s+(?:is\s+)?#\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
+  // "ref #12345" / "reference: ABC-123"
+  /\bref(?:erence)?\s*[#:]?\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
+  // CATCH-ALL (most permissive): entity + any non-word chars + zero or
+  // more qualifier words + optional "is" / # / : / - separator + value.
+  // Catches "Booking 42", "Reservation: XYZ-1", "Booking ID is 999",
+  // "Reservation. 12345", "Confirmation - ABC123", "your booking — 39".
+  // isValidReference (post-match) rejects false-positive captures like
+  // "confirmed" / "made" / "complete" — no digit, blocklisted.
+  /\b(?:your|the|my|our|a)?\s*(?:reference|booking|reservation|confirmation)\b[^\w]*(?:(?:reference|number|code|id|ref|confirmation)\b[^\w]*)*(?:is\b[^\w]*|#[^\w]*|[:=][^\w]*|[-—–][^\w]*)?([A-Z0-9]+(?:[\-/][A-Z0-9]+)*)/i,
 ];
 
 // Confirmation/reference numbers always contain at least one digit in
@@ -717,8 +724,14 @@ function isValidReference(s: string): boolean {
 export function extractReference(text: string | null): string | null {
   if (!text) return null;
   for (const re of REF_PATTERNS) {
-    const m = text.match(re);
-    if (m && isValidReference(m[1])) return m[1].toUpperCase();
+    // Try EVERY match for this pattern — using matchAll, not match. Lets
+    // us skip false-positive captures like "confirmed" (rejected by
+    // isValidReference) and find the real reference number later in the
+    // text. Without this, the first useless match would block the rest.
+    const flagged = re.flags.includes("g") ? re : new RegExp(re.source, re.flags + "g");
+    for (const m of text.matchAll(flagged)) {
+      if (m[1] && isValidReference(m[1])) return m[1].toUpperCase();
+    }
   }
   return null;
 }
