@@ -804,12 +804,29 @@ export function toConversion(s: DbCallSummary): Conversion {
   }
 
   // Field precedence: explicit AI > structured KEY:value > free-text regex.
+  // Each explicit field is sanity-validated — if the AI sent a gibberish
+  // placeholder like "null" / "N/A" / "" / 0, fall through to extraction.
+  const cleanString = (v: unknown): string | null => {
+    if (v == null) return null;
+    const s = String(v).trim();
+    if (!s) return null;
+    const low = s.toLowerCase();
+    if (["null", "none", "n/a", "na", "undefined", "unknown", "tbd", "-"].includes(low)) return null;
+    return s;
+  };
+  const explicitRef = cleanString(s.booking_reference);
+  const explicitRoom = cleanString(s.booking_room_type);
   // Pass `nights` into value extraction so "65,450 LKR per night" × 2 nights
   // becomes the actual total (Rs. 130,900) instead of the per-night unit.
-  const valueLkr = s.booking_value_lkr ?? struct.valueLkr ?? extractValueLkr(haystack, nights);
-  const reference = s.booking_reference || struct.reference || extractReference(haystack);
-  const roomType = s.booking_room_type || struct.room || extractRoomType(haystack);
-  const guests = s.booking_guests ?? struct.guests ?? extractGuests(haystack);
+  const valueLkr = (typeof s.booking_value_lkr === "number" && s.booking_value_lkr > 0
+    ? s.booking_value_lkr
+    : null) ?? struct.valueLkr ?? extractValueLkr(haystack, nights);
+  const reference = (explicitRef && isValidReference(explicitRef) ? explicitRef : null)
+    ?? struct.reference ?? extractReference(haystack);
+  const roomType = explicitRoom ?? struct.room ?? extractRoomType(haystack);
+  const guests = (typeof s.booking_guests === "number" && s.booking_guests > 0
+    ? s.booking_guests
+    : null) ?? struct.guests ?? extractGuests(haystack);
 
   return {
     id: s.id,
