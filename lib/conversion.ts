@@ -71,15 +71,20 @@ export function classifyConversion(s: Pick<DbCallSummary, "transcript" | "summar
 // Cancelled / declined intentionally maps to "no_booking" since the UI
 // only surfaces Confirmed / Inquiry / Dropped (per spec — cancellations
 // are functionally non-conversions, no separate bucket).
+//
+// IMPORTANT: word separators in the regex are [\s_-]+ (not \s+) so we
+// match snake_case, kebab-case, AND space-separated values. e.g.
+// "booking_confirmed" / "booking-confirmed" / "booking confirmed" all
+// classify identically.
 function tokenToStatus(tok: string): BookingStatus | null {
   const t = tok.toLowerCase().trim();
   if (!t) return null;
   // Confirmed
-  if (/\b(?:booking\s+confirmed|confirmed\s+booking|booking\s+complete|booking\s+secured|reservation\s+confirmed|booking\s+done|booked|completed|won|conversion|converted)\b/.test(t)) return "confirmed";
-  // Dropped / cancelled / not-interested — all roll into "dropped" bucket
-  if (/\b(?:dropped|hung\s+up|disconnect(?:ed)?|abandoned|not\s+interested|wrong\s+number|spam|no[\s-]*booking|lost|cancel(?:led|ation)?|declined|rejected)\b/.test(t)) return "no_booking";
-  // Inquiry / followup / lead / pending — and bare "info" / "availability"
-  if (/\b(?:booking\s+inquiry|booking\s+enquiry|inquiry|enquiry|information|availability|rate\s+inquiry|price\s+inquiry|general\s+inquiry|follow[\s-]*up|lead|pending|interested|info)\b/.test(t)) return "inquiry";
+  if (/\b(?:booking[\s_-]+confirmed|confirmed[\s_-]+booking|booking[\s_-]+complete(?:d)?|booking[\s_-]+secured|reservation[\s_-]+confirmed|booking[\s_-]+done|booked|completed|won|conversion|converted)\b/.test(t)) return "confirmed";
+  // Dropped / cancelled / not-interested
+  if (/\b(?:dropped|hung[\s_-]+up|disconnect(?:ed)?|abandoned|not[\s_-]+interested|wrong[\s_-]+number|spam|no[\s_-]+booking|booking[\s_-]+lost|lost|cancel(?:led|ation)?|declined|rejected)\b/.test(t)) return "no_booking";
+  // Inquiry / followup / lead / pending
+  if (/\b(?:booking[\s_-]+inquiry|booking[\s_-]+enquiry|inquiry|enquiry|information|availability|rate[\s_-]+inquiry|price[\s_-]+inquiry|general[\s_-]+inquiry|follow[\s_-]+up|followup|lead|pending|interested|info)\b/.test(t)) return "inquiry";
   return null;
 }
 
@@ -328,7 +333,8 @@ export function parseStructured(text: string | null, callDate?: string): Structu
   let reference: string | null = null;
   if (refRaw) {
     const cleaned = refRaw.split(/\s/)[0].replace(/[^A-Za-z0-9\-_/]/g, "");
-    if (cleaned.length >= 3 && /[A-Z0-9]/i.test(cleaned)) reference = cleaned.toUpperCase();
+    // Min length 2 — matches short numeric IDs like "39".
+    if (cleaned.length >= 2 && /[A-Z0-9]/i.test(cleaned)) reference = cleaned.toUpperCase();
   }
 
   // ---- Check-in / Check-out / Nights -------------------------------
@@ -609,33 +615,43 @@ function applyKShorthand(rawText: string, matchedNumber: string): number | null 
   return scaled >= 500 ? Math.round(scaled) : null;
 }
 
-export function extractValueLkr(text: string | null): number | null {
+// Detect if a number matched is quoted PER NIGHT rather than as a total.
+// Looks at the ~30 chars following the match for hospitality unit phrases.
+function isPerNightContext(text: string, matchIndex: number, matchLength: number): boolean {
+  const tail = text.slice(matchIndex + matchLength, matchIndex + matchLength + 60).toLowerCase();
+  return /\b(?:per\s+night|\/\s*night|a\s+night|each\s+night|nightly|p[\s\.]*n\b)/.test(tail);
+}
+
+export function extractValueLkr(text: string | null, nights?: number | null): number | null {
   if (!text) return null;
-  // Strategy: collect every plausible LKR amount with a context score,
-  // return the highest-scoring one. Lets us pick "total is 25000" over
-  // a stray "25" elsewhere in the transcript.
-  const candidates: Array<{ value: number; score: number }> = [];
+  // Strategy: collect every plausible LKR amount with a context score and
+  // a per-night flag. Return the highest-scoring one, multiplying by
+  // nights if it was quoted per-night and we know the length of stay.
+  const candidates: Array<{ value: number; score: number; perNight: boolean }> = [];
 
   // Tier A — explicit currency marker (highest trust)
   for (const m of text.matchAll(/(?:Rs\.?|LKR|₨)\s*([\d,]+(?:\.\d+)?)\s*(k|K)?\b/g)) {
     const raw = Number(m[1].replace(/,/g, ""));
     if (!Number.isFinite(raw)) continue;
     const v = m[2] ? Math.round(raw * 1000) : Math.round(raw);
-    if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 100 });
+    if (v < 500 || v > 50_000_000) continue;
+    candidates.push({ value: v, score: 100, perNight: isPerNightContext(text, m.index!, m[0].length) });
   }
   for (const m of text.matchAll(/([\d,]+(?:\.\d+)?)\s*(?:LKR|lkr|rupees?)\b/g)) {
     const raw = Number(m[1].replace(/,/g, ""));
     if (!Number.isFinite(raw)) continue;
     const v = Math.round(raw);
-    if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 100 });
+    if (v < 500 || v > 50_000_000) continue;
+    candidates.push({ value: v, score: 100, perNight: isPerNightContext(text, m.index!, m[0].length) });
   }
 
   // Tier B — contextual: "total/price/cost/rate/comes to" + number
-  for (const m of text.matchAll(/(?:total|grand[\s_]*total|booking[\s_]*total|booking[\s_]*value|price|amount(?:\s+due)?|cost|charges?|fee|rate|tariff|comes?\s+to|will\s+be|that(?:'ll|\s+will)\s+be|book\s+(?:that|it|this)\s+for|for\s+a\s+total\s+of|all\s+together|altogether|payable)\s*(?:is\s+|of\s+|comes\s+to\s+|@\s*|:\s*|=\s*)?(?:Rs\.?|LKR)?\s*([\d,]+(?:\.\d+)?)\s*(k|K)?\b/gi)) {
+  for (const m of text.matchAll(/(?:total|grand[\s_]*total|booking[\s_]*total|booking[\s_]*value|price|amount(?:\s+due)?|cost|charges?|fee|rate|tariff|comes?\s+to|will\s+be|that(?:'ll|\s+will)\s+be|book\s+(?:that|it|this)\s+for|for\s+a\s+total\s+of|all\s+together|altogether|payable|priced\s+at)\s*(?:is\s+|of\s+|comes\s+to\s+|@\s*|:\s*|=\s*|at\s+)?(?:Rs\.?|LKR)?\s*([\d,]+(?:\.\d+)?)\s*(k|K)?\b/gi)) {
     const raw = Number(m[1].replace(/,/g, ""));
     if (!Number.isFinite(raw)) continue;
     const v = m[2] ? Math.round(raw * 1000) : Math.round(raw);
-    if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 80 });
+    if (v < 500 || v > 50_000_000) continue;
+    candidates.push({ value: v, score: 80, perNight: isPerNightContext(text, m.index!, m[0].length) });
   }
 
   // Tier C — "Nk" / "N K" shorthand near hospitality context
@@ -643,7 +659,8 @@ export function extractValueLkr(text: string | null): number | null {
     const raw = Number(m[1].replace(/,/g, ""));
     if (!Number.isFinite(raw)) continue;
     const v = Math.round(raw * 1000);
-    if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 70 });
+    if (v < 500 || v > 50_000_000) continue;
+    candidates.push({ value: v, score: 70, perNight: isPerNightContext(text, m.index!, m[0].length) });
   }
 
   // Tier D — word-form: "twenty-five thousand"
@@ -651,28 +668,44 @@ export function extractValueLkr(text: string | null): number | null {
     const base = parseWordNumber(m[1]);
     if (base) {
       const v = base * 1000;
-      if (v >= 500 && v <= 50_000_000) candidates.push({ value: v, score: 60 });
+      if (v < 500 || v > 50_000_000) continue;
+      candidates.push({ value: v, score: 60, perNight: isPerNightContext(text, m.index!, m[0].length) });
     }
   }
 
   if (!candidates.length) return null;
   // Highest score wins; on ties, take the largest value (most likely the grand total).
   candidates.sort((a, b) => b.score - a.score || b.value - a.value);
-  return candidates[0].value;
+  const best = candidates[0];
+  // Per-night × nights = total. We only multiply when we have a known
+  // nights count AND no candidate quoted the actual grand total. If
+  // any non-per-night candidate scored highest, trust that as the total.
+  if (best.perNight && nights && nights > 0) return best.value * nights;
+  return best.value;
 }
 
+// Reference patterns ordered from most-specific to least. Min reference
+// length is 2 chars so bookings with numeric IDs like "39" still match;
+// we still require at least one digit OR uppercase letter so a stray
+// word doesn't trigger.
 const REF_PATTERNS: RegExp[] = [
-  /confirmation\s+(?:number|code|id|reference)\s*(?:is|:)\s*([A-Z0-9][A-Z0-9\-/]{2,})/i,
-  /booking\s+(?:number|reference|id|ref)\s*(?:is|:)\s*([A-Z0-9][A-Z0-9\-/]{2,})/i,
-  /reservation\s+(?:number|code|reference|id|ref)\s*(?:is|:)\s*([A-Z0-9][A-Z0-9\-/]{2,})/i,
-  /\bref(?:erence)?\s*[#:]?\s*([A-Z0-9][A-Z0-9\-/]{3,})/i,
+  // "reservation reference number 39" / "booking confirmation code XYZ-12"
+  /\b(?:reservation|booking|confirmation)\s+(?:reference\s+|confirmation\s+)?(?:number|code|id|ref)\s+(?:is\s+|:\s*|#\s*)?([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
+  // "confirmation number: 39"
+  /\bconfirmation\s+(?:number|code|id|reference)\s*[:=]\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
+  /\bbooking\s+(?:number|reference|id|ref)\s*[:=]\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
+  /\breservation\s+(?:number|code|reference|id|ref)\s*[:=]\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
+  // "ref #12345" / "reference: ABC-123"
+  /\bref(?:erence)?\s*[#:]?\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
+  // "the booking is #39" / "your reservation #39"
+  /\b(?:booking|reservation|confirmation)\s+(?:is\s+)?#\s*([A-Z0-9]{2,}(?:[\-/][A-Z0-9]+)*)/i,
 ];
 
 export function extractReference(text: string | null): string | null {
   if (!text) return null;
   for (const re of REF_PATTERNS) {
     const m = text.match(re);
-    if (m) return m[1].toUpperCase();
+    if (m && /[A-Z0-9]/i.test(m[1])) return m[1].toUpperCase();
   }
   return null;
 }
@@ -742,12 +775,7 @@ export function toConversion(s: DbCallSummary): Conversion {
   // "dropped" since the spec asked to remove the Cancelled bucket entirely.
   const status: BookingStatus = rawStatus === "cancelled" ? "no_booking" : rawStatus;
 
-  // Field precedence: explicit AI > structured KEY:value > free-text regex.
-  const valueLkr = s.booking_value_lkr ?? struct.valueLkr ?? extractValueLkr(haystack);
-  const reference = s.booking_reference || struct.reference || extractReference(haystack);
-  const roomType = s.booking_room_type || struct.room || extractRoomType(haystack);
-  const guests = s.booking_guests ?? struct.guests ?? extractGuests(haystack);
-
+  // Dates first — we need nights to interpret per-night pricing as total.
   let checkIn = s.booking_check_in || struct.checkIn;
   let checkOut = s.booking_check_out || struct.checkOut;
   if (!checkIn || !checkOut) {
@@ -756,12 +784,19 @@ export function toConversion(s: DbCallSummary): Conversion {
     if (!checkOut) checkOut = dates.checkOut;
   }
   let nights = computeNights(checkIn, checkOut) ?? struct.nights;
-  // If we have nights + check-in but no check-out, derive it.
   if (checkIn && !checkOut && nights) {
     const d = new Date(checkIn + "T00:00:00Z");
     d.setUTCDate(d.getUTCDate() + nights);
     checkOut = iso(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
   }
+
+  // Field precedence: explicit AI > structured KEY:value > free-text regex.
+  // Pass `nights` into value extraction so "65,450 LKR per night" × 2 nights
+  // becomes the actual total (Rs. 130,900) instead of the per-night unit.
+  const valueLkr = s.booking_value_lkr ?? struct.valueLkr ?? extractValueLkr(haystack, nights);
+  const reference = s.booking_reference || struct.reference || extractReference(haystack);
+  const roomType = s.booking_room_type || struct.room || extractRoomType(haystack);
+  const guests = s.booking_guests ?? struct.guests ?? extractGuests(haystack);
 
   return {
     id: s.id,
