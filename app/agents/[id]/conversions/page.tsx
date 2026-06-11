@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CheckCircle2, FileText, TrendingUp, X } from "lucide-react";
+import { BedDouble, CheckCircle2, Coins, TrendingUp, Users } from "lucide-react";
 import { getClientSession } from "@/lib/clientAuth";
 import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
 import { formatTs } from "@/lib/twilio";
-import { computeStats, toConversion, type Conversion } from "@/lib/conversion";
+import {
+  computeStats,
+  formatStayRange,
+  toConversion,
+  type Conversion,
+} from "@/lib/conversion";
 import AutoRefresh from "@/components/AutoRefresh";
 import type { CallSummary } from "@/components/CallLogTable";
 import ViewTranscriptButton from "@/components/ViewTranscriptButton";
@@ -20,11 +25,11 @@ const RANGES: [string, string][] = [
 ];
 
 const STATUS_LABELS: Record<string, string> = {
-  all: "All",
+  all: "All bookings",
   confirmed: "Confirmed",
-  inquiry: "Inquiry",
+  inquiry: "Inquiries",
   cancelled: "Cancelled",
-  no_booking: "No booking",
+  no_booking: "Not interested",
   none: "Unclassified",
 };
 
@@ -36,7 +41,6 @@ const STATUS_PILL: Record<string, string> = {
   none: "pill-slate",
 };
 
-function ymd(d: Date) { return d.toISOString().slice(0, 10); }
 function moneyLKR(n: number | null) {
   if (n == null) return "—";
   return `Rs. ${n.toLocaleString()}`;
@@ -56,7 +60,8 @@ export default async function ConversionsPage({
 
   let range = (searchParams.range as string) || "total";
   if (!["total", "today", "week", "month", "custom"].includes(range)) range = "total";
-  const statusFilter = searchParams.status || "all";
+  // Default to Confirmed view per request. Override via ?status=...
+  const statusFilter = searchParams.status || "confirmed";
 
   // Compute window
   const now = new Date();
@@ -81,8 +86,12 @@ export default async function ConversionsPage({
   const all: Conversion[] = rawSummaries.map(toConversion);
   const stats = computeStats(all);
   const filtered = statusFilter === "all" ? all : all.filter((c) => c.status === statusFilter);
+  // Confirmed rows sorted by check-in date when available, then by call date desc.
+  const sorted = [...filtered].sort((a, b) => {
+    if (statusFilter === "confirmed" && a.checkIn && b.checkIn) return a.checkIn.localeCompare(b.checkIn);
+    return new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime();
+  });
 
-  // Build counts for the status chip row.
   const statusCounts: Record<string, number> = { all: all.length };
   for (const c of all) statusCounts[c.status] = (statusCounts[c.status] ?? 0) + 1;
 
@@ -94,9 +103,9 @@ export default async function ConversionsPage({
     const qs = new URLSearchParams(qsBase);
     if (key === "range") {
       if (value !== "total") qs.set("range", value); else qs.delete("range");
-      if (statusFilter !== "all") qs.set("status", statusFilter);
+      if (statusFilter !== "confirmed") qs.set("status", statusFilter);
     } else if (key === "status") {
-      if (value !== "all") qs.set("status", value); else qs.delete("status");
+      if (value !== "confirmed") qs.set("status", value); else qs.delete("status");
     }
     return qs.toString() ? `?${qs.toString()}` : "?";
   };
@@ -107,7 +116,7 @@ export default async function ConversionsPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">Conversions</h1>
           <p className="text-sm text-slate-400 mt-1">
-            {agent.name} · Booking outcomes from AI agent calls
+            {agent.name} · Bookings & inquiries from AI agent calls
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
@@ -133,7 +142,7 @@ export default async function ConversionsPage({
       {range === "custom" && (
         <form method="GET" className="card p-3 flex items-end gap-2 flex-wrap">
           <input type="hidden" name="range" value="custom" />
-          {statusFilter !== "all" && <input type="hidden" name="status" value={statusFilter} />}
+          {statusFilter !== "confirmed" && <input type="hidden" name="status" value={statusFilter} />}
           <div>
             <div className="stat-label mb-1">From</div>
             <input type="date" name="start" defaultValue={searchParams.start || ""} className="input-dark" />
@@ -150,40 +159,41 @@ export default async function ConversionsPage({
         <div className="card p-4 text-sm text-slate-400">Pick a start and end date to see conversions.</div>
       )}
 
-      {/* KPI strip */}
+      {/* KPI strip — hospitality-style */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Kpi
-          label="Real-intent calls"
-          value={stats.inquiries.toLocaleString()}
-          hint={`of ${stats.totalCalls.toLocaleString()} calls`}
-          icon={<TrendingUp className="w-4 h-4" />}
-        />
         <Kpi
           label="Confirmed bookings"
           value={stats.confirmed.toLocaleString()}
-          hint={`${stats.confirmed} confirmed`}
+          hint={stats.totalCalls ? `${stats.confirmed} of ${stats.totalCalls} calls` : undefined}
           tone="emerald"
           icon={<CheckCircle2 className="w-4 h-4" />}
         />
         <Kpi
-          label="Conversion rate"
-          value={`${stats.conversionPct}%`}
-          hint="confirmed ÷ real-intent calls"
-          tone={stats.conversionPct >= 25 ? "emerald" : stats.conversionPct >= 10 ? "amber" : "rose"}
-        />
-        <Kpi
           label="Revenue"
           value={moneyLKR(stats.totalRevenueLkr)}
-          hint={stats.avgValueLkr ? `Avg ${moneyLKR(stats.avgValueLkr)}` : "No values posted yet"}
+          hint={stats.avgValueLkr ? `Avg ${moneyLKR(stats.avgValueLkr)} / booking` : "Awaiting price data"}
+          icon={<Coins className="w-4 h-4" />}
+        />
+        <Kpi
+          label="Room nights sold"
+          value={stats.totalNights.toLocaleString()}
+          hint={stats.confirmed ? `${stats.totalNights ? (stats.totalNights / stats.confirmed).toFixed(1) : "—"} avg per booking` : undefined}
+          icon={<BedDouble className="w-4 h-4" />}
+        />
+        <Kpi
+          label="Conversion rate"
+          value={`${stats.conversionPct}%`}
+          hint={`${stats.confirmed} / ${stats.realIntent} real-intent calls`}
+          tone={stats.conversionPct >= 25 ? "emerald" : stats.conversionPct >= 10 ? "amber" : "rose"}
+          icon={<TrendingUp className="w-4 h-4" />}
         />
       </div>
 
       {/* Status filter chips */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="stat-label mr-1">Status</span>
-        {["all", "confirmed", "inquiry", "cancelled", "no_booking", "none"].map((s) => {
+        {["confirmed", "inquiry", "cancelled", "no_booking", "none", "all"].map((s) => {
           const count = statusCounts[s] ?? 0;
-          if (s !== "all" && count === 0) return null;
+          if (s !== "all" && s !== "confirmed" && count === 0) return null;
           const active = statusFilter === s;
           return (
             <Link
@@ -202,13 +212,19 @@ export default async function ConversionsPage({
         })}
       </div>
 
-      {/* Conversion table */}
+      {/* Booking table */}
       <div className="card overflow-hidden">
-        <ConversionsTable rows={filtered} emptyMessage={customMissing ? "Pick a start and end date." : "No conversions matched this filter."} />
+        <BookingTable rows={sorted} statusFilter={statusFilter} emptyMessage={
+          customMissing
+            ? "Pick a start and end date."
+            : statusFilter === "confirmed"
+              ? "No confirmed bookings in this period yet."
+              : "No matching records."
+        } />
       </div>
 
       <div className="text-[11px] text-slate-500">
-        Booking fields (status, price, dates, room) come from the AI agent&apos;s call summary. Where the agent didn&apos;t set a status explicitly we infer it from the transcript using conservative keyword matching — explicit AI-set values always win.
+        Booking details (price, dates, room, guests, confirmation #) are extracted from the AI agent&apos;s explicit fields when provided, otherwise pulled from the transcript using conservative pattern matching. Cells show <span className="text-slate-300">—</span> when a detail wasn&apos;t mentioned in the call.
       </div>
     </div>
   );
@@ -216,11 +232,15 @@ export default async function ConversionsPage({
 
 function Kpi({ label, value, hint, tone, icon }: { label: string; value: string; hint?: string; tone?: "emerald" | "amber" | "rose"; icon?: React.ReactNode }) {
   const toneCls = tone === "emerald" ? "text-emerald-300" : tone === "amber" ? "text-amber-300" : tone === "rose" ? "text-rose-300" : "text-white";
+  const iconBg = tone === "emerald" ? "bg-emerald-500/10 text-emerald-300"
+    : tone === "amber" ? "bg-amber-500/10 text-amber-300"
+    : tone === "rose" ? "bg-rose-500/10 text-rose-300"
+    : "bg-white/[0.04] text-slate-300";
   return (
     <div className="card p-4">
-      <div className="flex items-center gap-2 text-slate-400 stat-label">
-        {icon}
-        <span>{label}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="stat-label">{label}</div>
+        {icon && <div className={`w-7 h-7 rounded-lg grid place-items-center shrink-0 ${iconBg}`}>{icon}</div>}
       </div>
       <div className={`text-2xl font-semibold tracking-tight mt-1 ${toneCls}`}>{value}</div>
       {hint && <div className="text-[11px] text-slate-500 mt-1">{hint}</div>}
@@ -228,67 +248,86 @@ function Kpi({ label, value, hint, tone, icon }: { label: string; value: string;
   );
 }
 
-function ConversionsTable({ rows, emptyMessage }: { rows: Conversion[]; emptyMessage: string }) {
+function BookingTable({ rows, statusFilter, emptyMessage }: { rows: Conversion[]; statusFilter: string; emptyMessage: string }) {
   if (!rows.length) {
-    return <div className="py-10 text-center text-sm text-slate-500">{emptyMessage}</div>;
+    return (
+      <div className="py-12 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-white/[0.04] grid place-items-center mx-auto mb-3">
+          <CheckCircle2 className="w-5 h-5 text-slate-500" />
+        </div>
+        <div className="text-sm text-slate-300 font-medium">{emptyMessage}</div>
+        {statusFilter === "confirmed" && (
+          <div className="text-xs text-slate-500 mt-1">Inquiries and other call outcomes are available via the chips above.</div>
+        )}
+      </div>
+    );
   }
-  // We render the conversions table with the booking columns AND keep the
-  // existing CallLogTable's "View transcript" modal by rendering a CallRow
-  // → transcript inside each row via a side-by-side render. Simpler: embed
-  // CallLogTable's modal trigger by reusing its row component shape.
-  // For simplicity we inline a table with a transcript-modal-trigger
-  // rendered via the embedded TranscriptCell component.
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left stat-label border-b border-white/5 bg-white/[0.02]">
-            <th className="py-2.5 px-4 font-medium">Caller</th>
-            <th className="py-2.5 px-4 font-medium">When</th>
-            <th className="py-2.5 px-4 font-medium">Status</th>
-            <th className="py-2.5 px-4 font-medium text-right">Price</th>
-            <th className="py-2.5 px-4 font-medium">Check-in → Check-out</th>
-            <th className="py-2.5 px-4 font-medium text-right">Guests</th>
-            <th className="py-2.5 px-4 font-medium">Room</th>
-            <th className="py-2.5 px-4 font-medium">Confirmation #</th>
-            <th className="py-2.5 px-4 font-medium text-right">Transcript</th>
+            <th className="py-3 px-4 font-medium">Guest</th>
+            <th className="py-3 px-4 font-medium">Call</th>
+            <th className="py-3 px-4 font-medium">Status</th>
+            <th className="py-3 px-4 font-medium">Stay</th>
+            <th className="py-3 px-4 font-medium text-right">Nights</th>
+            <th className="py-3 px-4 font-medium">Room</th>
+            <th className="py-3 px-4 font-medium text-right">Guests</th>
+            <th className="py-3 px-4 font-medium text-right">Total</th>
+            <th className="py-3 px-4 font-medium">Confirmation #</th>
+            <th className="py-3 px-4 font-medium text-right">Transcript</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((c) => (
-            <ConversionRow key={c.id} c={c} />
-          ))}
+          {rows.map((c) => <BookingRow key={c.id} c={c} />)}
         </tbody>
       </table>
     </div>
   );
 }
 
-function ConversionRow({ c }: { c: Conversion }) {
+function BookingRow({ c }: { c: Conversion }) {
   const pill = STATUS_PILL[c.status] ?? "pill-slate";
   const label = STATUS_LABELS[c.status] ?? c.status;
-  const dateRange = (c.checkIn || c.checkOut)
-    ? `${c.checkIn || "?"} → ${c.checkOut || "?"}`
-    : (c.mentionedDates || "—");
+  const stay = formatStayRange(c.checkIn, c.checkOut);
   return (
     <tr className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] align-top">
-      <td className="py-2.5 px-4 text-slate-100">
-        {c.callerName}
-        {c.callerPhone && <div className="text-[11px] text-slate-500 font-mono">{c.callerPhone}</div>}
+      <td className="py-3 px-4 text-slate-100">
+        <div className="font-medium">{c.callerName}</div>
+        {c.callerPhone && <div className="text-[11px] text-slate-500 font-mono mt-0.5">{c.callerPhone}</div>}
       </td>
-      <td className="py-2.5 px-4 text-slate-500 font-mono text-xs whitespace-nowrap">{formatTs(c.occurredAt)}</td>
-      <td className="py-2.5 px-4">
+      <td className="py-3 px-4 text-slate-500 font-mono text-xs whitespace-nowrap">{formatTs(c.occurredAt)}</td>
+      <td className="py-3 px-4">
         <span className={pill}>{label}</span>
         {c.statusSource === "inferred" && (
-          <div className="text-[10px] text-slate-600 mt-0.5" title="Status inferred from transcript keywords (no explicit AI field)">inferred</div>
+          <div className="text-[10px] text-slate-600 mt-0.5" title="Status inferred from transcript keywords">inferred</div>
         )}
       </td>
-      <td className="py-2.5 px-4 text-slate-200 font-mono text-right whitespace-nowrap">{moneyLKR(c.valueLkr)}</td>
-      <td className="py-2.5 px-4 text-slate-300 text-xs font-mono">{dateRange}</td>
-      <td className="py-2.5 px-4 text-slate-300 text-right">{c.guests ?? "—"}</td>
-      <td className="py-2.5 px-4 text-slate-300">{c.roomType || "—"}</td>
-      <td className="py-2.5 px-4 text-slate-300 font-mono text-xs">{c.reference || "—"}</td>
-      <td className="py-2.5 px-4 text-right">
+      <td className="py-3 px-4 text-slate-200 whitespace-nowrap">
+        {stay}
+        {c.mentionedDates && !c.checkIn && (
+          <div className="text-[10px] text-slate-500 italic mt-0.5" title="Raw date phrase from transcript">&quot;{c.mentionedDates}&quot;</div>
+        )}
+      </td>
+      <td className="py-3 px-4 text-slate-300 text-right font-mono">{c.nights ?? "—"}</td>
+      <td className="py-3 px-4 text-slate-300">{c.roomType || "—"}</td>
+      <td className="py-3 px-4 text-slate-300 text-right">
+        {c.guests != null ? (
+          <span className="inline-flex items-center gap-1.5">
+            <Users className="w-3 h-3 text-slate-500" />
+            <span>{c.guests}</span>
+          </span>
+        ) : "—"}
+      </td>
+      <td className="py-3 px-4 text-right">
+        <div className="text-slate-100 font-semibold font-mono">{moneyLKR(c.valueLkr)}</div>
+        {c.valueLkr && c.nights && c.nights > 0 && (
+          <div className="text-[10px] text-slate-500 font-mono mt-0.5">Rs. {Math.round(c.valueLkr / c.nights).toLocaleString()} / night</div>
+        )}
+      </td>
+      <td className="py-3 px-4 text-slate-300 font-mono text-xs">{c.reference || "—"}</td>
+      <td className="py-3 px-4 text-right">
         <ViewTranscriptButton summary={summaryToCallSummary(c.summary)} />
       </td>
     </tr>
