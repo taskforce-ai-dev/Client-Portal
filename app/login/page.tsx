@@ -1,10 +1,21 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Hexagon, Loader2, Lock, Mail } from "lucide-react";
 
+// useSearchParams() requires a Suspense boundary at build time per Next.js
+// 14, so the part that reads the URL is split into its own client component
+// and wrapped below. The outer page becomes a thin Suspense host.
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
   const [email, setEmail] = useState("hello@treehousechalets.com");
