@@ -30,7 +30,7 @@ const STATUS_LABELS: Record<string, string> = {
   confirmed: "Confirmed",
   inquiry: "Inquiries",
   cancelled: "Cancelled",
-  no_booking: "Not interested",
+  no_booking: "Dropped",
   none: "Unclassified",
 };
 
@@ -368,7 +368,7 @@ function buildStatusSlices(counts: Record<string, number>): StatusSlice[] {
     { key: "confirmed", label: "Confirmed bookings", count: counts["confirmed"] ?? 0, color: "#34D399" },
     { key: "inquiry", label: "Inquiries", count: counts["inquiry"] ?? 0, color: "#22D3EE" },
     { key: "cancelled", label: "Cancelled", count: counts["cancelled"] ?? 0, color: "#FB7185" },
-    { key: "no_booking", label: "Not interested", count: counts["no_booking"] ?? 0, color: "#94A3B8" },
+    { key: "no_booking", label: "Dropped", count: counts["no_booking"] ?? 0, color: "#94A3B8" },
     { key: "none", label: "Unclassified", count: counts["none"] ?? 0, color: "#475569" },
   ];
 }
@@ -383,7 +383,7 @@ function FunnelView({ confirmed, inquiries, cancelled, noBooking, unclassified, 
     { label: "Confirmed", count: confirmed, color: "#34D399" },
     { label: "Inquiries", count: inquiries, color: "#22D3EE" },
     { label: "Cancelled", count: cancelled, color: "#FB7185" },
-    { label: "Not interested", count: noBooking, color: "#94A3B8" },
+    { label: "Dropped", count: noBooking, color: "#94A3B8" },
     { label: "Unclassified", count: unclassified, color: "#475569" },
   ];
   const total = totalCalls || segs.reduce((s, x) => s + x.count, 0) || 1;

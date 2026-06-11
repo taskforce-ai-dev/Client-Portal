@@ -67,6 +67,26 @@ export function classifyConversion(s: Pick<DbCallSummary, "transcript" | "summar
   return "none";
 }
 
+// Classify from the `topics` field. AI workflows commonly emit one of a
+// small vocabulary as a label here ("booking confirmed", "booking inquiry",
+// "dropped", "cancelled", "wrong number"). This signal is HIGHER priority
+// than free-text regex because it's the AI's own deliberate label.
+export function classifyFromTopics(topics: string | null): BookingStatus | null {
+  if (!topics) return null;
+  const tokens = topics.toLowerCase().split(/[,;|/\n]+/).map((s) => s.trim()).filter(Boolean);
+  for (const tok of tokens) {
+    // Confirmed
+    if (/\b(?:booking\s+confirmed|confirmed\s+booking|booking\s+complete|booking\s+secured|reservation\s+confirmed|booked|completed|won)\b/.test(tok)) return "confirmed";
+    // Cancelled (check before inquiry — "cancellation inquiry" should still count as cancellation intent)
+    if (/\b(?:cancel(?:led|ation)?|declined\s+booking|rejected)\b/.test(tok)) return "cancelled";
+    // Inquiry
+    if (/\b(?:booking\s+inquiry|booking\s+enquiry|inquiry|enquiry|information|availability|rate\s+inquiry|price\s+inquiry|general\s+inquiry|follow[\s-]*up|lead|pending)\b/.test(tok)) return "inquiry";
+    // Dropped / not interested / wrong number
+    if (/\b(?:dropped|hung\s+up|disconnect(?:ed)?|abandoned|not\s+interested|wrong\s+number|spam|no[\s-]*booking|lost)\b/.test(tok)) return "no_booking";
+  }
+  return null;
+}
+
 // ============================================================
 // Structured parser — pulls KEY: value / KEY = value pairs out of
 // text. AI agents commonly append a structured summary block at the
@@ -472,24 +492,70 @@ export function computeNights(checkIn: string | null, checkOut: string | null): 
   return diff > 0 ? diff : null;
 }
 
-// Extract booking value in LKR. Supports Rs. notation, "rupees", contextual
-// "total is", and bare LKR. USD/dollar mentions are intentionally ignored
-// here so a wrong currency doesn't pollute the LKR column.
+// Word-form thousands: "twenty-five thousand" → 25000, "fifteen thousand
+// five hundred" → 15500. Conservative — only "thousand" suffixes are
+// understood; bare word numbers (like "twenty") don't trigger a value.
+const SCALAR_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+  sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+  hundred: 100, "hundreds": 100,
+};
+function parseWordNumber(phrase: string): number | null {
+  const parts = phrase.toLowerCase().split(/[\s-]+/).filter(Boolean);
+  let acc = 0;
+  let cur = 0;
+  for (const p of parts) {
+    if (p === "and") continue;
+    const v = SCALAR_WORDS[p];
+    if (!v) return null;
+    if (v === 100) cur = (cur || 1) * 100;
+    else cur += v;
+  }
+  acc += cur;
+  return acc > 0 ? acc : null;
+}
+
+// Extract booking value in LKR. Supports Rs. notation, "rupees", "LKR",
+// contextual "total/price/cost is X", bare "Xk" shorthand, and word-form
+// thousands ("twenty-five thousand"). USD/dollar mentions are intentionally
+// ignored here so a wrong currency doesn't pollute the LKR column.
 const VALUE_PATTERNS: RegExp[] = [
-  /(?:total|grand\s+total|price|amount|cost|charges?|comes?\s+to|will\s+be|that(?:'ll|\s+will)\s+be)\s+(?:is\s+|of\s+)?(?:Rs\.?|LKR)?\s*([\d,]+(?:\.\d+)?)/i,
-  /Rs\.?\s*([\d,]+(?:\.\d+)?)/i,
-  /([\d,]+(?:\.\d+)?)\s*(?:LKR|rupees?|lkr)/i,
+  // 1. Explicit Rs. / LKR with separators
+  /Rs\.?\s*([\d,]+(?:\.\d+)?)\s*(?:k|K|\/-|\/=)?\b/,
+  /([\d,]+(?:\.\d+)?)\s*(?:LKR|lkr|rupees?)/,
+  // 2. Contextual "total / price / amount / cost / comes to / will be / charge / rate is" + number
+  /(?:total|grand\s+total|price|amount(?:\s+due)?|cost|charges?|fee|rate|tariff|comes?\s+to|will\s+be|that(?:'ll|\s+will)\s+be|book\s+(?:that|it|this)\s+for|for\s+a\s+total\s+of|all\s+together|altogether)\s+(?:is\s+|of\s+|comes\s+to\s+|@\s*)?(?:Rs\.?|LKR)?\s*([\d,]+(?:\.\d+)?)(?:\s*(?:k|K))?\b/i,
+  // 3. Bare "Nk" / "N K" shorthand near a price keyword
+  /([\d,]+(?:\.\d+)?)\s*(?:k|K)\s+(?:per\s+night|for\s+(?:the\s+)?(?:night|stay)|total|all\s+together|altogether)/,
+  /(?:per\s+night|for\s+(?:the\s+)?(?:night|stay)|total)\s+(?:is\s+|@\s*)?(?:Rs\.?|LKR)?\s*([\d,]+(?:\.\d+)?)(?:\s*(?:k|K))?/i,
 ];
+
+function applyKShorthand(rawText: string, matchedNumber: string): number | null {
+  const n = Number(matchedNumber.replace(/,/g, ""));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // If the matched substring ends in 'k' (case-insensitive) right after the
+  // captured number, treat as thousands.
+  const isK = new RegExp(`\\b${matchedNumber.replace(/[.,]/g, "\\$&")}\\s*[kK]\\b`).test(rawText);
+  const scaled = isK ? n * 1000 : n;
+  return scaled >= 500 ? Math.round(scaled) : null;
+}
 
 export function extractValueLkr(text: string | null): number | null {
   if (!text) return null;
   for (const re of VALUE_PATTERNS) {
     const m = text.match(re);
     if (m) {
-      const n = Number(m[1].replace(/,/g, ""));
-      // Sanity floor: anything under 500 LKR is almost certainly a misread.
-      if (Number.isFinite(n) && n >= 500) return Math.round(n);
+      const n = applyKShorthand(text, m[1]);
+      if (n) return n;
     }
+  }
+  // Word-form: "twenty-five thousand (rupees)?"
+  const word = text.match(/((?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|and)(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|and))*)\s+thousand(?:\s+(?:rupees?|LKR|Rs))?/i);
+  if (word) {
+    const base = parseWordNumber(word[1]);
+    if (base) return base * 1000;
   }
   return null;
 }
@@ -541,19 +607,25 @@ export function toConversion(s: DbCallSummary): Conversion {
     .filter(Boolean)
     .join("\n");
 
-  // Three-tier classification:
-  //   1) explicit AI-posted booking_status  (always wins)
-  //   2) structured KEY: value parser       (catches "Status: confirmed"
-  //      style footers that the AI puts at the end of transcripts)
-  //   3) conversational regex matchers      (catches "you're booked"
+  // Four-tier classification:
+  //   1) explicit AI-posted booking_status   (always wins)
+  //   2) `topics` field labels               (AI's own deliberate tag —
+  //      "booking confirmed", "booking inquiry", "dropped", "cancelled")
+  //   3) structured KEY: value parser        (catches "Status: confirmed"
+  //      style footers at the end of transcripts)
+  //   4) conversational regex matchers       (catches "you're booked"
   //      style phrases inside dialogue)
   const explicit = s.booking_status as BookingStatus | null;
+  const fromTopics = classifyFromTopics(s.topics);
   const struct = parseStructured(haystack, s.occurred_at);
   let status: BookingStatus;
   let statusSource: "explicit" | "inferred";
   if (explicit && ["confirmed", "inquiry", "cancelled", "no_booking"].includes(explicit)) {
     status = explicit;
     statusSource = "explicit";
+  } else if (fromTopics) {
+    status = fromTopics;
+    statusSource = "explicit"; // topics is the AI's own label, treat as authoritative
   } else if (struct.status) {
     status = struct.status;
     statusSource = "inferred";
