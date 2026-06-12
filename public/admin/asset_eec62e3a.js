@@ -2360,7 +2360,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                               <div style={{ fontWeight: 500 }}>{c.callerName || "—"}</div>
                               {c.callerPhone && <div style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{c.callerPhone}</div>}
                             </td>
-                            <td style={{ color: "var(--text-3)", fontFamily: "var(--ff-mono)", fontSize: 11 }}>{(c.occurredAt || "").replace("T", " ").slice(0, 19)}</td>
+                            <td style={{ color: "var(--text-3)", fontFamily: "var(--ff-mono)", fontSize: 11 }}>{c.occurredAt ? new Date(c.occurredAt).toLocaleString("sv-SE", { timeZone: "Asia/Colombo", hour12: false }).slice(0, 19) : ""}</td>
                             <td>
                               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 8px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid " + color + "55", color }}>
                                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />

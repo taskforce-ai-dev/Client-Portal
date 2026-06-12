@@ -723,14 +723,31 @@ function isValidReference(s: string): boolean {
 
 export function extractReference(text: string | null): string | null {
   if (!text) return null;
+  // First pass: the patterned regexes (most specific to most permissive).
   for (const re of REF_PATTERNS) {
-    // Try EVERY match for this pattern — using matchAll, not match. Lets
-    // us skip false-positive captures like "confirmed" (rejected by
-    // isValidReference) and find the real reference number later in the
-    // text. Without this, the first useless match would block the rest.
     const flagged = re.flags.includes("g") ? re : new RegExp(re.source, re.flags + "g");
     for (const m of text.matchAll(flagged)) {
       if (m[1] && isValidReference(m[1])) return m[1].toUpperCase();
+    }
+  }
+  // Second pass: positional scanner — handles arbitrary words between
+  // the booking-related entity and the value. Looks 80 chars forward
+  // from each occurrence of "booking" / "reservation" / "confirmation"
+  // / "reference" / "code" / "order" / "id" and returns the FIRST token
+  // in that window that contains a digit and isn't a noise word.
+  //
+  // Example matches my patterned regex couldn't handle:
+  //   "Booking has been added under 12345"   → 12345
+  //   "Reservation will arrive shortly — 39" → 39
+  //   "Order placed, confirmation 7821"      → 7821
+  //   "I've noted reference THC-456 for you" → THC-456
+  const entityRe = /\b(?:reference|references|booking|bookings|reservation|reservations|confirmation|confirmations|order|orders|code|id)\b/gi;
+  const tokenRe = /\b[A-Z0-9]+(?:[\-/][A-Z0-9]+)*\b/g;
+  for (const m of text.matchAll(entityRe)) {
+    const start = (m.index ?? 0) + m[0].length;
+    const window = text.slice(start, start + 80);
+    for (const tm of window.matchAll(tokenRe)) {
+      if (isValidReference(tm[0])) return tm[0].toUpperCase();
     }
   }
   return null;
