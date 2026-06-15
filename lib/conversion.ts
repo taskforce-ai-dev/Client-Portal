@@ -721,18 +721,82 @@ function isValidReference(s: string): boolean {
   return /\d/.test(s);
 }
 
+// Context guard for the positional scanner. Rejects tokens that look
+// like dates, times, prices, ordinals, or guest counts based on the
+// chars immediately before/after the match. Each rule corresponds to a
+// false positive class we've seen in real transcripts.
+function isPlausibleRefInContext(token: string, beforeCtx: string, afterCtx: string): boolean {
+  if (!token || !/\d/.test(token)) return false;
+  if (REF_BLOCKLIST.has(token.toUpperCase())) return false;
+  if (token.length < 2) return false;
+
+  const before = beforeCtx.slice(-30);
+  const after = afterCtx.slice(0, 30);
+
+  // PRICE — "Rs. 45,000", "LKR 45000", "$200", "€100"
+  if (/(?:Rs\.?|LKR|USD|EUR|\$|€|₨|rupees?)\s*$/i.test(before)) return false;
+  // PRICE CONTINUATION — "45,000" : "45" precedes ",000" — comma+digit after
+  if (/^[,]\s*\d/.test(after)) return false;
+  // PRICE CONTINUATION — "12.50" : "12" precedes ".50" but ONLY when the
+  // after token is exactly a 2-digit fractional, not a sentence break.
+  if (/^\.\d{2}\b/.test(after)) return false;
+  // PRICE CONTINUATION — "000" preceded by "45," (this token is the tail)
+  if (/\d,\s*$/.test(before)) return false;
+
+  // TIME — "11:45 AM" : "11" precedes ":digit", "45" preceded by "11:"
+  if (/^:\s*\d/.test(after)) return false;
+  if (/\d:\s*$/.test(before)) return false;
+
+  // DATE — preceded by month name: "June 14"
+  if (/\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\s+$/i.test(before)) return false;
+  // DATE CONTINUATION — "14-15" : "15" preceded by "14-"
+  if (/\d[-/–—]\s*$/.test(before)) return false;
+  // DATE CONTINUATION — "14-15" : "14" followed by "-15"
+  if (/^[-/–—]\s*\d/.test(after)) return false;
+  // ORDINAL — "14th", "21st", "2nd", "3rd"
+  if (/^(?:st|nd|rd|th)\b/i.test(after)) return false;
+  // YEAR — preceded by ", " followed by 4-digit year ("June 14, 2026")
+  if (token.length === 4 && /^20\d\d$/.test(token) && /\d,?\s*$/.test(before)) return false;
+  // ISO DATE — "2026-06-14" as the entire token
+  if (/^\d{4}-\d{2}-\d{2}$/.test(token)) return false;
+
+  // GUEST COUNTS — "4 guests", "5 nights", "2 adults"
+  if (/^\s*(?:guests?|persons?|people|adults?|children|kids?|nights?|pax|infants?|rooms?)\b/i.test(after)) return false;
+
+  // PHONE — phone keyword followed by digits/punctuation to end of context.
+  // Broader than the previous "$" anchor: matches "phone +94 77 " where the
+  // value sits after the phone keyword separated by digits/spaces/plus only.
+  if (/\b(?:phone|tel|mobile|whatsapp|contact)\b[^a-zA-Z]*$/i.test(before)) return false;
+  if (/^\+\d/.test(token)) return false;
+
+  return true;
+}
+
 export function extractReference(text: string | null): string | null {
   if (!text) return null;
-  // Patterned regexes only — ordered most-specific to most-permissive.
-  // The positional 80-char scanner was removed because it captured
-  // ambiguous digits adjacent to booking-related words (dates like
-  // "Jun 14-15", times like "11:45 AM", prices like "Rs. 45,000")
-  // as if they were the confirmation number. Showing "—" (truly
-  // unknown) is better than showing the wrong number.
+  // First pass: patterned regexes (most specific → most permissive).
   for (const re of REF_PATTERNS) {
     const flagged = re.flags.includes("g") ? re : new RegExp(re.source, re.flags + "g");
     for (const m of text.matchAll(flagged)) {
       if (m[1] && isValidReference(m[1])) return m[1].toUpperCase();
+    }
+  }
+  // Second pass: positional scanner with strict context guards.
+  // Looks 80 chars forward from any booking-related entity word and
+  // returns the first token that has a digit AND survives the price /
+  // date / time / guest-count rejection rules above. Without the guards
+  // this scanner picks up wrong digits from "Rs. 45,000" / "Jun 14-15"
+  // / "11:45 AM" / "4 guests" — all real-transcript false positives.
+  const entityRe = /\b(?:reference|references|booking|bookings|reservation|reservations|confirmation|confirmations|order|orders)\b/gi;
+  const tokenRe = /\b[A-Z0-9]+(?:[\-/][A-Z0-9]+)*\b/g;
+  for (const m of text.matchAll(entityRe)) {
+    const entityEnd = (m.index ?? 0) + m[0].length;
+    const window = text.slice(entityEnd, entityEnd + 80);
+    for (const tm of window.matchAll(tokenRe)) {
+      const tokenStart = entityEnd + (tm.index ?? 0);
+      const beforeCtx = text.slice(Math.max(0, tokenStart - 30), tokenStart);
+      const afterCtx = text.slice(tokenStart + tm[0].length, tokenStart + tm[0].length + 30);
+      if (isPlausibleRefInContext(tm[0], beforeCtx, afterCtx)) return tm[0].toUpperCase();
     }
   }
   return null;
