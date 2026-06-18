@@ -150,8 +150,8 @@ const NAV = [
   { section: "Clients", items: [
     { id: "clients",   label: "All Clients", icon: "users" },
     { id: "new-client",label: "New Client",  icon: "user-plus" },
-    { id: "pending",   label: "Pending Approvals", icon: "check", count: 3 },
-    { id: "blocked",   label: "Blocked Accounts",  icon: "block", count: 1 },
+    { id: "pending",   label: "Pending Approvals", icon: "check" },
+    { id: "blocked",   label: "Blocked Accounts",  icon: "block" },
   ]},
   { section: "Financials", items: [
     { id: "payments",  label: "Payments", icon: "money" },
