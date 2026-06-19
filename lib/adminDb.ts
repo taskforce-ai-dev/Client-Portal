@@ -34,7 +34,7 @@ export type DbClient = {
 // All feature keys the client portal supports. Used to validate the
 // allowed_features list and to drive the admin form's checkbox grid.
 // Overview / Notifications / Settings are always on, not listed here.
-export const CLIENT_FEATURE_KEYS = ["callLog", "knowledge", "analytics", "conversions", "billing", "transcripts"] as const;
+export const CLIENT_FEATURE_KEYS = ["callLog", "knowledge", "analytics", "conversions", "billing", "transcripts", "metaInbox"] as const;
 export type ClientFeatureKey = (typeof CLIENT_FEATURE_KEYS)[number];
 
 // Convenience: parse the stored CSV → Set. Empty value means all enabled.

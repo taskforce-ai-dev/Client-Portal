@@ -10,6 +10,7 @@ import {
   Hexagon,
   LayoutDashboard,
   Library,
+  MessageSquare,
   Phone,
   Settings,
   TrendingUp,
@@ -20,6 +21,7 @@ import { type Agent } from "@/lib/data";
 const mainTop = (id: string) => [
   { href: `/agents/${id}`, label: "Overview", icon: LayoutDashboard, exact: true, key: "overview" as const },
   { href: `/agents/${id}/calls`, label: "Call Logs", icon: Phone, key: "callLog" as const },
+  { href: `/agents/${id}/meta-inbox`, label: "Meta Inbox", icon: MessageSquare, key: "metaInbox" as const, requiresChannel: "WhatsApp" as const },
   { href: `/agents/${id}/knowledge`, label: "Knowledge Base", icon: Library, key: "knowledge" as const },
   { href: `/agents/${id}/analytics`, label: "Analytics", icon: BarChart3, key: "analytics" as const },
   { href: `/agents/${id}/conversions`, label: "Conversions", icon: TrendingUp, key: "conversions" as const },
@@ -146,6 +148,11 @@ export default function AgentSidebar({
           <div className="space-y-1">
             {mainTop(agent.id)
               .filter(({ key }) => !allowedFeatures || key === "overview" || allowedFeatures.has(key))
+              .filter((item) =>
+                "requiresChannel" in item && item.requiresChannel
+                  ? agent.channels.includes(item.requiresChannel)
+                  : true,
+              )
               .map(({ href, label, icon, exact }) => (
                 <Item key={href} href={href} label={label} Icon={icon} exact={exact} />
               ))}

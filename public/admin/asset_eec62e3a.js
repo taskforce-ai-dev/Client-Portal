@@ -699,6 +699,7 @@ const NewClientPage = () => {
     conversions: true,
     billing: true,
     transcripts: true,
+    metaInbox: true,
   });
   const FEATURE_LABELS = {
     callLog: "Call Logs",
@@ -707,6 +708,7 @@ const NewClientPage = () => {
     conversions: "Conversions",
     billing: "Billing",
     transcripts: "Call transcripts",
+    metaInbox: "Meta Inbox (IG/FB/WhatsApp)",
   };
   const [autoInvoice, setAutoInvoice] = useState(true);
   const [company, setCompany] = useState("");
