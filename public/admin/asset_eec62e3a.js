@@ -1028,6 +1028,133 @@ const AgentOutcomes = ({ data, onSeeList }) => {
   );
 };
 
+// ─────────────────────────────────────────────────────────────
+// Meta Inbox panel — surfaces social-DM conversation summaries
+// (IG / FB / WhatsApp) with handover contact details. Currently
+// uses inline mock data so the admin can preview layout; will
+// switch to a /api/admin/meta-inquiries?agent_id=... fetch once
+// the n8n bot starts writing records into sentinel_meta_inquiry.
+// ─────────────────────────────────────────────────────────────
+const MetaInboxPanel = ({ agentId }) => {
+  const [platform, setPlatform] = useState("all");
+  const [outcome, setOutcome] = useState("all");
+
+  const MOCK = [
+    { id: "mi-1", platform: "instagram", customer: "@chanya_shehani_", when: "Jun 19, 7:20 AM", duration: "12 min", summary: "Enquired about The Grand at Ward Place (Colombo 7) — 3BR luxury apartment. Asked for brochure and connection with agent.", interest: "The Grand at Ward Place (Colombo 7)", contact: "+94716517638", name: "Chanya Shehani", handover: true },
+    { id: "mi-2", platform: "instagram", customer: "@john_doe_99", when: "Jun 19, 5:42 AM", duration: "5 min", summary: "Asked about office spaces in Colombo 3. Shown 4 options, picked the most affordable (Rs.125k/mo). No contact captured.", interest: "Commercial Property Colombo 3 (Rs. 125k/mo)", contact: null, name: null, handover: false },
+    { id: "mi-3", platform: "whatsapp", customer: "+94771234567", when: "Jun 18, 2:10 PM", duration: "9 min", summary: "Enquired about Havelock City 3BR apartment in Colombo 5. Asked about pool and security. Confirmed lease terms.", interest: "Havelock City 3BR (Colombo 5)", contact: "+94771234567", name: "Mahesh Perera", handover: true },
+    { id: "mi-4", platform: "facebook", customer: "Sarah Fernando", when: "Jun 18, 11:35 AM", duration: "6 min", summary: "Interested in luxury houses for rent in Colombo 5. Browsed list of 5 options, didn't pick a specific one.", interest: "Houses for rent Colombo 5", contact: "+94777654321", name: "Sarah Fernando", handover: true },
+    { id: "mi-5", platform: "instagram", customer: "@kasun_silva", when: "Jun 17, 4:20 PM", duration: "3 min", summary: "Asked about land for sale (out of scope). Redirected to agent for sales enquiries.", interest: "Land for sale (out of scope)", contact: "+94765432198", name: "Kasun Silva", handover: true },
+    { id: "mi-6", platform: "whatsapp", customer: "+94772349876", when: "Jun 17, 9:05 AM", duration: "4 min", summary: "Asked general 'what do you have' question. Shown a mix of 8 apartments. Did not narrow down.", interest: null, contact: "+94772349876", name: null, handover: false },
+  ];
+
+  const platformRows = platform === "all" ? MOCK : MOCK.filter((r) => r.platform === platform);
+  const rows =
+    outcome === "all" ? platformRows :
+    outcome === "handovers" ? platformRows.filter((r) => r.handover) :
+    outcome === "in_progress" ? platformRows.filter((r) => !r.handover) :
+    platformRows;
+
+  const total = platformRows.length;
+  const handed = platformRows.filter((r) => r.handover).length;
+  const inProg = total - handed;
+  const captured = platformRows.filter((r) => r.contact).length;
+  const platformCount = (p) => MOCK.filter((r) => p === "all" ? true : r.platform === p).length;
+
+  const platformBadge = (p) => {
+    const map = {
+      instagram: { bg: "rgba(217, 70, 239, 0.12)", color: "#f0abfc", label: "Instagram" },
+      facebook:  { bg: "rgba(59, 130, 246, 0.12)", color: "#93c5fd", label: "Facebook" },
+      whatsapp:  { bg: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", label: "WhatsApp" },
+    };
+    const cfg = map[p];
+    return <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>;
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Header: platform dropdown + outcome chips */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5 }}>Platform</label>
+          <select className="input" style={{ width: 200 }} value={platform} onChange={(e) => setPlatform(e.target.value)}>
+            <option value="all">All platforms ({platformCount("all")})</option>
+            <option value="instagram">Instagram ({platformCount("instagram")})</option>
+            <option value="facebook">Facebook ({platformCount("facebook")})</option>
+            <option value="whatsapp">WhatsApp ({platformCount("whatsapp")})</option>
+          </select>
+        </div>
+        <div style={{ display: "flex", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border-strong)", borderRadius: 7, padding: 2 }}>
+          {[["all", "All", total], ["handovers", "Handed over", handed], ["in_progress", "In progress", inProg]].map(([k, l, c]) => (
+            <button key={k} className={"btn btn-xs " + (outcome === k ? "btn-secondary" : "btn-ghost")} style={{ borderColor: outcome === k ? "var(--border-strong)" : "transparent" }} onClick={() => setOutcome(k)}>{l} <span style={{ color: "var(--text-3)", marginLeft: 4 }}>{c}</span></button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+        <MiniStat label="Conversations" value={String(total)} delta={0} tone="default" />
+        <MiniStat label="Handed over" value={String(handed)} delta={0} tone="positive" />
+        <MiniStat label="In progress" value={String(inProg)} delta={0} tone="warning" />
+        <MiniStat label="Contacts captured" value={String(captured)} delta={0} tone="default" />
+      </div>
+
+      {/* Conversation table */}
+      <div style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", borderRadius: 8, overflow: "hidden" }}>
+        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "rgba(0,0,0,0.2)", textAlign: "left" }}>
+              <th style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Platform</th>
+              <th style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Customer</th>
+              <th style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>When</th>
+              <th style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, minWidth: 280 }}>Summary</th>
+              <th style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Property interest</th>
+              <th style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Contact</th>
+              <th style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>Outcome</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>No conversations match this filter.</td></tr>
+            ) : rows.map((r) => (
+              <tr key={r.id} style={{ borderTop: "1px solid var(--border)" }}>
+                <td style={{ padding: "10px 12px" }}>{platformBadge(r.platform)}</td>
+                <td style={{ padding: "10px 12px" }}>
+                  <div style={{ fontWeight: 500 }}>{r.name || r.customer}</div>
+                  {r.name && r.customer !== r.name && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.customer}</div>}
+                </td>
+                <td style={{ padding: "10px 12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                  <div>{r.when}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.duration}</div>
+                </td>
+                <td style={{ padding: "10px 12px", color: "var(--text-1)", lineHeight: 1.5 }}>{r.summary}</td>
+                <td style={{ padding: "10px 12px", color: "var(--text-2)" }}>{r.interest || "—"}</td>
+                <td style={{ padding: "10px 12px" }}>
+                  {r.handover && r.contact ? (
+                    <a href={"https://wa.me/" + r.contact.replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" style={{ color: "#6ee7b7", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>📞 {r.contact}</a>
+                  ) : (
+                    <span style={{ color: "var(--text-3)" }}>—</span>
+                  )}
+                </td>
+                <td style={{ padding: "10px 12px" }}>
+                  {r.handover
+                    ? <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7" }}>Handed over</span>
+                    : <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d" }}>In progress</span>
+                  }
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+        Conversation summaries are generated by the agent at the end of each chat. Handover entries include the customer&apos;s captured name and WhatsApp number for follow-up. Currently showing mock data — the next step wires this to live records from the n8n bot.
+      </div>
+    </div>
+  );
+};
+
 const AgentConfigPage = ({ agentId, onBack }) => {
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1575,7 +1702,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
       </div>
 
       <div className="tabs">
-        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["callLog", "Call Log"], ["analytics", "Analytics"], ["conversions", "Conversions"], ["billing", "Billing"], ["notifications", "Notifications"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
+        {[["overview", "Overview"], ["knowledge", "Knowledge Base"], ["callLog", "Call Log"], ["metaInbox", "Meta Inbox"], ["analytics", "Analytics"], ["conversions", "Conversions"], ["billing", "Billing"], ["notifications", "Notifications"], ["commissioner", "Commissioner"], ["settings", "Settings"]].map(([k, l]) => (
           <div key={k} className={"tab" + (tab === k ? " active" : "")} onClick={() => setTab(k)}>{l}</div>
         ))}
       </div>
@@ -2408,6 +2535,10 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             Booking details (price, dates, room, guests, confirmation #) come from the AI agent&apos;s explicit fields when provided, otherwise extracted from the transcript using conservative pattern matching. Cells show — when a detail wasn&apos;t mentioned. Both admin and client portal share the same pipeline — numbers match exactly.
           </div>
         </div>
+      )}
+
+      {tab === "metaInbox" && (
+        <MetaInboxPanel agentId={agent.id} />
       )}
 
       {tab === "billing" && (
