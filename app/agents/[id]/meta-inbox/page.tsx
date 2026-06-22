@@ -10,120 +10,33 @@ import {
   UserCheck,
 } from "lucide-react";
 import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient } from "@/lib/adminDb";
+import { findAgentForClient, listMetaInquiries } from "@/lib/adminDb";
 import { guardClientFeature } from "@/lib/featureAccess";
 import AutoRefresh from "@/components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
-// ─────────────────────────────────────────────────────────────────
-// MOCK DATA — real records will come from the n8n bot writing to
-// sentinel_meta_inquiry via POST /api/meta-inquiries/ingest (step 2).
-// Keeping the page renderable means the client can review the layout
-// before any conversation has actually flowed through.
-// ─────────────────────────────────────────────────────────────────
 type Platform = "instagram" | "facebook" | "whatsapp";
 
-type MetaInquiry = {
+type MetaInquiryRow = {
   id: string;
   platform: Platform;
-  customer_handle: string;          // @chanya_shehani_ or display name
-  occurred_at: string;              // ISO
-  duration_label: string;           // "8 min"
-  summary: string;                  // 1-2 sentence AI summary
+  customer_handle: string;
+  occurred_at: string;
+  duration_label: string;
+  summary: string;
   handover: boolean;
   captured_name: string | null;
-  captured_contact: string | null;  // WhatsApp number
-  property_interest: string | null; // "P30 — Office Space, Colombo 3"
+  captured_contact: string | null;
+  property_interest: string | null;
   outcome: "Handed over" | "In progress" | "Closed";
 };
 
-const MOCK: MetaInquiry[] = [
-  {
-    id: "mi-001",
-    platform: "instagram",
-    customer_handle: "@chanya_shehani_",
-    occurred_at: "2026-06-19T07:20:00Z",
-    duration_label: "12 min",
-    summary:
-      "Customer enquired about The Grand at Ward Place (Colombo 7) — 3BR luxury apartment. Asked for brochure and connection with agent.",
-    handover: true,
-    captured_name: "Chanya Shehani",
-    captured_contact: "+94716517638",
-    property_interest: "The Grand at Ward Place (Colombo 7)",
-    outcome: "Handed over",
-  },
-  {
-    id: "mi-002",
-    platform: "instagram",
-    customer_handle: "@john_doe_99",
-    occurred_at: "2026-06-19T05:42:00Z",
-    duration_label: "5 min",
-    summary:
-      "Customer asked about office spaces in Colombo 3. Was shown 4 options, picked the most affordable (Rs.125k/mo). No contact captured yet.",
-    handover: false,
-    captured_name: null,
-    captured_contact: null,
-    property_interest: "Commercial Property Colombo 3 (Rs. 125k/mo)",
-    outcome: "In progress",
-  },
-  {
-    id: "mi-003",
-    platform: "whatsapp",
-    customer_handle: "+94771234567",
-    occurred_at: "2026-06-18T14:10:00Z",
-    duration_label: "9 min",
-    summary:
-      "Customer enquired about Havelock City 3BR apartment in Colombo 5. Asked about pool and security. Confirmed availability and lease terms.",
-    handover: true,
-    captured_name: "Mahesh Perera",
-    captured_contact: "+94771234567",
-    property_interest: "Havelock City 3BR (Colombo 5)",
-    outcome: "Handed over",
-  },
-  {
-    id: "mi-004",
-    platform: "facebook",
-    customer_handle: "Sarah Fernando",
-    occurred_at: "2026-06-18T11:35:00Z",
-    duration_label: "6 min",
-    summary:
-      "Customer interested in luxury houses for rent in Colombo 5. Browsed list of 5 options, didn't pick a specific one. Asked to be contacted via WhatsApp.",
-    handover: true,
-    captured_name: "Sarah Fernando",
-    captured_contact: "+94777654321",
-    property_interest: "Houses for rent Colombo 5 (general)",
-    outcome: "Handed over",
-  },
-  {
-    id: "mi-005",
-    platform: "instagram",
-    customer_handle: "@kasun_silva",
-    occurred_at: "2026-06-17T16:20:00Z",
-    duration_label: "3 min",
-    summary:
-      "Customer asked about land for sale (out of scope). Was redirected to agent for sales enquiries.",
-    handover: true,
-    captured_name: "Kasun Silva",
-    captured_contact: "+94765432198",
-    property_interest: "Land for sale (out of scope)",
-    outcome: "Handed over",
-  },
-  {
-    id: "mi-006",
-    platform: "whatsapp",
-    customer_handle: "+94772349876",
-    occurred_at: "2026-06-17T09:05:00Z",
-    duration_label: "4 min",
-    summary:
-      "Customer asked general 'what do you have' question. Was shown a mix of 8 apartments. Did not narrow down.",
-    handover: false,
-    captured_name: null,
-    captured_contact: "+94772349876",
-    property_interest: null,
-    outcome: "In progress",
-  },
-];
+function formatDuration(sec: number | null): string {
+  if (!sec) return "—";
+  if (sec < 60) return `${sec}s`;
+  return `${Math.round(sec / 60)} min`;
+}
 
 const PLATFORM_LABELS: Record<Platform | "all", string> = {
   all: "All platforms",
@@ -165,8 +78,25 @@ export default async function MetaInboxPage({
   const platformFilter = (searchParams.platform || "all") as Platform | "all";
   const outcomeFilter = searchParams.outcome || "all";
 
-  // Filter mock data per current selections
-  const allRows = MOCK;
+  // Pull the last 200 inquiries for this agent. Filtering is done in
+  // memory because the dataset stays small and the platform counts above
+  // need the unfiltered list anyway.
+  const dbRows = await listMetaInquiries(agent.id, { limit: 200 });
+  const allRows: MetaInquiryRow[] = dbRows.map((r) => ({
+    id: r.id,
+    platform: r.platform,
+    customer_handle: r.customer_handle || r.captured_name || r.sender_id || "Unknown",
+    occurred_at: r.occurred_at,
+    duration_label: formatDuration(r.duration_sec),
+    summary: r.summary,
+    handover: r.handover,
+    captured_name: r.captured_name,
+    captured_contact: r.captured_contact,
+    property_interest: r.property_interest,
+    outcome: (r.outcome === "Handed over" || r.outcome === "In progress" || r.outcome === "Closed"
+      ? r.outcome
+      : r.handover ? "Handed over" : "In progress") as "Handed over" | "In progress" | "Closed",
+  }));
   const platformRows = platformFilter === "all" ? allRows : allRows.filter((r) => r.platform === platformFilter);
   const filteredRows =
     outcomeFilter === "all"
@@ -296,15 +226,15 @@ function Kpi({ label, value, hint, tone, icon }: { label: string; value: string;
   );
 }
 
-function InquiryTable({ rows }: { rows: MetaInquiry[] }) {
+function InquiryTable({ rows }: { rows: MetaInquiryRow[] }) {
   if (!rows.length) {
     return (
       <div className="py-12 text-center">
         <div className="w-12 h-12 rounded-2xl bg-white/[0.04] grid place-items-center mx-auto mb-3">
           <MessageSquare className="w-5 h-5 text-slate-500" />
         </div>
-        <div className="text-sm text-slate-300 font-medium">No conversations match this filter.</div>
-        <div className="text-xs text-slate-500 mt-1">Try a different platform or outcome.</div>
+        <div className="text-sm text-slate-300 font-medium">No conversations yet.</div>
+        <div className="text-xs text-slate-500 mt-1">Inquiries will appear here as soon as the Meta bot starts forwarding summaries.</div>
       </div>
     );
   }

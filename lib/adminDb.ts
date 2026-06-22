@@ -164,6 +164,30 @@ export async function ensureSchema(sql: Sql) {
   await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_guests integer`;
   await sql`ALTER TABLE sentinel_call_summary ADD COLUMN IF NOT EXISTS booking_room_type text`;
   await sql`CREATE INDEX IF NOT EXISTS sentinel_call_summary_agent_at_idx ON sentinel_call_summary (agent_id, occurred_at DESC)`;
+  // Meta-family inbox (Instagram / Facebook Messenger / WhatsApp) inquiry
+  // summaries. The n8n bot writes one row per completed conversation via
+  // POST /api/agents/[id]/meta-inquiries — that endpoint is the canonical
+  // ingestion surface; the admin / client portal tabs read straight off
+  // this table. occurred_at is the conversation end time. handover=true
+  // means the AI agent triggered HANDOVER_TO_AGENT and we captured
+  // a name + WhatsApp number for the human team to follow up on.
+  await sql`CREATE TABLE IF NOT EXISTS sentinel_meta_inquiry (
+    id text PRIMARY KEY,
+    agent_id text NOT NULL,
+    client_id text NOT NULL,
+    platform text NOT NULL,
+    sender_id text,
+    customer_handle text,
+    captured_name text,
+    captured_contact text,
+    property_interest text,
+    summary text NOT NULL DEFAULT '',
+    transcript text,
+    duration_sec integer,
+    handover boolean NOT NULL DEFAULT false,
+    outcome text,
+    occurred_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`CREATE INDEX IF NOT EXISTS sentinel_meta_inquiry_agent_at_idx ON sentinel_meta_inquiry (agent_id, occurred_at DESC)`;
   // System-wide key/value settings (FX rate, future feature flags, etc.).
   await sql`CREATE TABLE IF NOT EXISTS sentinel_setting (
     key text PRIMARY KEY,
@@ -686,6 +710,90 @@ export async function listCallSummaries(agentId: string, opts: { limit?: number;
   return (await sql`SELECT * FROM sentinel_call_summary
     WHERE agent_id = ${agentId}
     ORDER BY occurred_at DESC LIMIT ${limit}`) as DbCallSummary[];
+}
+
+// ─── Meta Inbox: Instagram / Facebook Messenger / WhatsApp inquiries ───
+
+export type DbMetaInquiry = {
+  id: string;
+  agent_id: string;
+  client_id: string;
+  platform: "instagram" | "facebook" | "whatsapp";
+  sender_id: string | null;
+  customer_handle: string | null;
+  captured_name: string | null;
+  captured_contact: string | null;
+  property_interest: string | null;
+  summary: string;
+  transcript: string | null;
+  duration_sec: number | null;
+  handover: boolean;
+  outcome: string | null;
+  occurred_at: string;
+};
+
+export async function recordMetaInquiry(input: {
+  id: string;
+  agentId: string;
+  clientId: string;
+  platform: "instagram" | "facebook" | "whatsapp";
+  senderId?: string | null;
+  customerHandle?: string | null;
+  capturedName?: string | null;
+  capturedContact?: string | null;
+  propertyInterest?: string | null;
+  summary: string;
+  transcript?: string | null;
+  durationSec?: number | null;
+  handover?: boolean;
+  outcome?: string | null;
+  occurredAt?: Date;
+}): Promise<{ inserted: boolean }> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const rows = (await sql`
+    INSERT INTO sentinel_meta_inquiry
+      (id, agent_id, client_id, platform, sender_id, customer_handle,
+       captured_name, captured_contact, property_interest,
+       summary, transcript, duration_sec, handover, outcome, occurred_at)
+    VALUES (${input.id}, ${input.agentId}, ${input.clientId}, ${input.platform},
+            ${input.senderId ?? null}, ${input.customerHandle ?? null},
+            ${input.capturedName ?? null}, ${input.capturedContact ?? null},
+            ${input.propertyInterest ?? null},
+            ${input.summary}, ${input.transcript ?? null}, ${input.durationSec ?? null},
+            ${input.handover ?? false}, ${input.outcome ?? null},
+            ${input.occurredAt ? input.occurredAt.toISOString() : new Date().toISOString()})
+    ON CONFLICT (id) DO UPDATE SET
+      platform = EXCLUDED.platform,
+      sender_id = COALESCE(EXCLUDED.sender_id, sentinel_meta_inquiry.sender_id),
+      customer_handle = COALESCE(EXCLUDED.customer_handle, sentinel_meta_inquiry.customer_handle),
+      captured_name = COALESCE(EXCLUDED.captured_name, sentinel_meta_inquiry.captured_name),
+      captured_contact = COALESCE(EXCLUDED.captured_contact, sentinel_meta_inquiry.captured_contact),
+      property_interest = COALESCE(EXCLUDED.property_interest, sentinel_meta_inquiry.property_interest),
+      summary = EXCLUDED.summary,
+      transcript = COALESCE(EXCLUDED.transcript, sentinel_meta_inquiry.transcript),
+      duration_sec = COALESCE(EXCLUDED.duration_sec, sentinel_meta_inquiry.duration_sec),
+      handover = EXCLUDED.handover,
+      outcome = COALESCE(EXCLUDED.outcome, sentinel_meta_inquiry.outcome),
+      occurred_at = EXCLUDED.occurred_at
+    RETURNING (xmax = 0) AS inserted`) as { inserted: boolean }[];
+  return { inserted: rows[0]?.inserted ?? false };
+}
+
+export async function listMetaInquiries(agentId: string, opts: { limit?: number; platform?: string } = {}): Promise<DbMetaInquiry[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureSeed(sql);
+  const limit = Math.min(opts.limit ?? 200, 1000);
+  if (opts.platform && opts.platform !== "all") {
+    return (await sql`SELECT * FROM sentinel_meta_inquiry
+      WHERE agent_id = ${agentId} AND platform = ${opts.platform}
+      ORDER BY occurred_at DESC LIMIT ${limit}`) as DbMetaInquiry[];
+  }
+  return (await sql`SELECT * FROM sentinel_meta_inquiry
+    WHERE agent_id = ${agentId}
+    ORDER BY occurred_at DESC LIMIT ${limit}`) as DbMetaInquiry[];
 }
 
 export async function getAgentKb(agentId: string): Promise<string> {
