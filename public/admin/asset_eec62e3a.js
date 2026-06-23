@@ -1030,25 +1030,58 @@ const AgentOutcomes = ({ data, onSeeList }) => {
 
 // ─────────────────────────────────────────────────────────────
 // Meta Inbox panel — surfaces social-DM conversation summaries
-// (IG / FB / WhatsApp) with handover contact details. Currently
-// uses inline mock data so the admin can preview layout; will
-// switch to a /api/admin/meta-inquiries?agent_id=... fetch once
-// the n8n bot starts writing records into sentinel_meta_inquiry.
+// (IG / FB / WhatsApp) with handover contact details. Pulls live
+// records from /api/admin/agents/:id/meta-inquiries, which n8n
+// writes into sentinel_meta_inquiry whenever a handover fires.
 // ─────────────────────────────────────────────────────────────
 const MetaInboxPanel = ({ agentId }) => {
   const [platform, setPlatform] = useState("all");
   const [outcome, setOutcome] = useState("all");
+  const [rawRows, setRawRows] = useState([]);
+  const [counts, setCounts] = useState({ all: 0, instagram: 0, facebook: 0, whatsapp: 0, handed_over: 0, in_progress: 0, contacts_captured: 0 });
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
 
-  const MOCK = [
-    { id: "mi-1", platform: "instagram", customer: "@chanya_shehani_", when: "Jun 19, 7:20 AM", duration: "12 min", summary: "Enquired about The Grand at Ward Place (Colombo 7) — 3BR luxury apartment. Asked for brochure and connection with agent.", interest: "The Grand at Ward Place (Colombo 7)", contact: "+94716517638", name: "Chanya Shehani", handover: true },
-    { id: "mi-2", platform: "instagram", customer: "@john_doe_99", when: "Jun 19, 5:42 AM", duration: "5 min", summary: "Asked about office spaces in Colombo 3. Shown 4 options, picked the most affordable (Rs.125k/mo). No contact captured.", interest: "Commercial Property Colombo 3 (Rs. 125k/mo)", contact: null, name: null, handover: false },
-    { id: "mi-3", platform: "whatsapp", customer: "+94771234567", when: "Jun 18, 2:10 PM", duration: "9 min", summary: "Enquired about Havelock City 3BR apartment in Colombo 5. Asked about pool and security. Confirmed lease terms.", interest: "Havelock City 3BR (Colombo 5)", contact: "+94771234567", name: "Mahesh Perera", handover: true },
-    { id: "mi-4", platform: "facebook", customer: "Sarah Fernando", when: "Jun 18, 11:35 AM", duration: "6 min", summary: "Interested in luxury houses for rent in Colombo 5. Browsed list of 5 options, didn't pick a specific one.", interest: "Houses for rent Colombo 5", contact: "+94777654321", name: "Sarah Fernando", handover: true },
-    { id: "mi-5", platform: "instagram", customer: "@kasun_silva", when: "Jun 17, 4:20 PM", duration: "3 min", summary: "Asked about land for sale (out of scope). Redirected to agent for sales enquiries.", interest: "Land for sale (out of scope)", contact: "+94765432198", name: "Kasun Silva", handover: true },
-    { id: "mi-6", platform: "whatsapp", customer: "+94772349876", when: "Jun 17, 9:05 AM", duration: "4 min", summary: "Asked general 'what do you have' question. Shown a mix of 8 apartments. Did not narrow down.", interest: null, contact: "+94772349876", name: null, handover: false },
-  ];
+  // Pull rows once on mount (and whenever the agent changes). Platform
+  // counts come from the API in their full unfiltered form, so the
+  // dropdown's per-platform totals stay correct regardless of which
+  // filters are currently active.
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setErr("");
+    fetch("/api/admin/agents/" + encodeURIComponent(agentId) + "/meta-inquiries", { credentials: "include" })
+      .then(async (r) => {
+        if (!active) return;
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body.message || ("HTTP " + r.status));
+        }
+        const body = await r.json();
+        if (!active) return;
+        setRawRows(Array.isArray(body.rows) ? body.rows : []);
+        setCounts(body.counts || { all: 0, instagram: 0, facebook: 0, whatsapp: 0, handed_over: 0, in_progress: 0, contacts_captured: 0 });
+      })
+      .catch((e) => { if (active) setErr(e.message || "Failed to load Meta Inbox"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [agentId]);
 
-  const platformRows = platform === "all" ? MOCK : MOCK.filter((r) => r.platform === platform);
+  const formatWhen = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  };
+  const formatDuration = (sec) => {
+    if (!sec) return "—";
+    if (sec < 60) return sec + "s";
+    return Math.round(sec / 60) + " min";
+  };
+
+  // Filter in memory — the API returns the full list, so the UI can
+  // flip platform/outcome chips without an extra round-trip.
+  const platformRows = platform === "all" ? rawRows : rawRows.filter((r) => r.platform === platform);
   const rows =
     outcome === "all" ? platformRows :
     outcome === "handovers" ? platformRows.filter((r) => r.handover) :
@@ -1058,8 +1091,8 @@ const MetaInboxPanel = ({ agentId }) => {
   const total = platformRows.length;
   const handed = platformRows.filter((r) => r.handover).length;
   const inProg = total - handed;
-  const captured = platformRows.filter((r) => r.contact).length;
-  const platformCount = (p) => MOCK.filter((r) => p === "all" ? true : r.platform === p).length;
+  const captured = platformRows.filter((r) => r.captured_contact).length;
+  const platformCount = (p) => p === "all" ? (counts.all ?? rawRows.length) : (counts[p] ?? rawRows.filter((r) => r.platform === p).length);
 
   const platformBadge = (p) => {
     const map = {
@@ -1067,7 +1100,7 @@ const MetaInboxPanel = ({ agentId }) => {
       facebook:  { bg: "rgba(59, 130, 246, 0.12)", color: "#93c5fd", label: "Facebook" },
       whatsapp:  { bg: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7", label: "WhatsApp" },
     };
-    const cfg = map[p];
+    const cfg = map[p] || { bg: "rgba(255,255,255,0.06)", color: "#cbd5e1", label: p };
     return <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>;
   };
 
@@ -1099,6 +1132,13 @@ const MetaInboxPanel = ({ agentId }) => {
         <MiniStat label="Contacts captured" value={String(captured)} delta={0} tone="default" />
       </div>
 
+      {/* Error banner */}
+      {err && (
+        <div style={{ padding: 12, background: "rgba(244, 63, 94, 0.08)", border: "1px solid rgba(244, 63, 94, 0.3)", borderRadius: 8, color: "#fca5a5", fontSize: 12 }}>
+          Failed to load: {err}
+        </div>
+      )}
+
       {/* Conversation table */}
       <div style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", borderRadius: 8, overflow: "hidden" }}>
         <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
@@ -1114,42 +1154,48 @@ const MetaInboxPanel = ({ agentId }) => {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>No conversations match this filter.</td></tr>
-            ) : rows.map((r) => (
-              <tr key={r.id} style={{ borderTop: "1px solid var(--border)" }}>
-                <td style={{ padding: "10px 12px" }}>{platformBadge(r.platform)}</td>
-                <td style={{ padding: "10px 12px" }}>
-                  <div style={{ fontWeight: 500 }}>{r.name || r.customer}</div>
-                  {r.name && r.customer !== r.name && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.customer}</div>}
-                </td>
-                <td style={{ padding: "10px 12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>
-                  <div>{r.when}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-3)" }}>{r.duration}</div>
-                </td>
-                <td style={{ padding: "10px 12px", color: "var(--text-1)", lineHeight: 1.5 }}>{r.summary}</td>
-                <td style={{ padding: "10px 12px", color: "var(--text-2)" }}>{r.interest || "—"}</td>
-                <td style={{ padding: "10px 12px" }}>
-                  {r.handover && r.contact ? (
-                    <a href={"https://wa.me/" + r.contact.replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" style={{ color: "#6ee7b7", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>📞 {r.contact}</a>
-                  ) : (
-                    <span style={{ color: "var(--text-3)" }}>—</span>
-                  )}
-                </td>
-                <td style={{ padding: "10px 12px" }}>
-                  {r.handover
-                    ? <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7" }}>Handed over</span>
-                    : <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d" }}>In progress</span>
-                  }
-                </td>
-              </tr>
-            ))}
+            {loading ? (
+              <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>{rawRows.length === 0 ? "No conversations yet. Inquiries will appear here as soon as the Meta bot forwards a handover." : "No conversations match this filter."}</td></tr>
+            ) : rows.map((r) => {
+              const customerLabel = r.captured_name || r.customer_handle || r.sender_id || "Unknown";
+              const handle = r.customer_handle || r.sender_id;
+              return (
+                <tr key={r.id} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "10px 12px" }}>{platformBadge(r.platform)}</td>
+                  <td style={{ padding: "10px 12px" }}>
+                    <div style={{ fontWeight: 500 }}>{customerLabel}</div>
+                    {r.captured_name && handle && handle !== r.captured_name && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{handle}</div>}
+                  </td>
+                  <td style={{ padding: "10px 12px", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                    <div>{formatWhen(r.occurred_at)}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-3)" }}>{formatDuration(r.duration_sec)}</div>
+                  </td>
+                  <td style={{ padding: "10px 12px", color: "var(--text-1)", lineHeight: 1.5 }}>{r.summary}</td>
+                  <td style={{ padding: "10px 12px", color: "var(--text-2)" }}>{r.property_interest || "—"}</td>
+                  <td style={{ padding: "10px 12px" }}>
+                    {r.handover && r.captured_contact ? (
+                      <a href={"https://wa.me/" + r.captured_contact.replace(/[^0-9]/g, "")} target="_blank" rel="noopener noreferrer" style={{ color: "#6ee7b7", fontSize: 12, fontWeight: 500, textDecoration: "none" }}>📞 {r.captured_contact}</a>
+                    ) : (
+                      <span style={{ color: "var(--text-3)" }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: "10px 12px" }}>
+                    {r.handover
+                      ? <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "rgba(16, 185, 129, 0.12)", color: "#6ee7b7" }}>Handed over</span>
+                      : <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "rgba(245, 158, 11, 0.12)", color: "#fcd34d" }}>In progress</span>
+                    }
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-        Conversation summaries are generated by the agent at the end of each chat. Handover entries include the customer&apos;s captured name and WhatsApp number for follow-up. Currently showing mock data — the next step wires this to live records from the n8n bot.
+        Conversation summaries are generated by the agent at the end of each chat. Handover entries include the customer&apos;s captured name and WhatsApp number for follow-up. Both this admin view and the client portal Meta Inbox pull from the same dataset, so numbers always match.
       </div>
     </div>
   );
