@@ -127,12 +127,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (isNaN(occurredAt.getTime())) return NextResponse.json({ message: "Invalid occurred_at" }, { status: 400 });
 
   // Stable idempotency key: callers can pass request_id; else we derive
-  // one from platform+sender+date so repeated POSTs from the same n8n
-  // execution don't create duplicates.
+  // one from platform+sender+date so repeat POSTs from the SAME
+  // conversation (multiple customer turns, n8n retries, in-progress
+  // updates as the chat evolves) UPSERT the existing row instead of
+  // creating duplicates. Day-bucketed: if the same customer comes back
+  // on a different day, that becomes a new conversation row.
   const explicitId = asString(pick(body, ["request_id", "requestId", "id"]));
   const derivedId = "mi_" + crypto
     .createHash("sha1")
-    .update(`${platform}|${senderId}|${occurredAt.toISOString().slice(0, 16)}`)
+    .update(`${platform}|${senderId}|${occurredAt.toISOString().slice(0, 10)}`)
     .digest("hex")
     .slice(0, 20);
   const id = explicitId || derivedId;
