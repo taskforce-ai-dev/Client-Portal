@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthed } from "@/lib/adminAuth";
 import { createAdmin, isDbConfigured, listAdmins } from "@/lib/adminDb";
+import { sendAdminInviteEmail } from "@/lib/mailer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +35,19 @@ export async function POST(req: NextRequest) {
   }
   try {
     const admin = await createAdmin({ name: body.name, email, password: body.password });
-    return NextResponse.json({ ok: true, admin: { id: admin.id, email: admin.email, name: admin.name } });
+    const loginUrl = new URL("/admin/login", process.env.ADMIN_PORTAL_URL || req.nextUrl.origin).toString();
+    const { sent, error } = await sendAdminInviteEmail({
+      email: admin.email,
+      name: admin.name,
+      password: body.password,
+      loginUrl,
+    });
+    if (!sent) console.error("Admin invite email not sent:", error);
+    return NextResponse.json({
+      ok: true,
+      admin: { id: admin.id, email: admin.email, name: admin.name },
+      emailSent: sent,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
     const status = /unique|duplicate/i.test(msg) ? 409 : 500;
