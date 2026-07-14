@@ -169,9 +169,10 @@ const NAV = [
     { id: "announce",  label: "Send Announcement", icon: "megaphone" },
   ]},
   { section: "Settings", items: [
-    { id: "admins",    label: "Admin Users",    icon: "shield" },
-    { id: "config",    label: "Platform Config", icon: "settings" },
-    { id: "audit",     label: "Audit Log",      icon: "log" },
+    { id: "admins",       label: "Admin Users",    icon: "shield" },
+    { id: "invite-admin", label: "Invite Admin",   icon: "user-plus" },
+    { id: "config",       label: "Platform Config", icon: "settings" },
+    { id: "audit",        label: "Audit Log",      icon: "log" },
   ]},
 ];
 
