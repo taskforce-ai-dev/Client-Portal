@@ -19,6 +19,7 @@ const PAGE_TITLES = {
   tickets:    "Help tickets",
   announce:   "Send announcement",
   admins:     "Admin users",
+  "invite-admin": "Invite admin",
   config:     "Platform configuration",
   audit:      "Audit log",
 };
@@ -63,8 +64,9 @@ const App = () => {
       case "tickets":     return <TicketsPage />;
       case "announce":    return <AnnouncementPage />;
       case "audit":       return <AuditLogPage />;
-      case "admins":      return <AdminUsersPage />;
-      case "config":      return <AdminUsersPage />;
+      case "admins":      return <AdminUsersPage onNavigate={setActive} />;
+      case "invite-admin": return <InviteAdminPage onNavigate={setActive} />;
+      case "config":      return <AdminUsersPage onNavigate={setActive} />;
       case "kb":          return <KnowledgeBasePage />;
       default:            return <PageStub title="Coming soon" description="This section is not yet implemented." />;
     }

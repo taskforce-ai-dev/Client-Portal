@@ -128,12 +128,8 @@ const suggestAdminPassword = () => {
 };
 const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e || "").trim());
 
-const AdminUsersPage = () => {
+const AdminUsersPage = ({ onNavigate } = {}) => {
   const [admins, setAdmins] = useState(null);
-  const [inviting, setInviting] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
   const [created, setCreated] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [reminders, setReminders] = useState({ pre3: true, due: true, post3: true, post7: false });
@@ -153,29 +149,6 @@ const AdminUsersPage = () => {
 
   useEffect(() => { refresh(); }, []);
 
-  const startInvite = () => {
-    setForm({ name: "", email: "", password: "" });
-    setErr(""); setCreated(null); setInviting(true);
-  };
-
-  const sendInvite = async () => {
-    setErr("");
-    if (!isValidEmail(form.email)) { setErr("Enter a valid email address."); return; }
-    if (!form.password || form.password.length < 8) { setErr("Password must be at least 8 characters."); return; }
-    setBusy(true);
-    try {
-      const r = await fetch("/api/admin/admins", {
-        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
-        body: JSON.stringify(form),
-      });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.message || "Failed");
-      setCreated({ email: form.email.trim().toLowerCase(), password: form.password });
-      setInviting(false);
-      refresh();
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
-  };
-
   const revoke = async (a) => {
     try {
       const r = await fetch(`/api/admin/admins/${a.id}`, { method: "DELETE", credentials: "include" });
@@ -192,7 +165,6 @@ const AdminUsersPage = () => {
     setResetPw("");
     setResetErr("");
     setCreated(null);
-    setInviting(false);
   };
 
   const cancelReset = () => { setResetting(null); setResetPw(""); setResetErr(""); };
@@ -224,29 +196,8 @@ const AdminUsersPage = () => {
         <SectionHeader
           title="Admin users"
           subtitle={admins === null ? "Loading…" : `${list.length} ${list.length === 1 ? "admin" : "admins"}`}
-          action={<button className="btn btn-primary btn-sm" onClick={startInvite}><Icon name="plus" size={12} />Invite admin</button>}
+          action={<button className="btn btn-primary btn-sm" onClick={() => onNavigate && onNavigate("invite-admin")}><Icon name="plus" size={12} />Invite admin</button>}
         />
-
-        {inviting && (
-          <div style={{ padding: 14, borderBottom: "1px solid var(--border)", background: "rgba(239,68,68,0.04)", display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <Field label="Name (optional)"><input className="input" placeholder="Jane Doe" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-              <Field label="Email"><input className="input mono" type="email" placeholder="admin@taskforceai.tech" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-            </div>
-            <Field label="Password (type your own, min 8 chars · or click ↻ to suggest one · stored hashed)">
-              <div style={{ display: "flex", gap: 8 }}>
-                <input className="input mono" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Type a password (min 8 chars)" style={{ flex: 1 }} />
-                <button type="button" className="btn btn-secondary btn-sm" title="Suggest a strong password" onClick={() => setForm({ ...form, password: suggestAdminPassword() })}>↻</button>
-                <button type="button" className="btn btn-secondary btn-sm" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(form.password); toast("Password copied", "success"); }}>Copy</button>
-              </div>
-            </Field>
-            {err && <div style={{ color: "#ff8585", fontSize: 12.5 }}>{err}</div>}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => setInviting(false)}>Cancel</button>
-              <button className="btn btn-primary btn-sm" disabled={busy} onClick={sendInvite}>{busy ? "Creating…" : "Create admin"}</button>
-            </div>
-          </div>
-        )}
 
         {resetting && (
           <div style={{ padding: 14, borderBottom: "1px solid var(--border)", background: "rgba(167,139,250,0.06)", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -402,6 +353,80 @@ const AdminUsersPage = () => {
 };
 
 /* ============================================================
+   INVITE ADMIN — dedicated page (mirrors New Client's pattern)
+   ============================================================ */
+const InviteAdminPage = ({ onNavigate }) => {
+  const [form, setForm] = useState({ name: "", email: "", password: suggestAdminPassword() });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [created, setCreated] = useState(null);
+  const toast = useToast();
+
+  const sendInvite = async () => {
+    setErr("");
+    if (!isValidEmail(form.email)) { setErr("Enter a valid email address."); return; }
+    if (!form.password || form.password.length < 8) { setErr("Password must be at least 8 characters."); return; }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/admins", {
+        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
+        body: JSON.stringify(form),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed");
+      setCreated({ email: form.email.trim().toLowerCase(), password: form.password });
+      toast("Admin invited", "success");
+      setForm({ name: "", email: "", password: suggestAdminPassword() });
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 600 }}>Invite admin</div>
+        <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>Create a new admin account — they'll get an email with their sign-in link.</div>
+      </div>
+
+      <FormSection title="Admin details" subtitle="Name is optional, email is required.">
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Name (optional)"><input className="input" placeholder="Jane Doe" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="Email"><input className="input mono" type="email" placeholder="admin@taskforceai.tech" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
+        </div>
+      </FormSection>
+
+      <FormSection title="Password" subtitle="Type your own (min 8 chars) or suggest one — stored hashed.">
+        <div style={{ display: "flex", gap: 8 }}>
+          <input className="input mono" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Type a password (min 8 chars)" style={{ flex: 1 }} />
+          <button type="button" className="btn btn-secondary" title="Suggest a strong password" onClick={() => setForm({ ...form, password: suggestAdminPassword() })}>↻</button>
+          <button type="button" className="btn btn-secondary" title="Copy" onClick={() => { navigator.clipboard && navigator.clipboard.writeText(form.password); toast("Password copied", "success"); }}>Copy</button>
+        </div>
+      </FormSection>
+
+      {created && (
+        <div className="panel" style={{ padding: 16, borderColor: "var(--emerald)" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--emerald)" }}>Admin invited ✓</div>
+          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>An invite email was sent to them. They can also sign in directly at /admin/login with:</div>
+          <div style={{ fontFamily: "var(--ff-mono)", fontSize: 13, marginTop: 10, lineHeight: 1.9 }}>
+            <div>Email: {created.email}</div>
+            <div>Password: {created.password}</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => { navigator.clipboard && navigator.clipboard.writeText("Email: " + created.email + "\nPassword: " + created.password); toast("Credentials copied", "success"); }}>Copy credentials</button>
+            {onNavigate && <button className="btn btn-ghost btn-sm" onClick={() => onNavigate("admins")}>View admin users</button>}
+          </div>
+        </div>
+      )}
+
+      {err && <div style={{ color: "#ff8585", fontSize: 12.5, textAlign: "right" }}>{err}</div>}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <button className="btn btn-primary" disabled={busy} onClick={sendInvite}>{busy ? "Creating…" : "Create admin & send invite"}</button>
+      </div>
+    </div>
+  );
+};
+
+/* ============================================================
    PAGE STUB — for sections without a custom page
    ============================================================ */
 const PageStub = ({ title, description, icon = "inbox" }) => (
@@ -410,4 +435,4 @@ const PageStub = ({ title, description, icon = "inbox" }) => (
   </div>
 );
 
-Object.assign(window, { AuditLogPage, AdminUsersPage, PageStub });
+Object.assign(window, { AuditLogPage, AdminUsersPage, InviteAdminPage, PageStub });
