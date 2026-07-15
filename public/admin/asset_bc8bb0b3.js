@@ -424,7 +424,7 @@ const InviteAdminPage = ({ onNavigate }) => {
       {err && <div style={{ color: "#ff8585", fontSize: 12.5, textAlign: "right" }}>{err}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-secondary" disabled={busy} onClick={() => sendInvite(false)}>{busy ? "Creating…" : "Create admin"}</button>
+        <button className="btn btn-primary" disabled={busy} onClick={() => sendInvite(false)}>{busy ? "Creating…" : "Create admin"}</button>
         <button className="btn btn-primary" disabled={busy} onClick={() => sendInvite(true)}>{busy ? "Creating…" : "Create admin & send invite"}</button>
       </div>
     </div>
