@@ -362,7 +362,7 @@ const InviteAdminPage = ({ onNavigate }) => {
   const [created, setCreated] = useState(null);
   const toast = useToast();
 
-  const sendInvite = async () => {
+  const sendInvite = async (sendEmail) => {
     setErr("");
     if (!isValidEmail(form.email)) { setErr("Enter a valid email address."); return; }
     if (!form.password || form.password.length < 8) { setErr("Password must be at least 8 characters."); return; }
@@ -370,12 +370,12 @@ const InviteAdminPage = ({ onNavigate }) => {
     try {
       const r = await fetch("/api/admin/admins", {
         method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, sendInvite: sendEmail }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.message || "Failed");
-      setCreated({ email: form.email.trim().toLowerCase(), password: form.password });
-      toast("Admin invited", "success");
+      setCreated({ email: form.email.trim().toLowerCase(), password: form.password, emailSent: !!d.emailSent });
+      toast(sendEmail ? "Admin created & invited" : "Admin created", "success");
       setForm({ name: "", email: "", password: suggestAdminPassword() });
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -404,8 +404,12 @@ const InviteAdminPage = ({ onNavigate }) => {
 
       {created && (
         <div className="panel" style={{ padding: 16, borderColor: "var(--emerald)" }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--emerald)" }}>Admin invited ✓</div>
-          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>An invite email was sent to them. They can also sign in directly at /admin/login with:</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--emerald)" }}>Admin created ✓</div>
+          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>
+            {created.emailSent
+              ? "An invite email was sent to them. They can also sign in directly at /admin/login with:"
+              : "No invite email was sent. Share these credentials with them yourself — they can sign in at /admin/login with:"}
+          </div>
           <div style={{ fontFamily: "var(--ff-mono)", fontSize: 13, marginTop: 10, lineHeight: 1.9 }}>
             <div>Email: {created.email}</div>
             <div>Password: {created.password}</div>
@@ -420,7 +424,8 @@ const InviteAdminPage = ({ onNavigate }) => {
       {err && <div style={{ color: "#ff8585", fontSize: 12.5, textAlign: "right" }}>{err}</div>}
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button className="btn btn-primary" disabled={busy} onClick={sendInvite}>{busy ? "Creating…" : "Create admin & send invite"}</button>
+        <button className="btn btn-secondary" disabled={busy} onClick={() => sendInvite(false)}>{busy ? "Creating…" : "Create admin"}</button>
+        <button className="btn btn-primary" disabled={busy} onClick={() => sendInvite(true)}>{busy ? "Creating…" : "Create admin & send invite"}</button>
       </div>
     </div>
   );
