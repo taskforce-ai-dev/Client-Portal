@@ -20,7 +20,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   if (!isAuthed()) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   if (!isDbConfigured()) return NextResponse.json({ message: "Database not connected." }, { status: 503 });
-  let body: { name?: string; email?: string; password?: string };
+  let body: { name?: string; email?: string; password?: string; sendInvite?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -35,18 +35,22 @@ export async function POST(req: NextRequest) {
   }
   try {
     const admin = await createAdmin({ name: body.name, email, password: body.password });
-    const loginUrl = new URL("/admin/login", process.env.ADMIN_PORTAL_URL || req.nextUrl.origin).toString();
-    const { sent, error } = await sendAdminInviteEmail({
-      email: admin.email,
-      name: admin.name,
-      password: body.password,
-      loginUrl,
-    });
-    if (!sent) console.error("Admin invite email not sent:", error);
+    let emailSent = false;
+    if (body.sendInvite !== false) {
+      const loginUrl = new URL("/admin/login", process.env.ADMIN_PORTAL_URL || req.nextUrl.origin).toString();
+      const { sent, error } = await sendAdminInviteEmail({
+        email: admin.email,
+        name: admin.name,
+        password: body.password,
+        loginUrl,
+      });
+      if (!sent) console.error("Admin invite email not sent:", error);
+      emailSent = sent;
+    }
     return NextResponse.json({
       ok: true,
       admin: { id: admin.id, email: admin.email, name: admin.name },
-      emailSent: sent,
+      emailSent,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
