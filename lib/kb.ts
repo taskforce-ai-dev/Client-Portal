@@ -159,6 +159,35 @@ export async function importPdf(file: File): Promise<{ filename: string; content
   return { filename, content: saved.content };
 }
 
+// Convert an uploaded file to markdown/text WITHOUT saving it anywhere.
+// Text files (.md/.txt/.csv) are read directly (no external service needed);
+// PDF/DOCX go through the external converter (KB_API_URL). Returns the
+// extracted text so the caller can drop it into a per-agent KB editor.
+export async function convertUploadedFile(file: File): Promise<{ filename: string; markdown: string }> {
+  const name = (file.name || "").toLowerCase();
+  const isText =
+    (file.type && file.type.startsWith("text/")) ||
+    /\.(md|markdown|txt|csv|text)$/.test(name);
+  if (isText) {
+    const text = await file.text();
+    return { filename: file.name || "upload.txt", markdown: text };
+  }
+  const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
+  const isDocx =
+    name.endsWith(".docx") ||
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (isPdf || isDocx) {
+    if (!isPdfConversionConfigured()) {
+      throw new Error(
+        "Document conversion isn't configured (set KB_API_URL). You can upload .md or .txt files directly, or paste the text into AI Structure."
+      );
+    }
+    const { markdown, filename } = await convertPdf(file);
+    return { filename: filename || file.name || "upload", markdown };
+  }
+  throw new Error("Unsupported file type — upload .md, .txt, .pdf, or .docx.");
+}
+
 export const DEFAULT_KB = `# Knowledge Base
 
 Connect the Tree House agent repo to load the live knowledge base.

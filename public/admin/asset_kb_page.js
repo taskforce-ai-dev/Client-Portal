@@ -10,6 +10,7 @@ const KnowledgeBasePage = () => {
   const [content, setContent] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [expanded, setExpanded] = useState({});
 
   /* AI structuring overlay state */
@@ -102,6 +103,55 @@ const KnowledgeBasePage = () => {
       toast(e.message, "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  /* ── File upload (PDF / DOCX / MD / TXT) ── */
+  const insertImported = (text, label) => {
+    const clean = (text || "").trim();
+    if (!clean) { toast("File was empty", "error"); return; }
+    const heading = "\n\n## Imported from " + label + "\n\n";
+    const next = content.trim()
+      ? content.replace(/\s+$/, "") + heading + clean + "\n"
+      : clean + "\n";
+    handleChange(next);
+    toast("Loaded " + label + " — review and click Save", "success");
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // reset so the same file can be re-picked
+    if (!file || !selectedAgent) return;
+    const name = (file.name || "").toLowerCase();
+    const isText = /\.(md|markdown|txt|csv|text)$/.test(name) ||
+      (file.type && file.type.indexOf("text/") === 0);
+
+    // Text files are read directly in the browser — no server round-trip.
+    if (isText) {
+      try {
+        const text = await file.text();
+        insertImported(text, file.name);
+      } catch (err) {
+        toast("Could not read file", "error");
+      }
+      return;
+    }
+
+    // PDF / DOCX go to the server extractor.
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/admin/kb/extract", {
+        method: "POST", credentials: "include", body: fd,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Upload failed");
+      insertImported(d.markdown || "", d.filename || file.name);
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -251,6 +301,28 @@ const KnowledgeBasePage = () => {
                   {dirty && (
                     <span style={{ fontSize: 12, color: "#f59e0b" }}>Unsaved changes</span>
                   )}
+                  <input
+                    id="kb-file-input"
+                    type="file"
+                    accept=".md,.markdown,.txt,.csv,.text,.pdf,.docx"
+                    style={{ display: "none" }}
+                    onChange={handleFileUpload}
+                  />
+                  <button
+                    onClick={() => document.getElementById("kb-file-input").click()}
+                    disabled={uploading}
+                    title="Upload a .md, .txt, .pdf or .docx file into this knowledge base"
+                    style={{
+                      padding: "6px 14px", borderRadius: 6, fontSize: 13,
+                      cursor: uploading ? "wait" : "pointer",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "var(--text-1)", border: "1px solid var(--border)",
+                      fontWeight: 500, display: "flex", alignItems: "center", gap: 6,
+                      opacity: uploading ? 0.6 : 1,
+                    }}
+                  >
+                    <span>⬆</span> {uploading ? "Reading…" : "Upload file"}
+                  </button>
                   <button
                     onClick={openAi}
                     style={{
