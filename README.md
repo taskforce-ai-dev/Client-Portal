@@ -61,3 +61,5 @@ npm install
 cp .env.example .env.local   # fill in real Twilio values for live data
 npm run dev
 ```
+
+<!-- deploy-verify: main -> production branch check, 2026-08-07 -->
