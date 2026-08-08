@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient } from "@/lib/adminDb";
+import { requireAgentOwnership } from "@/lib/apiGuard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,10 +10,9 @@ export const dynamic = "force-dynamic";
 // Notifications tab. Cookie name is agent-scoped so multiple agents on
 // the same client account each get an independent unread cursor.
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
-  const session = getClientSession();
-  if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  const agent = await findAgentForClient(params.id, session.clientId);
-  if (!agent) return NextResponse.json({ message: "Agent not found" }, { status: 404 });
+  const guard = await requireAgentOwnership(params.id);
+  if (guard.error) return guard.error;
+  const { agent } = guard;
 
   const now = new Date().toISOString();
   cookies().set(`notif_read_${agent.id}`, now, {

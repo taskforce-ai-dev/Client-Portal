@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CLIENT_COOKIE, CLIENT_MAX_AGE, createClientToken } from "@/lib/clientAuth";
 import { findClientByEmail, isDbConfigured } from "@/lib/adminDb";
 import { verifyPassword } from "@/lib/passwords";
+import { clientIp, isLoginRateLimited, recordLoginFailure } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +24,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Throttle credential stuffing before touching the DB for verification.
+  const ip = clientIp(req);
+  const rl = await isLoginRateLimited("client", ip);
+  if (rl.limited) {
+    return NextResponse.json(
+      { message: "Too many login attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } }
+    );
+  }
+
   const client = await findClientByEmail(body.email);
   if (!client || !verifyPassword(body.password, client.password_hash)) {
+    await recordLoginFailure("client", ip);
     return NextResponse.json({ message: "Invalid email or password" }, { status: 401 });
   }
   // Allow-list: only "active" clients can sign in. Was deny-list before

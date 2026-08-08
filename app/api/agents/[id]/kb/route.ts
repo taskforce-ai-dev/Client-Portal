@@ -1,19 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthed } from "@/lib/adminAuth";
-import { getClientSession } from "@/lib/clientAuth";
 import { findAgentById, getAgentKb, isDbConfigured, setAgentKb } from "@/lib/adminDb";
+import { requireAgentOwnership } from "@/lib/apiGuard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-async function authorize(agentId: string) {
-  const agent = await findAgentById(agentId);
-  if (!agent) return null;
-  if (isAuthed()) return agent;
-  const session = getClientSession();
-  if (session && session.clientId === agent.client_id) return agent;
-  return null;
-}
 
 async function fireKbReload(agent: { id: string; kb_reload_url: string | null }, content: string) {
   const url = agent.kb_reload_url;
@@ -34,10 +25,18 @@ async function fireKbReload(agent: { id: string; kb_reload_url: string | null },
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   if (!isDbConfigured()) return NextResponse.json({ content: "" });
-  const agent = await authorize(params.id);
-  if (!agent) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  const content = await getAgentKb(agent.id);
-  return NextResponse.json({ content, agent: { id: agent.id, name: agent.name } });
+  // Admins may read any agent's KB; clients only their own, and only while
+  // their account is active (requireAgentOwnership enforces both).
+  if (isAuthed()) {
+    const agent = await findAgentById(params.id);
+    if (!agent) return NextResponse.json({ message: "Not found" }, { status: 404 });
+    const content = await getAgentKb(agent.id);
+    return NextResponse.json({ content, agent: { id: agent.id, name: agent.name } });
+  }
+  const guard = await requireAgentOwnership(params.id);
+  if (guard.error) return guard.error;
+  const content = await getAgentKb(guard.agent.id);
+  return NextResponse.json({ content, agent: { id: guard.agent.id, name: guard.agent.name } });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
