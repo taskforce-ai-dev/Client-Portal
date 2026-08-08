@@ -16,11 +16,28 @@ export function verifyPassword(password: string, stored: string | null | undefin
 }
 
 // Reversible encryption (AES-256-GCM) for credentials the admin must be able
-// to reveal again (e.g. a client's portal password). The key is derived from
-// a server-only secret; a database dump alone cannot reveal the value.
-function encKey(): Buffer {
-  const secret = process.env.APP_ENCRYPTION_KEY || process.env.ADMIN_SESSION_SECRET || "sentinel-dev-secret-change-me";
+// to reveal again (e.g. a client's portal password). The key is derived from a
+// server-only secret; a database dump alone cannot reveal the value.
+//
+// Fail closed: APP_ENCRYPTION_KEY has NO fallback and throws at import so a
+// missing value fails the deploy instead of silently encrypting under a public
+// string. Unlike the session secrets, this key must NOT be rotated casually —
+// existing password_enc / *_api_key_enc rows were encrypted under the previous
+// key. In production set APP_ENCRYPTION_KEY to the SAME value the data was
+// encrypted under (previously the ADMIN_SESSION_SECRET value); rotating to a new
+// value requires a decrypt-then-re-encrypt migration or the data is lost.
+const ENC_KEY: Buffer = (() => {
+  const secret = process.env.APP_ENCRYPTION_KEY;
+  if (!secret || !secret.trim()) {
+    throw new Error(
+      "APP_ENCRYPTION_KEY is not set. Refusing to start — stored credentials cannot be secured."
+    );
+  }
   return crypto.scryptSync(secret, "sentinel-pw-enc-v1", 32);
+})();
+
+function encKey(): Buffer {
+  return ENC_KEY;
 }
 
 export function encryptSecret(plain: string): string {
