@@ -13,8 +13,14 @@ const MAX_AGE = 60 * 60 * 24; // 24h — no revocation list, so short expiry cap
 // admin-only and rotates freely.
 let secretCache: string | null = null;
 
-export const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "admin@taskforceai.tech").toLowerCase();
-export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "sentinel2026";
+// Demo-admin-credentials code path. Fallback values are gated to
+// non-production only — on a public URL, an unset ADMIN_EMAIL/ADMIN_PASSWORD
+// in production must disable this env-bootstrap login entirely rather than
+// silently accept a well-known default. DB-backed admins (Invite Admin)
+// are unaffected either way.
+const IS_PRODUCTION = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+export const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || (IS_PRODUCTION ? "" : "admin@taskforceai.tech")).toLowerCase();
+export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (IS_PRODUCTION ? "" : "sentinel2026");
 export const SENTINEL_COOKIE = COOKIE;
 export const SENTINEL_MAX_AGE = MAX_AGE;
 
@@ -93,5 +99,5 @@ export async function checkCredentials(email: string, password: string): Promise
   } catch {
     // fall through to env check
   }
-  return e === ADMIN_EMAIL && password === ADMIN_PASSWORD;
+  return !!ADMIN_EMAIL && !!ADMIN_PASSWORD && e === ADMIN_EMAIL && password === ADMIN_PASSWORD;
 }

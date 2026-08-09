@@ -16,10 +16,14 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [notice, setNotice] = useState<string | null>(null);
+
   useEffect(() => {
     const msg = search?.get("msg");
     if (msg === "disabled") {
       setError("Portal access for this account is disabled. Contact your account manager.");
+    } else if (msg === "password_set") {
+      setNotice("Password set — sign in with your new password.");
     }
   }, [search]);
 
@@ -145,6 +149,12 @@ export default function LoginForm() {
                 />
               </div>
             </label>
+
+            {notice && !error && (
+              <div className="text-xs text-emerald-300 bg-emerald-500/10 ring-1 ring-emerald-500/20 rounded-lg px-3 py-2">
+                {notice}
+              </div>
+            )}
 
             {error && (
               <div className="text-xs text-rose-400 bg-rose-500/10 ring-1 ring-rose-500/20 rounded-lg px-3 py-2">

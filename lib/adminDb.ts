@@ -193,6 +193,19 @@ export async function ensureSchema(sql: Sql) {
     key text PRIMARY KEY,
     value text NOT NULL,
     updated_at timestamptz NOT NULL DEFAULT now())`;
+  // Single-use, 24h client set-password tokens (invite + admin-triggered
+  // reset share this table — "Resend invite" just issues a new row).
+  // Additive only: never alters sentinel_client. Only a sha256 hash of the
+  // token is stored — the raw token exists only in the emailed link.
+  await sql`CREATE TABLE IF NOT EXISTS sentinel_client_invite_token (
+    id text PRIMARY KEY,
+    client_id text NOT NULL,
+    token_hash text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now())`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS sentinel_client_invite_token_hash_idx ON sentinel_client_invite_token (token_hash)`;
+  await sql`CREATE INDEX IF NOT EXISTS sentinel_client_invite_token_client_idx ON sentinel_client_invite_token (client_id)`;
 }
 
 export async function getSetting(key: string): Promise<string | null> {
@@ -223,12 +236,20 @@ async function migratePlaintextPasswords(sql: Sql) {
 export async function ensureSeed(sql: Sql) {
   if (ensured) return;
   await ensureSchema(sql);
-  // Seed the bootstrap admin from env (or sensible defaults).
-  const adminEmail = (process.env.ADMIN_EMAIL || "admin@taskforceai.tech").toLowerCase();
-  const adminPassword = process.env.ADMIN_PASSWORD || "sentinel2026";
-  await sql`INSERT INTO sentinel_admin (id, name, email, password_hash)
-            VALUES (${"adm_" + crypto.randomBytes(6).toString("hex")}, ${"TaskforceAI Admin"}, ${adminEmail}, ${hashPassword(adminPassword)})
-            ON CONFLICT (email) DO NOTHING`;
+  // Seed the bootstrap admin from env. Demo-admin-credentials code path:
+  // the well-known default pair only applies outside production, and only
+  // when both are still unset. In production, an unset ADMIN_EMAIL/
+  // ADMIN_PASSWORD means no bootstrap admin row is seeded at all — a demo
+  // account with a public, known password must never be written into a
+  // production database. DB admins created via Invite Admin are unaffected.
+  const isProdSeed = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+  const adminEmail = (process.env.ADMIN_EMAIL || (isProdSeed ? "" : "admin@taskforceai.tech")).toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || (isProdSeed ? "" : "sentinel2026");
+  if (adminEmail && adminPassword) {
+    await sql`INSERT INTO sentinel_admin (id, name, email, password_hash)
+              VALUES (${"adm_" + crypto.randomBytes(6).toString("hex")}, ${"TaskforceAI Admin"}, ${adminEmail}, ${hashPassword(adminPassword)})
+              ON CONFLICT (email) DO NOTHING`;
+  }
   // Seed a starter client so the dashboard isn't empty and the client portal
   // has a working login out of the box.
   const seedClients = [
@@ -918,6 +939,68 @@ export async function revealClientPassword(id: string): Promise<string | null> {
   const rows = (await sql`SELECT password_enc, password FROM sentinel_client WHERE id = ${id} LIMIT 1`) as { password_enc: string | null; password: string }[];
   if (!rows[0]) return null;
   return decryptSecret(rows[0].password_enc) ?? (rows[0].password || null);
+}
+
+export type ClientInviteResult = { token: string; expiresAt: string; clientId: string };
+
+// Issues a fresh single-use, 24h set-password token for a client and
+// invalidates any still-open token for that client. Also rotates the
+// client's password to an unguessable, server-only random value that is
+// never returned or logged — the account has no admin-known credential
+// once an invite exists; only the token holder can set a real password.
+// Reused verbatim for admin-triggered "Resend invite" (a real reset): same
+// call, fresh token, previous token invalidated.
+export async function createClientInviteToken(clientId: string): Promise<ClientInviteResult> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const client = await findClientById(clientId);
+  if (!client) throw new Error("Client not found");
+
+  // Invalidate any outstanding token for this client — one active token.
+  await sql`UPDATE sentinel_client_invite_token SET consumed_at = now()
+            WHERE client_id = ${clientId} AND consumed_at IS NULL`;
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  await sql`INSERT INTO sentinel_client_invite_token (id, client_id, token_hash, expires_at)
+            VALUES (${"cit_" + crypto.randomBytes(8).toString("hex")}, ${clientId}, ${tokenHash}, ${expiresAt})`;
+
+  await setClientPassword(clientId, crypto.randomBytes(24).toString("hex"));
+  await audit(sql, "client.invite", "client", client.company, "Sent portal invite to " + client.email);
+  return { token: rawToken, expiresAt, clientId };
+}
+
+export type ConsumeInviteResult =
+  | { ok: true; clientId: string }
+  | { ok: false; reason: "invalid" | "expired" | "used" };
+
+// Validates a raw set-password token, atomically marks it consumed (so two
+// concurrent requests for the same token can't both succeed), then writes
+// the new password via setClientPassword — which itself calls the frozen
+// lib/passwords.ts exports. Password hashing/encryption is never
+// duplicated here.
+export async function consumeClientInviteToken(rawToken: string, newPassword: string): Promise<ConsumeInviteResult> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const rows = (await sql`SELECT id, client_id, expires_at, consumed_at FROM sentinel_client_invite_token
+            WHERE token_hash = ${tokenHash} LIMIT 1`) as
+    { id: string; client_id: string; expires_at: string; consumed_at: string | null }[];
+  const row = rows[0];
+  if (!row) return { ok: false, reason: "invalid" };
+  if (row.consumed_at) return { ok: false, reason: "used" };
+  if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, reason: "expired" };
+
+  const claimed = (await sql`UPDATE sentinel_client_invite_token SET consumed_at = now()
+            WHERE id = ${row.id} AND consumed_at IS NULL RETURNING id`) as { id: string }[];
+  if (!claimed[0]) return { ok: false, reason: "used" };
+
+  await setClientPassword(row.client_id, newPassword);
+  await audit(sql, "client.password_set", "client", row.client_id, "Client set their own portal password via invite link");
+  return { ok: true, clientId: row.client_id };
 }
 
 export async function deleteClient(id: string): Promise<boolean> {
