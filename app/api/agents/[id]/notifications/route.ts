@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient, getSql, isDbConfigured } from "@/lib/adminDb";
+import { getSql } from "@/lib/adminDb";
+import { requireAgentOwnership } from "@/lib/apiGuard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,11 +9,9 @@ export const dynamic = "force-dynamic";
 // agents. Bulk-delete is intentionally NOT exposed here — only admins
 // should be able to wipe the audit history.
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = getClientSession();
-  if (!session) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  if (!isDbConfigured()) return NextResponse.json({ message: "Database not connected." }, { status: 503 });
-  const agent = await findAgentForClient(params.id, session.clientId);
-  if (!agent) return NextResponse.json({ message: "Agent not found" }, { status: 404 });
+  const guard = await requireAgentOwnership(params.id);
+  if (guard.error) return guard.error;
+  const { agent } = guard;
 
   const url = new URL(req.url);
   const oneId = url.searchParams.get("id");
