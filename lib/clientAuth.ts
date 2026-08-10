@@ -1,22 +1,15 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { requireEnv } from "./env";
 
 const COOKIE = "client_session";
 const MAX_AGE = 60 * 60 * 24; // 24h — no revocation list, so short expiry caps the window.
 
-// Fail closed: client sessions must be signed with a dedicated secret. A missing
-// value throws at import so the deploy fails instead of silently signing cookies
-// with a public fallback string. CLIENT_SESSION_SECRET is client-only and may be
-// rotated freely (everyone just logs in again).
-const SECRET = (() => {
-  const v = process.env.CLIENT_SESSION_SECRET;
-  if (!v || !v.trim()) {
-    throw new Error(
-      "CLIENT_SESSION_SECRET is not set. Refusing to start — client sessions cannot be secured."
-    );
-  }
-  return v;
-})();
+// Fail closed: client sessions are signed with a dedicated secret. requireEnv
+// throws at import if it's unset, so the deploy fails instead of silently
+// signing cookies with a public fallback string. CLIENT_SESSION_SECRET is
+// client-only and may be rotated freely (everyone just logs in again).
+const SECRET = requireEnv("CLIENT_SESSION_SECRET");
 
 function sign(value: string) {
   return crypto.createHmac("sha256", SECRET).update(value).digest("hex");

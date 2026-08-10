@@ -1,22 +1,15 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { requireEnv } from "./env";
 
 const COOKIE = "sentinel_admin";
 const MAX_AGE = 60 * 60 * 24; // 24h — no revocation list, so short expiry caps the window.
 
-// Fail closed: admin sessions must be signed with a dedicated secret. A missing
-// value throws at import so the deploy fails instead of silently signing admin
-// cookies with a public fallback string. ADMIN_SESSION_SECRET is admin-only and
-// may be rotated freely (admins just log in again).
-const SECRET = (() => {
-  const v = process.env.ADMIN_SESSION_SECRET;
-  if (!v || !v.trim()) {
-    throw new Error(
-      "ADMIN_SESSION_SECRET is not set. Refusing to start — admin sessions cannot be secured."
-    );
-  }
-  return v;
-})();
+// Fail closed: admin sessions are signed with a dedicated secret. requireEnv
+// throws at import if it's unset, so the deploy fails instead of silently
+// signing admin cookies with a public fallback string. ADMIN_SESSION_SECRET is
+// admin-only and may be rotated freely (admins just log in again).
+const SECRET = requireEnv("ADMIN_SESSION_SECRET");
 
 export const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "admin@taskforceai.tech").toLowerCase();
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "sentinel2026";
