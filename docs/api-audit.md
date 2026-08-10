@@ -42,8 +42,13 @@ account loses API access immediately instead of only being blocked at the page l
 | `auth/admin/logout` | POST | public (clears own cookie) |
 
 Rate limit: fixed-window in Postgres (`sentinel_rate_limit`), per client-IP per
-scope, 10 failed attempts / 15 min → 429 with `Retry-After`. Successful logins
-don't count.
+scope, 10 failed attempts / 15 min → 429 with `Retry-After`. The count-and-check
+is one atomic statement (`INSERT … ON CONFLICT DO UPDATE … RETURNING`), so a
+*concurrent* burst can't all slip past a stale read; successful logins are
+refunded so they don't count. Fixed-window still allows up to ~2× the cap across
+a window boundary — an accepted trade-off without Redis this week. When
+`DATABASE_URL` is unset the limiter no-ops, but that is also the only case where
+admin login falls back to the env bootstrap admin, and never happens in prod.
 
 ## Admin routes (Oshadi's scope — verified `isAuthed()`)
 
@@ -59,13 +64,17 @@ All 30 routes under `app/api/admin/**` gate on `isAuthed()`:
 
 | Route | Status |
 |---|---|
-| `kb` (GET/PUT) | **Deleted** (PR #1) — was unauthenticated, wrote to a single-tenant agent repo |
+| `kb` (GET/PUT) | **Deleted in PR #8** (the secrets/expiry PR) — was unauthenticated, wrote to a single-tenant agent repo. ⚠️ **Not on this branch:** this PR (#9) is cut from `main`, where `/api/kb` is still live and unauthenticated. The `→ 404` result below holds only once **#8 is merged**. |
 | `kb/upload` (POST) | **Flagged** in issue #7 — identical unauthenticated single-tenant GitHub-write hole; dead code; outside named scope |
 
 ## Day-3 test matrix
 
-- [ ] Cookie forged with `sentinel-dev-secret-change-me` → rejected on pages and every client-data route.
+Two checks below depend on **PR #8** (secrets split + `/api/kb` removal), which
+is a separate branch off `main`. Run those only after #8 is merged and deployed;
+the rest are testable on this PR alone.
+
+- [ ] (needs #8) Cookie forged with `sentinel-dev-secret-change-me` → rejected on pages and every client-data route.
 - [ ] Client A's valid session against Client B's agent id → 403 on `kb` GET, `notifications` DELETE, `mark-read` POST.
-- [ ] `GET`/`PUT /api/kb` → 404.
+- [ ] (needs #8) `GET`/`PUT /api/kb` → 404.
 - [ ] Disabled client → API access lost (403) on all client-data routes.
-- [ ] Repeated failed logins from one IP → 429.
+- [ ] Repeated failed logins from one IP → 429, including a **concurrent** burst (not just sequential).
