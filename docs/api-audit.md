@@ -42,13 +42,16 @@ account loses API access immediately instead of only being blocked at the page l
 | `auth/admin/logout` | POST | public (clears own cookie) |
 
 Rate limit: fixed-window in Postgres (`sentinel_rate_limit`), per client-IP per
-scope, 10 failed attempts / 15 min → 429 with `Retry-After`. The count-and-check
-is one atomic statement (`INSERT … ON CONFLICT DO UPDATE … RETURNING`), so a
+scope, 20 attempts / 15 min → 429 with `Retry-After`. The count-and-check is one
+atomic statement (`INSERT … ON CONFLICT DO UPDATE … RETURNING`), so a
 *concurrent* burst can't all slip past a stale read; successful logins are
-refunded so they don't count. Fixed-window still allows up to ~2× the cap across
-a window boundary — an accepted trade-off without Redis this week. When
-`DATABASE_URL` is unset the limiter no-ops, but that is also the only case where
-admin login falls back to the env bootstrap admin, and never happens in prod.
+refunded so they don't accumulate. The cap is generous because the atomic
+consume briefly counts in-flight successes before refund, so simultaneous legit
+logins from one shared IP (office NAT / VPN) have headroom rather than tripping
+429 on correct passwords. Fixed-window still allows ~2× the cap across a window
+boundary — accepted without Redis this week. Admin login additionally returns
+**503 in production** if `DATABASE_URL` is unset, so the env bootstrap-admin path
+is never reachable un-throttled in prod.
 
 ## Admin routes (Oshadi's scope — verified `isAuthed()`)
 

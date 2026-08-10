@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkCredentials, createToken, SENTINEL_COOKIE, SENTINEL_MAX_AGE } from "@/lib/adminAuth";
 import { clientIp, consumeLoginAttempt, refundLoginAttempt } from "@/lib/rateLimit";
+import { isDbConfigured } from "@/lib/adminDb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,13 +17,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Email and password are required" }, { status: 400 });
   }
 
+  // In production the DB — and therefore the login rate limiter — must be
+  // available. If it somehow isn't, refuse admin login rather than let the env
+  // bootstrap-admin path be brute-forced with no throttle at all. Outside
+  // production the bootstrap path stays available (unthrottled) for local dev.
+  if ((process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") && !isDbConfigured()) {
+    return NextResponse.json({ message: "Login temporarily unavailable." }, { status: 503 });
+  }
+
   // Throttle brute-force attempts against the admin console — atomic count so a
   // burst of parallel guesses can't slip past a stale read.
-  //
-  // When DATABASE_URL is unset the limiter is a no-op — but that is also the
-  // only case where checkCredentials falls back to the env bootstrap admin, and
-  // it never happens in production (the DB is always configured there). In
-  // production both DB-backed admins and this limiter are always active.
   const ip = clientIp(req);
   const rl = await consumeLoginAttempt("admin", ip);
   if (rl.limited) {

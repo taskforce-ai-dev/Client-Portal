@@ -15,7 +15,12 @@ import { getSql, type Sql } from "./adminDb";
 // signing in is never counted toward the cap.
 
 const WINDOW_SEC = 15 * 60; // 15-minute window
-const MAX_ATTEMPTS = 10; // failed attempts per IP per window before blocking
+// Cap per IP per window. Kept generous because the atomic consume-then-refund
+// briefly counts in-flight *successful* logins too (before they're refunded),
+// so a burst of simultaneous legit logins from one shared IP (office NAT / VPN)
+// needs headroom not to trip the cap on correct passwords. 20 still stops
+// credential stuffing, which needs far more than 20 tries per window.
+const MAX_ATTEMPTS = 20;
 
 let ensured = false;
 async function ensureTable(sql: Sql) {
@@ -72,14 +77,11 @@ export async function consumeLoginAttempt(
     ON CONFLICT (key) DO UPDATE SET count = sentinel_rate_limit.count + 1
     RETURNING count`) as { count: number }[];
   const count = rows[0]?.count ?? 1;
-  // Opportunistic, indexed prune on ~1% of calls — keeps the table from
-  // growing without a DELETE scan on every single login attempt.
+  // Opportunistic, indexed prune on ~1% of calls — fire-and-forget so it never
+  // sits in the request's critical path (same convention as fireKbReload in the
+  // agents/[id]/kb route). Best-effort: a failed prune is harmless.
   if (Math.random() < 0.01) {
-    try {
-      await sql`DELETE FROM sentinel_rate_limit WHERE expires_at < now()`;
-    } catch {
-      /* prune is best-effort */
-    }
+    void sql`DELETE FROM sentinel_rate_limit WHERE expires_at < now()`.catch(() => {});
   }
   return { limited: count > MAX_ATTEMPTS, retryAfter };
 }
