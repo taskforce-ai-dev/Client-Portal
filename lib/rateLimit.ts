@@ -84,7 +84,13 @@ export async function consumeLoginAttempt(
   // expires_at index the cost is negligible.
   if (Math.random() < 0.01) {
     try {
-      await sql`DELETE FROM sentinel_rate_limit WHERE expires_at < now()`;
+      // Bounded prune: cap rows per run so an accumulated backlog can't delete
+      // unboundedly (and stall) inside a login request. Postgres DELETE has no
+      // LIMIT, so bound it via a ctid subquery; the ~1% cadence clears any
+      // remainder over subsequent calls.
+      await sql`DELETE FROM sentinel_rate_limit WHERE ctid IN (
+        SELECT ctid FROM sentinel_rate_limit WHERE expires_at < now() LIMIT 500
+      )`;
     } catch {
       /* prune is best-effort */
     }

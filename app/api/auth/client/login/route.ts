@@ -40,14 +40,15 @@ export async function POST(req: NextRequest) {
     // Wrong credentials — leave this attempt counted against the cap.
     return NextResponse.json({ message: "Invalid email or password" }, { status: 401 });
   }
-  // A correct password (whether or not the account is active) is not a
-  // brute-force failure — refund the slot so legit sign-ins never trip the cap.
-  await refundLoginAttempt("client", ip);
   // Allow-list: only "active" clients can sign in. Was deny-list before
   // ("blocked" / "suspended" only) — meant new statuses like "pending"
   // or admin-created clients with portal access disabled (status:
   // "blocked") would silently still grant access if the value drifted.
   if (client.status !== "active") {
+    // Correct password but the account is disabled/suspended/pending. Do NOT
+    // refund — leave this attempt counted so someone who knows a disabled
+    // account's password can't probe it indefinitely. The 403 blocks the login
+    // itself; keeping it counted lets the throttle bound repeated attempts.
     const msg = client.status === "pending"
       ? "Your account is pending approval. Contact your account manager."
       : client.status === "suspended"
@@ -55,6 +56,9 @@ export async function POST(req: NextRequest) {
         : "Portal access is disabled for this account. Contact support.";
     return NextResponse.json({ message: msg }, { status: 403 });
   }
+  // Full success (active account + correct password) is not a brute-force
+  // attempt — refund the slot so a legitimate sign-in never trips the cap.
+  await refundLoginAttempt("client", ip);
 
   const res = NextResponse.json({ ok: true, company: client.company });
   res.cookies.set(CLIENT_COOKIE, createClientToken(client.id), {
