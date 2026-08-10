@@ -5,14 +5,16 @@ import { requireEnv } from "./env";
 const COOKIE = "client_session";
 const MAX_AGE = 60 * 60 * 24; // 24h — no revocation list, so short expiry caps the window.
 
-// Fail closed: client sessions are signed with a dedicated secret. requireEnv
-// throws at import if it's unset, so the deploy fails instead of silently
-// signing cookies with a public fallback string. CLIENT_SESSION_SECRET is
-// client-only and may be rotated freely (everyone just logs in again).
-const SECRET = requireEnv("CLIENT_SESSION_SECRET");
-
+// Fail closed: client sessions are signed with a dedicated secret. The secret is
+// read LAZILY on first use (via requireEnv, then cached), NOT at module import —
+// this module can be pulled into a client bundle, and reading the secret at
+// import time throws in the browser (no server env there), crashing the page.
+// Signing only ever runs on the server, so first-use evaluation still fails
+// closed there. CLIENT_SESSION_SECRET is client-only and rotates freely.
+let secretCache: string | null = null;
 function sign(value: string) {
-  return crypto.createHmac("sha256", SECRET).update(value).digest("hex");
+  secretCache ??= requireEnv("CLIENT_SESSION_SECRET");
+  return crypto.createHmac("sha256", secretCache).update(value).digest("hex");
 }
 
 export const CLIENT_COOKIE = COOKIE;

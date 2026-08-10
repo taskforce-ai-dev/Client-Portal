@@ -20,17 +20,21 @@ export function verifyPassword(password: string, stored: string | null | undefin
 // to reveal again (e.g. a client's portal password). The key is derived from a
 // server-only secret; a database dump alone cannot reveal the value.
 //
-// Fail closed: APP_ENCRYPTION_KEY has NO fallback and throws at import so a
-// missing value fails the deploy instead of silently encrypting under a public
-// string. Unlike the session secrets, this key must NOT be rotated casually —
-// existing password_enc / *_api_key_enc rows were encrypted under the previous
-// key. In production set APP_ENCRYPTION_KEY to the SAME value the data was
-// encrypted under (previously the ADMIN_SESSION_SECRET value); rotating to a new
-// value requires a decrypt-then-re-encrypt migration or the data is lost.
-const ENC_KEY: Buffer = crypto.scryptSync(requireEnv("APP_ENCRYPTION_KEY"), "sentinel-pw-enc-v1", 32);
-
+// Fail closed: APP_ENCRYPTION_KEY has NO fallback — encrypt/decrypt throw (via
+// requireEnv) if it's unset, so the server never silently encrypts under a
+// public string. The key is derived LAZILY on first use (then cached), NOT at
+// module import: these helpers get pulled into some client bundles via import
+// chains, and reading the secret at import time threw in the BROWSER (where no
+// server env exists), crashing client pages. First-use evaluation keeps the
+// server fail-closed at runtime while the client bundle — which never calls
+// these functions — loads fine.
+//
+// This key must NOT be rotated casually — existing password_enc / *_api_key_enc
+// rows were encrypted under the previous key. Set APP_ENCRYPTION_KEY to the SAME
+// value the data was encrypted under, or run a decrypt-then-re-encrypt migration.
+let encKeyCache: Buffer | null = null;
 function encKey(): Buffer {
-  return ENC_KEY;
+  return (encKeyCache ??= crypto.scryptSync(requireEnv("APP_ENCRYPTION_KEY"), "sentinel-pw-enc-v1", 32));
 }
 
 export function encryptSecret(plain: string): string {
