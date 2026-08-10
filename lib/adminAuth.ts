@@ -5,11 +5,13 @@ import { requireEnv } from "./env";
 const COOKIE = "sentinel_admin";
 const MAX_AGE = 60 * 60 * 24; // 24h — no revocation list, so short expiry caps the window.
 
-// Fail closed: admin sessions are signed with a dedicated secret. requireEnv
-// throws at import if it's unset, so the deploy fails instead of silently
-// signing admin cookies with a public fallback string. ADMIN_SESSION_SECRET is
-// admin-only and may be rotated freely (admins just log in again).
-const SECRET = requireEnv("ADMIN_SESSION_SECRET");
+// Fail closed: admin sessions are signed with a dedicated secret. Read LAZILY on
+// first use (via requireEnv, then cached), NOT at module import — this module can
+// be pulled into a client bundle, and reading the secret at import time throws in
+// the browser (no server env there), crashing the page. Signing only ever runs on
+// the server, so first-use evaluation still fails closed. ADMIN_SESSION_SECRET is
+// admin-only and rotates freely.
+let secretCache: string | null = null;
 
 export const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "admin@taskforceai.tech").toLowerCase();
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "sentinel2026";
@@ -17,7 +19,8 @@ export const SENTINEL_COOKIE = COOKIE;
 export const SENTINEL_MAX_AGE = MAX_AGE;
 
 function sign(value: string) {
-  return crypto.createHmac("sha256", SECRET).update(value).digest("hex");
+  secretCache ??= requireEnv("ADMIN_SESSION_SECRET");
+  return crypto.createHmac("sha256", secretCache).update(value).digest("hex");
 }
 
 export function createToken(subject = "admin") {
