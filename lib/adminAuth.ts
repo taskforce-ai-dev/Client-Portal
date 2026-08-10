@@ -1,12 +1,15 @@
 import crypto from "crypto";
 import { cookies } from "next/headers";
+import { requireEnv } from "./env";
 
 const COOKIE = "sentinel_admin";
-const MAX_AGE = 60 * 60 * 24 * 7;
+const MAX_AGE = 60 * 60 * 24; // 24h — no revocation list, so short expiry caps the window.
 
-function secret() {
-  return process.env.ADMIN_SESSION_SECRET || "sentinel-dev-secret-change-me";
-}
+// Fail closed: admin sessions are signed with a dedicated secret. requireEnv
+// throws at import if it's unset, so the deploy fails instead of silently
+// signing admin cookies with a public fallback string. ADMIN_SESSION_SECRET is
+// admin-only and may be rotated freely (admins just log in again).
+const SECRET = requireEnv("ADMIN_SESSION_SECRET");
 
 export const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "admin@taskforceai.tech").toLowerCase();
 export const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "sentinel2026";
@@ -14,7 +17,7 @@ export const SENTINEL_COOKIE = COOKIE;
 export const SENTINEL_MAX_AGE = MAX_AGE;
 
 function sign(value: string) {
-  return crypto.createHmac("sha256", secret()).update(value).digest("hex");
+  return crypto.createHmac("sha256", SECRET).update(value).digest("hex");
 }
 
 export function createToken(subject = "admin") {
