@@ -77,11 +77,17 @@ export async function consumeLoginAttempt(
     ON CONFLICT (key) DO UPDATE SET count = sentinel_rate_limit.count + 1
     RETURNING count`) as { count: number }[];
   const count = rows[0]?.count ?? 1;
-  // Opportunistic, indexed prune on ~1% of calls — fire-and-forget so it never
-  // sits in the request's critical path (same convention as fireKbReload in the
-  // agents/[id]/kb route). Best-effort: a failed prune is harmless.
+  // Opportunistic, indexed prune on ~1% of calls. Awaited on purpose: on Vercel
+  // serverless the function can freeze the moment the response is sent, so an
+  // un-awaited cleanup could be dropped and the table would grow unbounded
+  // (there is no cron / alternate prune path). At ~1% of logins against the
+  // expires_at index the cost is negligible.
   if (Math.random() < 0.01) {
-    void sql`DELETE FROM sentinel_rate_limit WHERE expires_at < now()`.catch(() => {});
+    try {
+      await sql`DELETE FROM sentinel_rate_limit WHERE expires_at < now()`;
+    } catch {
+      /* prune is best-effort */
+    }
   }
   return { limited: count > MAX_ATTEMPTS, retryAfter };
 }
