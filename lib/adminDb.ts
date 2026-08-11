@@ -663,6 +663,24 @@ export type DbCallSummary = {
   booking_room_type: string | null;
 };
 
+export type DbAgentCallEvent = {
+  id: number;
+  received_at: string;
+  event_type: string;
+  agent_id: string | null;
+  source: string;
+  call_sid: string | null;
+  caller: string | null;
+  duration_seconds: number | null;
+  outcome: string | null;
+  summary: string | null;
+  guest_name: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  room: string | null;
+  raw: Record<string, unknown> | null;
+};
+
 export async function recordCallSummary(input: {
   id: string;
   agentId: string;
@@ -718,6 +736,49 @@ export async function recordCallSummary(input: {
   }
 }
 
+export async function recordAgentCallEvent(input: {
+  eventType: string;
+  agentId?: string | null;
+  source?: string | null;
+  callSid?: string | null;
+  caller?: string | null;
+  durationSeconds?: number | null;
+  outcome?: string | null;
+  summary?: string | null;
+  guestName?: string | null;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  room?: string | null;
+  raw?: Record<string, unknown>;
+  receivedAt?: Date;
+}): Promise<{ inserted: boolean }> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const rows = (await sql`
+    INSERT INTO agent_call_events
+      (event_type, agent_id, source, call_sid, caller, duration_seconds, outcome, summary, guest_name, check_in, check_out, room, raw, received_at)
+    VALUES (
+      ${input.eventType},
+      ${input.agentId ?? null},
+      ${input.source || "unknown"},
+      ${input.callSid ?? null},
+      ${input.caller ?? null},
+      ${input.durationSeconds ?? null},
+      ${input.outcome ?? null},
+      ${input.summary ?? null},
+      ${input.guestName ?? null},
+      ${input.checkIn ?? null},
+      ${input.checkOut ?? null},
+      ${input.room ?? null},
+      ${input.raw ?? {}},
+      ${input.receivedAt ? input.receivedAt.toISOString() : new Date().toISOString()}
+    )
+    RETURNING id
+  `) as { id: number }[];
+  return { inserted: rows.length > 0 };
+}
+
 export async function listCallSummaries(agentId: string, opts: { limit?: number; startIso?: string; endIso?: string } = {}): Promise<DbCallSummary[]> {
   const sql = getSql();
   if (!sql) return [];
@@ -731,6 +792,30 @@ export async function listCallSummaries(agentId: string, opts: { limit?: number;
   return (await sql`SELECT * FROM sentinel_call_summary
     WHERE agent_id = ${agentId}
     ORDER BY occurred_at DESC LIMIT ${limit}`) as DbCallSummary[];
+}
+
+export async function listAgentCallEvents(agentId: string, opts: { limit?: number; startIso?: string; endIso?: string } = {}): Promise<DbAgentCallEvent[]> {
+  const sql = getSql();
+  if (!sql) return [];
+  await ensureSeed(sql);
+  const limit = Math.min(opts.limit ?? 200, 2000);
+  try {
+    if (opts.startIso && opts.endIso) {
+      return (await sql`
+        SELECT * FROM agent_call_events
+        WHERE agent_id = ${agentId} AND received_at >= ${opts.startIso} AND received_at < ${opts.endIso}
+        ORDER BY received_at DESC LIMIT ${limit}
+      `) as DbAgentCallEvent[];
+    }
+    return (await sql`
+      SELECT * FROM agent_call_events
+      WHERE agent_id = ${agentId}
+      ORDER BY received_at DESC LIMIT ${limit}
+    `) as DbAgentCallEvent[];
+  } catch (e) {
+    if (e instanceof Error && /relation .*agent_call_events.*does not exist/i.test(e.message)) return [];
+    throw e;
+  }
 }
 
 // ─── Meta Inbox: Instagram / Facebook Messenger / WhatsApp inquiries ───

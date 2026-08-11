@@ -23,8 +23,137 @@ import {
 import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
 
 function ymdLocal(d: Date) { return d.toISOString().slice(0, 10); }
+const SMARTPBX_STATUS_URL = "https://smartpbx-kavya.taskforceai.tech/smartpbx/status";
+
+type SmartPbxStatus = {
+  enabled: boolean;
+  configured: boolean;
+  active_sessions: number;
+  max_sessions: number;
+  admitted_total: number;
+  rejected_capacity_total: number;
+  released_total: number;
+  frames_dropped_total: number;
+  echo_rejections_total: number;
+  protocol_version: string | null;
+  transfer_enabled: boolean;
+};
+
+type SmartPbxStatusLoad = {
+  state: "offline" | "ok" | "error";
+  status: SmartPbxStatus | null;
+  error?: string;
+};
+
+function num(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.floor(v);
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.floor(n) : 0;
+  }
+  return 0;
+}
+
+function bool(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return ["1", "true", "y", "yes", "on", "enabled", "enable"].includes(s);
+  }
+  return false;
+}
+
+function asStatusPayload(value: unknown): SmartPbxStatus {
+  const payload = (value as Record<string, unknown>) || {};
+  return {
+    enabled: bool((payload as Record<string, unknown>).enabled),
+    configured: bool((payload as Record<string, unknown>).configured),
+    active_sessions: num((payload as Record<string, unknown>).active_sessions),
+    max_sessions: num((payload as Record<string, unknown>).max_sessions),
+    admitted_total: num((payload as Record<string, unknown>).admitted_total),
+    rejected_capacity_total: num((payload as Record<string, unknown>).rejected_capacity_total),
+    released_total: num((payload as Record<string, unknown>).released_total),
+    frames_dropped_total: num((payload as Record<string, unknown>).frames_dropped_total),
+    echo_rejections_total: num((payload as Record<string, unknown>).echo_rejections_total),
+    protocol_version: asString((payload as Record<string, unknown>).protocol_version),
+    transfer_enabled: bool((payload as Record<string, unknown>).transfer_enabled),
+  };
+}
+
+function asString(v: unknown): string | null {
+  if (v == null) return null;
+  return typeof v === "string" ? v : String(v);
+}
+
+async function fetchSmartpbxStatus(): Promise<SmartPbxStatusLoad> {
+  const token = process.env.SMARTPBX_STATUS_TOKEN;
+  if (!token) return { state: "offline", status: null, error: "SMARTPBX_STATUS_TOKEN is missing." };
+
+  try {
+    const response = await fetch(SMARTPBX_STATUS_URL, {
+      headers: { "X-Kavya-SmartPBX-Token": token },
+      next: { revalidate: 15 },
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      return {
+        state: "error",
+        status: null,
+        error: `SmartPBX status HTTP ${response.status}${body ? `: ${body.slice(0, 140)}` : ""}`,
+      };
+    }
+    const json = await response.json().catch(() => null);
+    return { state: "ok", status: asStatusPayload(json) };
+  } catch (e) {
+    return {
+      state: "error",
+      status: null,
+      error: e instanceof Error ? e.message : "Failed to fetch SmartPBX status",
+    };
+  }
+}
+
+function SmartPbxStatusCard({ state, status, error }: SmartPbxStatusLoad) {
+  const isLive = state === "ok" && status?.enabled && status.configured;
+  const active = state === "ok" ? `${status?.active_sessions ?? 0} / ${status?.max_sessions ?? 0}` : "—";
+  const handled = state === "ok" ? (status?.admitted_total ?? 0).toLocaleString() : "—";
+  const transferEnabled = state === "ok" ? (status?.transfer_enabled ? "Yes" : "No") : "—";
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <div className="stat-label">SmartPBX live</div>
+          <div className="text-white text-xl mt-1">SmartPBX</div>
+        </div>
+        <span className={isLive ? "pill-emerald" : "pill-amber"}>
+          <span className="w-1.5 h-1.5 rounded-full bg-current inline-block mr-1.5" />
+          {isLive ? "Live" : "Offline"}
+        </span>
+      </div>
+      {error ? <div className="text-xs text-rose-300 mb-3">Status error: {error}</div> : null}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+        <div>
+          <div className="stat-label mb-1">Active calls</div>
+          <div className="text-white font-semibold tabular-nums">{active}</div>
+        </div>
+        <div>
+          <div className="stat-label mb-1">Total handled</div>
+          <div className="text-white font-semibold tabular-nums">{handled}</div>
+        </div>
+        <div>
+          <div className="stat-label mb-1">Transfer enabled</div>
+          <div className="text-white font-semibold">{transferEnabled}</div>
+        </div>
+      </div>
+      {state === "ok" && status?.protocol_version ? <div className="mt-3 text-xs text-slate-400">Protocol {status.protocol_version}</div> : null}
+    </div>
+  );
+}
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export default async function AgentOverviewPage({ params }: { params: { id: string } }) {
   const session = getClientSession();
@@ -44,12 +173,13 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
 
   const sub = agentDb.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
   const configuredAuth = isTwilioAuthConfigured() && !!sub;
-  const [{ calls, configured, error }, summariesRaw, quota] = await Promise.all([
+  const [{ calls, configured, error }, summariesRaw, quota, smartpbx] = await Promise.all([
     configuredAuth
       ? getAllCallsForSubaccount(sub, { max: 1000 })
       : Promise.resolve({ calls: [] as any[], configured: false, error: undefined as string | undefined }),
     listCallSummaries(agentDb.id, { limit: 100 }),
     getAgentMonthlyQuota(agentDb),
+    fetchSmartpbxStatus(),
   ]);
   const summaryByCall = new Map<string, typeof summariesRaw[number]>();
   for (const s of summariesRaw) if (s.twilio_call_sid) summaryByCall.set(s.twilio_call_sid, s);
@@ -128,6 +258,8 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
       </div>
 
       <TwilioNotice configured={configured} error={error} />
+
+      <SmartPbxStatusCard state={smartpbx.state} status={smartpbx.status} error={smartpbx.error} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Total calls" value={String(total)} delta={0} hint={`${today.length} today`} />
