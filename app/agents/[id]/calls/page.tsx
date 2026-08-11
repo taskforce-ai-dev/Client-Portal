@@ -5,7 +5,11 @@ import AutoRefresh from "@/components/AutoRefresh";
 import TwilioNotice from "@/components/TwilioNotice";
 import CallLogTable, { CallRow } from "@/components/CallLogTable";
 import { getClientSession } from "@/lib/clientAuth";
-import { findAgentForClient, listCallSummaries } from "@/lib/adminDb";
+import {
+  findAgentForClient,
+  listAgentCallEvents,
+  listCallSummaries,
+} from "@/lib/adminDb";
 import { getAllowedFeatures, guardClientFeature } from "@/lib/featureAccess";
 import { formatTs, getAllCallsForSubaccount, isTwilioAuthConfigured } from "@/lib/twilio";
 import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
@@ -20,7 +24,34 @@ const RANGES: [string, string][] = [
   ["custom", "Custom"],
 ];
 
+type SmartPbxEventRow = {
+  id: string;
+  caller: string;
+  startedAt: string;
+  duration: string;
+  outcome: string;
+  summary: string;
+};
+
 function ymd(d: Date) { return d.toISOString().slice(0, 10); }
+
+function formatSeconds(v: number | null | undefined): string {
+  if (!v && v !== 0) return "—";
+  const s = Math.max(0, Math.floor(v));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+function maskPhone(value: string | null | undefined): string {
+  if (!value) return "—";
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "—";
+  if (digits.length <= 4) return `${"•".repeat(Math.max(0, digits.length - 1))}${digits.slice(-1)}`;
+  const visibleStart = digits.slice(0, 2);
+  const visibleEnd = digits.slice(-2);
+  return `${visibleStart}${"•".repeat(digits.length - 4)}${visibleEnd}`;
+}
 
 export default async function CallLogsPage({
   params,
@@ -63,7 +94,7 @@ export default async function CallLogsPage({
   const sub = agent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
   const configuredAuth = isTwilioAuthConfigured() && !!sub;
 
-  const [{ calls, configured, error }, summariesRaw] = await Promise.all([
+  const [{ calls, configured, error }, summariesRaw, smartPbxEvents] = await Promise.all([
     configuredAuth
       ? getAllCallsForSubaccount(sub, {
           max: 1000,
@@ -71,6 +102,9 @@ export default async function CallLogsPage({
         })
       : Promise.resolve({ calls: [] as any[], configured: false, error: undefined as string | undefined }),
     listCallSummaries(agent.id, { limit: 1000 }),
+    useDateFilter
+      ? listAgentCallEvents(agent.id, { limit: 500, startIso: ymd(start), endIso: ymd(endFilter) })
+      : listAgentCallEvents(agent.id, { limit: 500 }),
   ]);
 
   const summaryByCall = new Map<string, typeof summariesRaw[number]>();
@@ -112,6 +146,15 @@ export default async function CallLogsPage({
       outcome: "Summary only",
       summary: s as any,
     }));
+
+  const smartPbxRows: SmartPbxEventRow[] = smartPbxEvents.map((event) => ({
+    id: String(event.id),
+    caller: maskPhone(event.caller),
+    startedAt: formatTs(event.received_at),
+    duration: formatSeconds(event.duration_seconds),
+    outcome: event.outcome || "Unknown",
+    summary: event.summary || "—",
+  }));
 
   const allRowsUnfiltered = [...rows, ...orphans];
   // Outcome filter chips. "all" = no filter; others match the row's outcome
@@ -208,6 +251,43 @@ export default async function CallLogsPage({
           emptyMessage={customMissing ? "Pick a start and end date to see calls." : "No calls in this period."}
           transcriptsAllowed={transcriptsAllowed}
         />
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
+          <div className="font-semibold text-white">SmartPBX events</div>
+          <span className="text-xs text-slate-400">{smartPbxRows.length} events</span>
+        </div>
+        {smartPbxRows.length === 0 ? (
+          <div className="py-8 px-4 text-sm text-slate-500">No SmartPBX events in this period.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left stat-label border-b border-white/5 bg-white/[0.02]">
+                  <th className="py-2.5 px-4 font-medium">Time</th>
+                  <th className="py-2.5 px-4 font-medium">Caller</th>
+                  <th className="py-2.5 px-4 font-medium">Duration</th>
+                  <th className="py-2.5 px-4 font-medium">Outcome</th>
+                  <th className="py-2.5 px-4 font-medium">Summary</th>
+                </tr>
+              </thead>
+              <tbody>
+                {smartPbxRows.map((row) => (
+                  <tr key={row.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                    <td className="py-2.5 px-4 text-slate-500 font-mono text-xs">{row.startedAt}</td>
+                    <td className="py-2.5 px-4 text-slate-100">{row.caller}</td>
+                    <td className="py-2.5 px-4 text-slate-300 font-mono">{row.duration}</td>
+                    <td className="py-2.5 px-4">
+                      <span className="pill-slate">{row.outcome}</span>
+                    </td>
+                    <td className="py-2.5 px-4 text-slate-200">{row.summary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
