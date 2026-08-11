@@ -35,7 +35,8 @@ created_by       text                          -- the user id who created this r
 created_at       timestamptz NOT NULL DEFAULT now()
 last_login_at    timestamptz
 ```
-Indexes: unique `(client_id, lower(email))`; index on `client_id`.
+Indexes: unique `lower(email)` **globally** (email is one login = one person,
+so it can't be reused across companies); index on `client_id`.
 
 ### Permissions
 
@@ -97,7 +98,8 @@ email first → verify password → issue a **user token**. (Fallback to the leg
 5. Every create / role-change / disable is audit-logged.
 
 ## Open questions for the two of us
-- Email uniqueness: per-company (proposed) vs global.
+- Email uniqueness is **global** in this PR (one email = one login, no reuse across
+  companies). Flag if the admin portal ever needs the same email in two companies.
 - Do we retire the company-level `sentinel_client` password login entirely once
   every client has a user, or keep it as a break-glass? (Proposed: migrate then retire.)
 - Per-agent scoping (limit a user to specific agents) — v1 or later? (Proposed: later.)
