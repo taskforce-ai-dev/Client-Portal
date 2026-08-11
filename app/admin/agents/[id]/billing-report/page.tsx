@@ -113,7 +113,7 @@ export default async function BillingReportPage({
               <tr><th>Agent</th><td>{agent.name} <span className="muted">({agent.role || "Agent"} · {agent.type})</span></td></tr>
               <tr><th>Client</th><td>{client?.company ?? "—"}{client?.email ? <span className="muted"> · {client.email}</span> : null}</td></tr>
               <tr><th>Channels</th><td>{agent.channels}</td></tr>
-              <tr><th>Twilio subaccount</th><td className="mono">{sub || "—"}</td></tr>
+              <tr><th>Voice provider subaccount</th><td className="mono">{sub || "—"}</td></tr>
               <tr><th>Period</th><td>{RANGE_LABEL[range]} · <span className="mono">{periodLabel}</span></td></tr>
             </tbody>
           </table>
@@ -132,8 +132,8 @@ export default async function BillingReportPage({
             <Kpi label="Avg duration" value={fmtDur(calls.length ? totalSec / calls.length : 0)} />
           </div>
           <div className="note">
-            Billing is calculated per call, rounded up to the next whole minute, at {money(RATE_PER_MINUTE)} per minute. Source: Twilio Calls API on subaccount above.
-            {error ? <div className="err">Twilio error: {error}</div> : null}
+            Billing is calculated per call, rounded up to the next whole minute, at {money(RATE_PER_MINUTE)} per minute. Source: call records API for the selected subaccount above.
+            {error ? <div className="err">Voice provider error: {error}</div> : null}
           </div>
         </section>
 

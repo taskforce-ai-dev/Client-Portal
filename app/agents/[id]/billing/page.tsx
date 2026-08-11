@@ -93,11 +93,11 @@ export default async function BillingPage({
 
       {!snapshot.configured && (
         <div className="card p-4 text-sm text-amber-300/90">
-          Live call data isn&apos;t connected for this agent yet. Contact the TaskforceAI team to enable Twilio for this number.
+          Live call data isn&apos;t connected for this agent yet. Contact the TaskforceAI team to enable the voice provider for this number.
         </div>
       )}
       {snapshot.error && (
-        <div className="card p-4 text-sm text-rose-300/90 font-mono">Twilio error: {snapshot.error}</div>
+        <div className="card p-4 text-sm text-rose-300/90 font-mono">Voice provider error: {snapshot.error}</div>
       )}
       {customMissing && (
         <div className="card p-4 text-sm text-slate-400">Pick a start and end date to see custom-range billing.</div>
@@ -121,7 +121,7 @@ export default async function BillingPage({
           </div>
           <div>
             <div className="stat-label">Source</div>
-            <div className="text-sm text-slate-200 mt-1">Twilio call records</div>
+            <div className="text-sm text-slate-200 mt-1">Call records</div>
           </div>
         </div>
       </div>
@@ -182,7 +182,7 @@ export default async function BillingPage({
       </div>
 
       <p className="text-xs text-slate-500">
-        Billing is read from Twilio call records and computed at Rs. {snapshot.rate.perMinute.toFixed(2)} / billable minute. Total duration this period: {fmtDurSec(snapshot.kpis.durationSec)}.
+        Billing is read from call records and computed at Rs. {snapshot.rate.perMinute.toFixed(2)} / billable minute. Total duration this period: {fmtDurSec(snapshot.kpis.durationSec)}.
       </p>
     </div>
   );

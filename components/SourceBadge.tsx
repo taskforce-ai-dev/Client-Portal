@@ -9,9 +9,9 @@ export default function SourceBadge({
 }) {
   if (!configured) {
     return (
-      <span className="pill-amber" title="Twilio environment variables are not set.">
+      <span className="pill-amber" title="Voice provider environment variables are not set.">
         <Unplug className="w-3 h-3" />
-        Twilio not connected
+        Voice provider not connected
       </span>
     );
   }
@@ -19,17 +19,17 @@ export default function SourceBadge({
     return (
       <span className="pill-rose" title={error}>
         <TriangleAlert className="w-3 h-3" />
-        Twilio error
+        Voice provider error
       </span>
     );
   }
   return (
-    <span className="pill-emerald" title="Live data from Twilio">
+    <span className="pill-emerald" title="Live data from the voice provider">
       <span className="relative flex h-2 w-2">
         <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
       </span>
-      Live · Twilio
+      Live · Voice line
     </span>
   );
 }

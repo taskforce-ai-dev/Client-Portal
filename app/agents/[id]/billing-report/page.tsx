@@ -120,8 +120,8 @@ export default async function ClientBillingReport({
             <Kpi label="Avg duration" value={fmtDurSec(snapshot.kpis.calls ? snapshot.kpis.durationSec / snapshot.kpis.calls : 0)} />
           </div>
           <div className="note">
-            Billing is calculated per call, rounded up to the next whole minute, at {moneyLKR(snapshot.rate.perMinute)} per minute. Source: Twilio Calls API.
-            {snapshot.error ? <div className="err">Twilio error: {snapshot.error}</div> : null}
+            Billing is calculated per call, rounded up to the next whole minute, at {moneyLKR(snapshot.rate.perMinute)} per minute. Source: call records from the voice provider.
+            {snapshot.error ? <div className="err">Voice provider error: {snapshot.error}</div> : null}
           </div>
         </section>
 

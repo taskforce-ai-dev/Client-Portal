@@ -292,7 +292,7 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
         </div>
         <CallLogTable
           calls={recentCalls}
-          emptyMessage={configured ? "No calls yet." : "Connect Twilio to see calls."}
+          emptyMessage={configured ? "No calls yet." : "Connect your call history to see calls."}
           transcriptsAllowed={transcriptsAllowed}
         />
       </div>
