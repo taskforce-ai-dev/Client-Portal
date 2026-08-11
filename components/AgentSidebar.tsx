@@ -14,6 +14,7 @@ import {
   Phone,
   Settings,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import clsx from "clsx";
 import { type Agent } from "@/lib/data";
@@ -48,6 +49,7 @@ export default function AgentSidebar({
   quotaPeriodEnd,
   unreadNotifications,
   allowedFeatures,
+  isTeamAdmin,
 }: {
   agent: Agent;
   minutesUsed: number;
@@ -60,6 +62,8 @@ export default function AgentSidebar({
    *  isn't in this set are hidden from the sidebar. Overview / Settings /
    *  Notifications are never filtered out — they're always shown. */
   allowedFeatures?: Set<string>;
+  /** Only company admins (and legacy single-login owners) see the Team link. */
+  isTeamAdmin?: boolean;
   unreadNotifications: number;
 }) {
   const pathname = usePathname();
@@ -175,6 +179,9 @@ export default function AgentSidebar({
               .map(({ href, label, icon }) => (
                 <Item key={href} href={href} label={label} Icon={icon} />
               ))}
+            {isTeamAdmin && (
+              <Item href={`/agents/${agent.id}/team`} label="Team" Icon={Users} />
+            )}
           </div>
         </div>
       </nav>
