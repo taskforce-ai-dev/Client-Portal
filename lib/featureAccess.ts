@@ -1,27 +1,33 @@
 import { redirect } from "next/navigation";
-import { findClientById, parseAllowedFeatures, type ClientFeatureKey } from "./adminDb";
 import { getClientSession } from "./clientAuth";
+import { getCurrentClientUser } from "./clientPermissions";
+import { effectiveFeatures } from "./clientUsers";
+import { type ClientFeatureKey } from "./adminDb";
 
-// Server-side guard for individual client-portal feature pages. Call at
-// the top of the page's default export — if the client doesn't have
-// access, we redirect them to the agent's Overview. Keeps disabled
-// features unreachable by URL even when the sidebar nav item is hidden.
+// Feature access is resolved for the CURRENT signed-in user, not the company:
+// effective features = company plan ∩ the user's own grants. Admins / owners
+// (and legacy single-login sessions, which resolve to a synthetic owner) get
+// the full company plan. This is the one place both the sidebar and the page
+// guards agree on "what can this person see", so a member restricted on the
+// Team page is restricted everywhere — nav and direct URL alike.
+
+// Server-side guard for individual client-portal feature pages. Call at the
+// top of the page's default export — if the user doesn't have access we
+// redirect them to the agent's Overview.
 export async function guardClientFeature(featureKey: ClientFeatureKey, agentId: string): Promise<void> {
   const session = getClientSession();
   if (!session) redirect("/login");
-  const client = await findClientById(session.clientId);
-  if (!client || client.status !== "active") redirect("/login?msg=disabled");
-  const allowed = parseAllowedFeatures(client.allowed_features);
+  const me = await getCurrentClientUser();
+  if (!me) redirect("/login?msg=disabled");
+  const allowed = await effectiveFeatures(me);
   if (!allowed.has(featureKey)) redirect(`/agents/${agentId}`);
 }
 
-// Non-redirecting variant — returns the allowed-features Set so the page
-// can fine-tune rendering (e.g. hide "View transcript" buttons inside a
-// table without hiding the whole tab).
+// Non-redirecting variant — returns the effective-features Set so the page can
+// fine-tune rendering (e.g. hide "View transcript" buttons inside a table
+// without hiding the whole tab). Empty set when signed out or disabled.
 export async function getAllowedFeatures(): Promise<Set<ClientFeatureKey>> {
-  const session = getClientSession();
-  if (!session) return new Set();
-  const client = await findClientById(session.clientId);
-  if (!client) return new Set();
-  return parseAllowedFeatures(client.allowed_features);
+  const me = await getCurrentClientUser();
+  if (!me) return new Set();
+  return effectiveFeatures(me);
 }
