@@ -100,7 +100,7 @@ async function fetchSmartpbxStatus(): Promise<SmartPbxStatusLoad> {
       return {
         state: "error",
         status: null,
-        error: `SmartPBX status HTTP ${response.status}${body ? `: ${body.slice(0, 140)}` : ""}`,
+        error: `TaskForce Link status HTTP ${response.status}${body ? `: ${body.slice(0, 140)}` : ""}`,
       };
     }
     const json = await response.json().catch(() => null);
@@ -109,7 +109,7 @@ async function fetchSmartpbxStatus(): Promise<SmartPbxStatusLoad> {
     return {
       state: "error",
       status: null,
-      error: e instanceof Error ? e.message : "Failed to fetch SmartPBX status",
+      error: e instanceof Error ? e.message : "Failed to fetch TaskForce Link status",
     };
   }
 }
@@ -124,8 +124,8 @@ function SmartPbxStatusCard({ state, status, error }: SmartPbxStatusLoad) {
     <div className="card p-4">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
-          <div className="stat-label">SmartPBX live</div>
-          <div className="text-white text-xl mt-1">SmartPBX</div>
+          <div className="stat-label">TaskForce Link live</div>
+          <div className="text-white text-xl mt-1">TaskForce Link</div>
         </div>
         <span className={isLive ? "pill-emerald" : "pill-amber"}>
           <span className="w-1.5 h-1.5 rounded-full bg-current inline-block mr-1.5" />
