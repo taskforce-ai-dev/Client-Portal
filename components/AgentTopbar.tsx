@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Bell, Check, ChevronDown, Search } from "lucide-react";
+import { Bell, Check, ChevronDown, Search, User } from "lucide-react";
 
 export type TopbarAgent = {
   id: string;
@@ -118,9 +118,14 @@ export default function AgentTopbar({
             </span>
           )}
         </Link>
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs">
-          TC
-        </div>
+        <Link
+          href={`/agents/${current.id}/profile`}
+          aria-label="Your profile"
+          title="Your profile"
+          className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs ring-1 ring-transparent hover:ring-white/20 transition"
+        >
+          <User className="w-4 h-4" />
+        </Link>
       </div>
     </header>
   );
