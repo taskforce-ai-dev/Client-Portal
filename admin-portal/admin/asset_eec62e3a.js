@@ -561,8 +561,8 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
               )}
               {!twAnLoading && twAn && !twAn.configured && (
                 <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-2)" }}>
-                  <span className="mono" style={{ color: "#f59e0b" }}>No Twilio data for this client yet.</span>{" "}
-                  {twAn.agentsTotal ? `${twAn.agentsTotal} agent${twAn.agentsTotal === 1 ? "" : "s"} but none have a Twilio subaccount SID set in Settings.` : "Add an agent first."}
+                  <span className="mono" style={{ color: "#f59e0b" }}>No call history for this client yet.</span>{" "}
+                  {twAn.agentsTotal ? `${twAn.agentsTotal} agent${twAn.agentsTotal === 1 ? "" : "s"} but none have a voice-provider subaccount SID set in Settings.` : "Add an agent first."}
                 </div>
               )}
               {!twAnLoading && twAn && twAn.configured && (
@@ -804,7 +804,7 @@ const NewClientPage = () => {
               <Field label="Type"><select className="input" value={agentType} onChange={(e) => setAgentType(e.target.value)}><option>Call Center</option><option>Sales</option><option>Booking</option><option>Cold Call</option></select></Field>
               <Field label="Channel"><select className="input" value={agentChannel} onChange={(e) => setAgentChannel(e.target.value)}><option>Voice</option><option>WhatsApp</option><option>Voice + WhatsApp</option></select></Field>
             </div>
-            <Field label="Twilio subaccount SID (optional — paste this agent's AC… SID for live call analytics)" style={{ marginTop: 12 }}>
+            <Field label="Voice-provider subaccount SID (optional — paste this agent's AC… SID for live call analytics)" style={{ marginTop: 12 }}>
               <input className="input mono" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value={agentSub} onChange={(e) => setAgentSub(e.target.value)} />
             </Field>
           </>
@@ -1194,7 +1194,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           )}
           {tw && !tw.configured && (
             <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-2)" }}>
-              <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected for this agent.</span> Add its subaccount SID in <b>Settings</b> (and set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN in Vercel).
+              <span className="mono" style={{ color: "#f59e0b" }}>Voice provider not connected for this agent.</span> Add its subaccount SID in <b>Settings</b> (and set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN in Vercel).
             </div>
           )}
           <div className="panel" style={{ padding: 16 }}>
@@ -1213,7 +1213,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               <DataRow label="Type" value={agent.type} />
               <DataRow label="Channels" value={agent.channels} />
               <DataRow label="Status" value={<StatusDot status={agent.status} />} />
-              <DataRow label="Twilio subaccount" value={agent.twilio_subaccount_sid || "—"} />
+              <DataRow label="Voice provider subaccount" value={agent.twilio_subaccount_sid || "—"} />
             </div>
           </div>
 
@@ -1228,7 +1228,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             </div>
             {billLoading && <div style={{ fontSize: 12, color: "var(--text-3)" }}>Loading billing…</div>}
             {!billLoading && bill && !bill.configured && (
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>Add a Twilio subaccount SID in Settings to see billing.</div>
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>Add a Voice-provider subaccount SID in Settings to see billing.</div>
             )}
             {!billLoading && bill && bill.configured && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
@@ -1304,7 +1304,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                 </tbody>
               </table>
             ) : (
-              <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>{tw && tw.configured ? "No calls yet." : "Twilio not connected for this agent."}</div>
+              <div style={{ padding: 16, fontSize: 12, color: "var(--text-3)" }}>{tw && tw.configured ? "No calls yet." : "Voice provider not connected for this agent."}</div>
             )}
           </div>
 
@@ -1346,14 +1346,14 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           {!twALoading && range === "custom" && (!cStart || !cEnd) && <div className="panel" style={{ padding: 16, fontSize: 12.5, color: "var(--text-3)" }}>Pick a start and end date.</div>}
           {!twALoading && twA && !twA.configured && (
             <div className="panel" style={{ padding: 16, fontSize: 12.5, color: "var(--text-2)" }}>
-              <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected for this agent.</span> Add its subaccount SID in Settings.
+              <span className="mono" style={{ color: "#f59e0b" }}>Voice provider not connected for this agent.</span> Add its subaccount SID in Settings.
             </div>
           )}
           {!twALoading && twA && twA.configured && (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <StatusDot status={twA.error ? "Overdue" : "Active"} />
-                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{twA.error ? ("Twilio error: " + twA.error) : ((twA.start && twA.end ? (twA.start + " → " + twA.end) : "all-time") + " · subaccount " + (twA.subaccount || "").slice(0, 10) + "…")}</span>
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{twA.error ? ("Voice provider error: " + twA.error) : ((twA.start && twA.end ? (twA.start + " → " + twA.end) : "all-time") + " · subaccount " + (twA.subaccount || "").slice(0, 10) + "…")}</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 <MiniStat label="Calls" value={String(twA.kpis.calls)} />
@@ -1661,7 +1661,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
           )}
           {!billALoading && billA && !billA.configured && (
             <div className="panel" style={{ padding: 14, fontSize: 12.5, color: "var(--text-2)" }}>
-              <span className="mono" style={{ color: "#f59e0b" }}>Twilio not connected for this agent.</span> Add its subaccount SID in <b>Settings</b>.
+              <span className="mono" style={{ color: "#f59e0b" }}>Voice provider not connected for this agent.</span> Add its subaccount SID in <b>Settings</b>.
             </div>
           )}
           {!billALoading && billA && billA.configured && (
@@ -1736,7 +1736,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               </div>
 
               <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-                Billing is computed from Twilio call records on subaccount <span className="mono">{billA.subaccount}</span>. Each call's duration is rounded up to the next whole minute, then multiplied by the per-minute rate. Source of truth: Twilio Calls API.
+                Billing is computed from call records on subaccount <span className="mono">{billA.subaccount}</span>. Each call's duration is rounded up to the next whole minute, then multiplied by the per-minute rate. Source of truth: calls API.
               </div>
             </>
           )}
@@ -1752,10 +1752,10 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <Field label="Status"><select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="live">Live</option><option value="paused">Paused</option><option value="draft">Draft</option></select></Field>
           </div>
           <Field label="Description" style={{ marginTop: 12 }}><textarea className="input" rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          <Field label="Twilio subaccount SID (this agent's call data)" style={{ marginTop: 12 }}>
+          <Field label="Voice-provider subaccount SID (this agent's call data)" style={{ marginTop: 12 }}>
             <input className="input mono" value={form.twilio_subaccount_sid} placeholder="ACxxxxxxxx…" onChange={(e) => setForm({ ...form, twilio_subaccount_sid: e.target.value })} />
           </Field>
-          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Calls & analytics for this agent are read from this Twilio subaccount.</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>Calls & analytics for this agent are read from this voice-provider subaccount.</div>
           <Field label="KB reload URL" style={{ marginTop: 12 }}>
             <input className="input mono" value={form.kb_reload_url} placeholder="https://your-domain.com/kb-reload" onChange={(e) => setForm({ ...form, kb_reload_url: e.target.value })} />
           </Field>
@@ -1812,7 +1812,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
     "transcript": "Guest: Hi I want to book...\\nAgent: Sure! For which dates?..."
   }'`}</pre>
             <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 6 }}>
-              Same key. Ask Claude at the end of the call to produce these structured fields (name, dates, summary, key points, action items). <span className="mono">call_sid</span> is the Twilio Call SID — it ties the summary to the corresponding row on the Calls page.
+              Same key. Ask Claude at the end of the call to produce these structured fields (name, dates, summary, key points, action items). <span className="mono">call_sid</span> is the Call SID — it ties the summary to the corresponding row on the Calls page.
             </div>
           </div>
         </div>

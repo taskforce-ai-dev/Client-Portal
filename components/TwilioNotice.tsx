@@ -14,7 +14,7 @@ export default function TwilioNotice({
           <Unplug className="w-4 h-4" />
         </div>
         <div className="text-sm">
-          <div className="font-medium text-amber-200">Twilio is not connected</div>
+          <div className="font-medium text-amber-200">Voice provider is not connected</div>
           <div className="text-xs text-amber-200/70 mt-0.5">
             Set <code className="font-mono">TWILIO_ACCOUNT_SID</code>,{" "}
             <code className="font-mono">TWILIO_AUTH_TOKEN</code> and{" "}
@@ -32,7 +32,7 @@ export default function TwilioNotice({
           <TriangleAlert className="w-4 h-4" />
         </div>
         <div className="text-sm min-w-0">
-          <div className="font-medium text-rose-200">Couldn&apos;t reach Twilio</div>
+          <div className="font-medium text-rose-200">Couldn&apos;t reach the voice provider</div>
           <div className="text-xs text-rose-200/70 mt-0.5 font-mono break-all">{error}</div>
         </div>
       </div>
