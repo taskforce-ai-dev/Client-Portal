@@ -5,6 +5,7 @@ import AgentTopbar from "@/components/AgentTopbar";
 import QuotaBanner from "@/components/QuotaBanner";
 import QuotaPopup from "@/components/QuotaPopup";
 import { getClientSession } from "@/lib/clientAuth";
+import { getCurrentClientUser } from "@/lib/clientPermissions";
 import { findAgentForClient, findClientById, listAgentsByClient, parseAllowedFeatures } from "@/lib/adminDb";
 import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
 import { countCurrentMonthNotifications } from "@/lib/notifications";
@@ -37,6 +38,10 @@ export default async function AgentLayout({
   // individual page-level guards (each disabled feature's page) redirect
   // direct-URL attempts back to Overview.
   const allowedFeatures = parseAllowedFeatures(client.allowed_features);
+
+  // Only admins (and legacy single-login owners) see the Team management link.
+  const me = await getCurrentClientUser();
+  const isTeamAdmin = !!me?.is_admin;
 
   const agent = {
     id: dbAgent.id,
@@ -76,6 +81,7 @@ export default async function AgentLayout({
         quotaPeriodEnd={quota.periodEnd}
         unreadNotifications={unread}
         allowedFeatures={allowedFeatures}
+        isTeamAdmin={isTeamAdmin}
       />
       <div className="flex-1 flex flex-col min-w-0">
         <AgentTopbar current={topbarCurrent} agents={topbarAgents} unreadNotifications={unread} />
