@@ -7,7 +7,6 @@ import {
   BarChart3,
   Bell,
   CreditCard,
-  Hexagon,
   LayoutDashboard,
   Library,
   MessageSquare,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { type Agent } from "@/lib/data";
+import BrandLogo from "@/components/BrandLogo";
 
 const mainTop = (id: string) => [
   { href: `/agents/${id}`, label: "Overview", icon: LayoutDashboard, exact: true, key: "overview" as const },
@@ -108,13 +108,8 @@ export default function AgentSidebar({
 
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-white/5 bg-ink-950/60 backdrop-blur-xl">
-      <div className="h-16 flex items-center gap-2.5 px-5">
-        <div className="relative w-9 h-9 rounded-xl bg-accent-gradient grid place-items-center shadow-[0_0_24px_-4px_rgba(34,211,238,0.6)]">
-          <Hexagon className="w-4 h-4 text-ink-950" strokeWidth={2.5} />
-        </div>
-        <div className="font-semibold tracking-tight text-white text-[15px]">
-          Portal<span className="text-accent-400">.</span>
-        </div>
+      <div className="h-16 flex items-center px-5">
+        <BrandLogo />
       </div>
 
       <div className="px-3 pb-3">

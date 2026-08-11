@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Bell, ChevronDown, Hexagon, Phone, Search } from "lucide-react";
+import { Bell, ChevronDown, Phone, Search } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 import { getClientSession } from "@/lib/clientAuth";
 import { findClientById, listAgentsByClient } from "@/lib/adminDb";
 import { callStats, callsToday, getCalls } from "@/lib/twilio";
@@ -39,14 +40,7 @@ export default async function SelectAgentPage() {
     <div className="min-h-screen flex flex-col">
       <header className="h-16 border-b border-white/5 bg-ink-950/60 backdrop-blur-xl flex items-center justify-between px-6 lg:px-8 gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-accent-gradient grid place-items-center shadow-[0_0_24px_-4px_rgba(34,211,238,0.6)]">
-              <Hexagon className="w-4 h-4 text-ink-950" strokeWidth={2.5} />
-            </div>
-            <div className="font-semibold tracking-tight text-white text-[15px]">
-              Portal<span className="text-accent-400">.</span>
-            </div>
-          </div>
+          <BrandLogo />
           <span className="text-slate-700">/</span>
           <button className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl bg-white/[0.03] ring-1 ring-white/10 hover:bg-white/[0.06]">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-xs">
