@@ -255,11 +255,11 @@ export default async function CallLogsPage({
 
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
-          <div className="font-semibold text-white">SmartPBX events</div>
+          <div className="font-semibold text-white">TaskForce Link events</div>
           <span className="text-xs text-slate-400">{smartPbxRows.length} events</span>
         </div>
         {smartPbxRows.length === 0 ? (
-          <div className="py-8 px-4 text-sm text-slate-500">No SmartPBX events in this period.</div>
+          <div className="py-8 px-4 text-sm text-slate-500">No TaskForce Link events in this period.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
