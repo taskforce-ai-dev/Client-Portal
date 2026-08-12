@@ -6,8 +6,10 @@
  *   - taskforce-horizontal-color.svg  → brand purple, for light surfaces
  *   - taskforce-horizontal.svg        → currentColor, if you need it to inherit
  *
- * We render the logo in its original brand colours. To rebrand, drop a new
- * file in /public/brand and point `src` at it — one line, everywhere.
+ * The portal is dark, so we use the white variant for legibility (the brand
+ * purple is too low-contrast on the near-black background). The purple and
+ * currentColor variants are kept in /public/brand for light surfaces. To
+ * rebrand, drop a new file in /public/brand and point `src` at it.
  */
 export default function BrandLogo({
   size = "md",
@@ -20,7 +22,7 @@ export default function BrandLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element -- static SVG logo; next/image adds no value for inline vectors
     <img
-      src="/brand/taskforce-horizontal-color.svg"
+      src="/brand/taskforce-horizontal-white.svg"
       alt="TaskForce AI"
       className={`${h} w-auto select-none ${className}`}
       draggable={false}
