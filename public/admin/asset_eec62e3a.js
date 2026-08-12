@@ -468,6 +468,9 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                       {inviteBusy ? "Sending…" : "Reset password (email link)"}
                     </button>
                   </div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 8, lineHeight: 1.5 }}>
+                    Every client signs in through a portal-user account now — Reveal/Save above only affect this company's legacy fallback login, which may not be the one actually in use. When in doubt, use Reset password to be sure.
+                  </div>
                 </div>
               </div>
               <div>
@@ -787,7 +790,14 @@ const NewClientPage = () => {
         password: welcome ? null : password,
         welcome,
         emailSent: d.emailSent,
+        ownerCreated: d.ownerCreated !== false,
       });
+      if (d.ownerCreated === false) {
+        // That email is already a portal user on a different company — the
+        // client row exists but has no login. Long-lived error toast since
+        // this needs the admin's attention, not just a passing success blip.
+        toast("Client created, but that email is already a portal-user login on another account — this client can't sign in yet. Use a different email, or resolve the conflict from the other account first.", "error");
+      }
       toast(
         welcome
           ? (d.emailSent ? "Client created & welcome email sent" : "Client created — email not sent (Resend not configured)")
@@ -990,9 +1000,15 @@ const NewClientPage = () => {
       </FormSection>
 
       {created && (
-        <div className="panel" style={{ padding: 16, borderColor: "var(--emerald)" }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--emerald)" }}>Client created ✓</div>
-          {created.welcome ? (
+        <div className="panel" style={{ padding: 16, borderColor: created.ownerCreated ? "var(--emerald)" : "var(--red-500)" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: created.ownerCreated ? "var(--emerald)" : "var(--red-400)" }}>
+            {created.ownerCreated ? "Client created ✓" : "Client created — but can't sign in yet"}
+          </div>
+          {!created.ownerCreated ? (
+            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>
+              <strong>{created.email}</strong> is already a portal-user login on a different account, so this client has no working login. Go to the client's detail page and update their login email, or resolve the conflict on the other account, then use Reset Password there.
+            </div>
+          ) : created.welcome ? (
             <>
               <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>
                 {created.emailSent

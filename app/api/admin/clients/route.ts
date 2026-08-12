@@ -66,12 +66,18 @@ export async function POST(req: NextRequest) {
     // the token holder sets one. "Create account only" instead activates the
     // owner immediately with that password, matching the pre-RBAC behavior.
     // Best-effort: a user-creation failure (e.g. email already a portal user
-    // elsewhere) must not fail client creation — the client row still exists
-    // and can be fixed up from the client detail page afterward.
+    // elsewhere) must not fail client creation — the client row still exists.
+    // But it must not be swallowed silently either: once a client_user row
+    // exists for an email, findClientUserByEmail() shadows the legacy
+    // sentinel_client password for that email in the login route, so a
+    // failed owner creation leaves the new client genuinely unable to sign
+    // in — ownerCreated is surfaced to the console precisely so that isn't
+    // silent.
     let emailSent: boolean | undefined;
+    let ownerCreated = true;
     try {
       const { createClientUser } = await import("@/lib/clientUsers");
-      await createClientUser({
+      const userResult = await createClientUser({
         clientId: client.id,
         email: client.email,
         name: body.contact,
@@ -80,15 +86,24 @@ export async function POST(req: NextRequest) {
         allowedFeatures: [],
         createdBy: null,
       });
-      if (body.sendInvite) {
+      if (!userResult.ok) {
+        ownerCreated = false;
+        console.error("Owner user creation failed for new client " + client.id + ": " + userResult.reason);
+      } else if (body.sendInvite) {
         const { sent } = await issueClientOwnerInvite(client.id, req.nextUrl.origin);
         emailSent = sent;
       }
     } catch (e) {
+      ownerCreated = false;
       console.error("Owner user / invite setup failed for new client " + client.id + ":", e);
     }
 
-    return NextResponse.json({ ok: true, client: { id: client.id, company: client.company, email: client.email }, emailSent });
+    return NextResponse.json({
+      ok: true,
+      client: { id: client.id, company: client.company, email: client.email },
+      emailSent,
+      ownerCreated,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
     const status = /unique|duplicate/i.test(msg) ? 409 : 500;

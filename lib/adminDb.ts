@@ -1043,6 +1043,12 @@ export type ClientInviteResult = { token: string; expiresAt: string; clientId: s
 // no password — same shape the admin portal now creates for every new client).
 // This is what lets the Detail Drawer's "Send reset link" work on any client,
 // old or new, without a separate backfill migration.
+//
+// Not status-filtered on purpose: if the only is_admin row is disabled,
+// issuing a reset for it (via createClientInviteToken -> setClientUserPassword)
+// re-activates them. Treated as the intended recovery path for a disabled
+// owner rather than a bug — an admin reaching for "Reset password" on a
+// disabled client is choosing to bring that login back.
 export async function getOrCreateOwnerUser(clientId: string): Promise<ClientUser> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
