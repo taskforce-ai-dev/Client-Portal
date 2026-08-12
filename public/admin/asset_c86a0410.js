@@ -179,22 +179,13 @@ const NAV = [
 const Sidebar = ({ active, onNavigate }) => (
   <aside className="sidebar">
     <div style={{ padding: "16px 18px 14px", borderBottom: "1px solid var(--border)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{
-          width: 26, height: 26, borderRadius: 7,
-          background: "linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 0 0 1px rgba(239,68,68,0.4), 0 0 14px rgba(239,68,68,0.35)"
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z" />
-          </svg>
-        </div>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em" }}>Sentinel</div>
-          <div style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "var(--ff-mono)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Super Admin</div>
-        </div>
-      </div>
+      <img
+        src="/brand/taskforce-horizontal-white.svg"
+        alt="TaskForce AI"
+        style={{ height: 22, width: "auto", display: "block" }}
+        draggable={false}
+      />
+      <div style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "var(--ff-mono)", letterSpacing: "0.06em", textTransform: "uppercase", marginTop: 8 }}>Super Admin</div>
     </div>
 
     <div style={{ flex: 1, overflowY: "auto", padding: "4px 0 14px" }}>
