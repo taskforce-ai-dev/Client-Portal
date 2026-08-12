@@ -94,7 +94,9 @@ export default async function SelectAgentPage() {
                 Your workspace is set up. Agents are provisioned by the TaskforceAI team — reach out and we&apos;ll add your first one.
               </div>
               <a
-                href="mailto:hello@taskforceai.tech?subject=Request%20a%20new%20agent"
+                href="https://wa.me/94776697566?text=Hi%2C%20I%27d%20like%20to%20request%20a%20new%20agent."
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn-ghost text-xs inline-flex mt-5"
               >
                 Contact us
@@ -164,7 +166,9 @@ export default async function SelectAgentPage() {
               </div>
             </div>
             <a
-              href="mailto:hello@taskforceai.tech?subject=Request%20a%20new%20agent"
+              href="https://wa.me/94776697566?text=Hi%2C%20I%27d%20like%20to%20request%20a%20new%20agent."
+              target="_blank"
+              rel="noopener noreferrer"
               className="btn-ghost text-xs"
             >
               Contact us
