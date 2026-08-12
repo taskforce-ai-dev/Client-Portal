@@ -6,7 +6,8 @@ import QuotaBanner from "@/components/QuotaBanner";
 import QuotaPopup from "@/components/QuotaPopup";
 import { getClientSession } from "@/lib/clientAuth";
 import { getCurrentClientUser } from "@/lib/clientPermissions";
-import { findAgentForClient, findClientById, listAgentsByClient, parseAllowedFeatures } from "@/lib/adminDb";
+import { effectiveFeatures } from "@/lib/clientUsers";
+import { findAgentForClient, findClientById, listAgentsByClient } from "@/lib/adminDb";
 import { getAgentMonthlyQuota, recordQuotaNoticeIfNeeded } from "@/lib/billing";
 import { countCurrentMonthNotifications } from "@/lib/notifications";
 
@@ -33,15 +34,18 @@ export default async function AgentLayout({
   if (!client || client.status !== "active") redirect("/login?msg=disabled");
   if (!dbAgent) redirect("/select");
 
-  // Parse the comma-separated allowed_features list. Empty = back-compat
-  // (all features enabled). The sidebar filters items by key; the
-  // individual page-level guards (each disabled feature's page) redirect
-  // direct-URL attempts back to Overview.
-  const allowedFeatures = parseAllowedFeatures(client.allowed_features);
+  // Gate the sidebar by the CURRENT user's effective features (company plan ∩
+  // their own grants; admins/owners get the full plan), not the raw company
+  // plan — otherwise a member restricted on the Team page would still see
+  // every tab. The per-page guards use the same resolution, so direct-URL
+  // access is blocked too. (Admins get everything; a member's empty grant
+  // means no optional tabs, only the always-on Overview/Notifications.)
+  const me = await getCurrentClientUser();
+  if (!me) redirect("/login?msg=disabled");
+  const allowedFeatures = await effectiveFeatures(me);
 
   // Only admins (and legacy single-login owners) see the Team management link.
-  const me = await getCurrentClientUser();
-  const isTeamAdmin = !!me?.is_admin;
+  const isTeamAdmin = me.is_admin;
 
   const agent = {
     id: dbAgent.id,

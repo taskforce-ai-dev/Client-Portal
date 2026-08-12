@@ -3,6 +3,7 @@ import {
   getSql,
   findClientById,
   parseAllowedFeatures,
+  CLIENT_FEATURE_KEYS,
   type Sql,
   type ClientFeatureKey,
 } from "./adminDb";
@@ -64,7 +65,16 @@ export async function effectiveFeatures(user: Pick<ClientUser, "client_id" | "is
   const client = await findClientById(user.client_id);
   const companyFeatures = parseAllowedFeatures(client?.allowed_features);
   if (user.is_admin) return companyFeatures;
-  const userFeatures = parseAllowedFeatures(user.allowed_features);
+  // IMPORTANT: a member's grants are read literally — empty means NO features
+  // (only the always-on tabs), never "all". parseAllowedFeatures treats "" as
+  // "all" for company back-compat, which is the opposite of what we want for a
+  // per-user grant, so parse the user's CSV directly here.
+  const userFeatures = new Set(
+    user.allowed_features
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s): s is ClientFeatureKey => (CLIENT_FEATURE_KEYS as readonly string[]).includes(s))
+  );
   // Intersection — a user can never exceed the company's plan.
   return new Set([...userFeatures].filter((f) => companyFeatures.has(f)));
 }
@@ -95,11 +105,16 @@ export async function listClientUsers(clientId: string): Promise<ClientUser[]> {
   return (await sql`SELECT * FROM sentinel_client_user WHERE client_id = ${clientId} ORDER BY is_admin DESC, created_at ASC`) as ClientUser[];
 }
 
-// Normalize a requested feature CSV to only-valid keys, then store as CSV.
+// Normalize a requested feature list to only-valid keys, stored as CSV. Read
+// literally: an empty request stays empty (= no features), never "all" — the
+// parseAllowedFeatures "empty = all" back-compat is for the company plan only,
+// not per-user grants.
 function normalizeFeatures(features: string[] | undefined): string {
-  if (!features) return "";
-  const valid = new Set(parseAllowedFeatures(features.join(",")));
-  return [...valid].join(",");
+  if (!features || features.length === 0) return "";
+  const valid = features
+    .map((s) => s.trim())
+    .filter((s) => (CLIENT_FEATURE_KEYS as readonly string[]).includes(s));
+  return Array.from(new Set(valid)).join(",");
 }
 
 export async function createClientUser(input: {
