@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthed } from "@/lib/adminAuth";
-import { createAgent, createClient, isDbConfigured, listClients } from "@/lib/adminDb";
+import { createAgent, createClient, isDbConfigured, issueClientOwnerInvite, listClients } from "@/lib/adminDb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
     company?: string; email?: string; password?: string; plan?: string; status?: string; contact?: string; mrr_cents?: number;
     country?: string; allowed_features?: string | string[];
     provisionAgent?: boolean; agentName?: string; agentRole?: string; agentChannels?: string; agentTwilioSubaccountSid?: string;
+    sendInvite?: boolean;
   };
   try {
     body = await req.json();
@@ -57,7 +58,37 @@ export async function POST(req: NextRequest) {
         twilioSubaccountSid: body.agentTwilioSubaccountSid,
       });
     }
-    return NextResponse.json({ ok: true, client: { id: client.id, company: client.company, email: client.email } });
+
+    // RBAC alignment (docs/rbac-design.md): every client gets its first
+    // sentinel_client_user (the owner) here. When sending a welcome email,
+    // the owner is created "invited" with no password — the admin-typed
+    // password above never becomes a real credential for this account; only
+    // the token holder sets one. "Create account only" instead activates the
+    // owner immediately with that password, matching the pre-RBAC behavior.
+    // Best-effort: a user-creation failure (e.g. email already a portal user
+    // elsewhere) must not fail client creation — the client row still exists
+    // and can be fixed up from the client detail page afterward.
+    let emailSent: boolean | undefined;
+    try {
+      const { createClientUser } = await import("@/lib/clientUsers");
+      await createClientUser({
+        clientId: client.id,
+        email: client.email,
+        name: body.contact,
+        password: body.sendInvite ? undefined : body.password,
+        isAdmin: true,
+        allowedFeatures: [],
+        createdBy: null,
+      });
+      if (body.sendInvite) {
+        const { sent } = await issueClientOwnerInvite(client.id, req.nextUrl.origin);
+        emailSent = sent;
+      }
+    } catch (e) {
+      console.error("Owner user / invite setup failed for new client " + client.id + ":", e);
+    }
+
+    return NextResponse.json({ ok: true, client: { id: client.id, company: client.company, email: client.email }, emailSent });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "error";
     const status = /unique|duplicate/i.test(msg) ? 409 : 500;

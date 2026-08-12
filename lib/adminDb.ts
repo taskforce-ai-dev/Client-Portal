@@ -1,6 +1,10 @@
 import { neon } from "@neondatabase/serverless";
 import crypto from "crypto";
 import { hashPassword, encryptSecret, decryptSecret } from "./passwords";
+// Type-only — erased at compile time, so this doesn't create a runtime
+// circular import with clientUsers.ts (which imports from this file).
+// Function-level dependencies use dynamic import() instead; see below.
+import type { ClientUser } from "./clientUsers";
 
 // Additive schema: admins + clients live in sentinel_* tables. Your Better
 // Auth tables (organization, user, member, …) are never touched.
@@ -206,6 +210,12 @@ export async function ensureSchema(sql: Sql) {
     created_at timestamptz NOT NULL DEFAULT now())`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS sentinel_client_invite_token_hash_idx ON sentinel_client_invite_token (token_hash)`;
   await sql`CREATE INDEX IF NOT EXISTS sentinel_client_invite_token_client_idx ON sentinel_client_invite_token (client_id)`;
+  // RBAC alignment (docs/rbac-design.md): the invite token now points at the
+  // sentinel_client_user row that owns it, not the company directly. Nullable
+  // + additive so any token issued before this migration (client_user_id NULL)
+  // still resolves via the legacy client_id path in consumeClientInviteToken.
+  await sql`ALTER TABLE sentinel_client_invite_token ADD COLUMN IF NOT EXISTS client_user_id text`;
+  await sql`CREATE INDEX IF NOT EXISTS sentinel_client_invite_token_user_idx ON sentinel_client_invite_token (client_user_id)`;
 }
 
 export async function getSetting(key: string): Promise<string | null> {
@@ -1026,35 +1036,58 @@ export async function revealClientPassword(id: string): Promise<string | null> {
   return decryptSecret(rows[0].password_enc) ?? (rows[0].password || null);
 }
 
-export type ClientInviteResult = { token: string; expiresAt: string; clientId: string };
+export type ClientInviteResult = { token: string; expiresAt: string; clientId: string; email: string; company: string };
 
-// Issues a fresh single-use, 24h set-password token for a client and
-// invalidates any still-open token for that client. Also rotates the
-// client's password to an unguessable, server-only random value that is
-// never returned or logged — the account has no admin-known credential
-// once an invite exists; only the token holder can set a real password.
-// Reused verbatim for admin-triggered "Resend invite" (a real reset): same
-// call, fresh token, previous token invalidated.
-export async function createClientInviteToken(clientId: string): Promise<ClientInviteResult> {
+// Finds the owning admin (is_admin=true) sentinel_client_user for a company,
+// creating one on demand for clients that predate the RBAC migration (invited,
+// no password — same shape the admin portal now creates for every new client).
+// This is what lets the Detail Drawer's "Send reset link" work on any client,
+// old or new, without a separate backfill migration.
+export async function getOrCreateOwnerUser(clientId: string): Promise<ClientUser> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  const { listClientUsers, createClientUser } = await import("./clientUsers");
+  const existing = (await listClientUsers(clientId)).find((u) => u.is_admin);
+  if (existing) return existing;
+  const client = await findClientById(clientId);
+  if (!client) throw new Error("Client not found");
+  const created = await createClientUser({ clientId, email: client.email, isAdmin: true, allowedFeatures: [], createdBy: null });
+  if (!created.ok) throw new Error(created.reason === "duplicate" ? "That email is already a portal user on another account" : "Could not create portal user");
+  return created.user;
+}
+
+// Issues a fresh single-use, 24h set-password token for a client's owner user
+// and invalidates any still-open token for that user. If the user currently
+// has a real (admin- or self-set) password, it's rotated to an unguessable,
+// server-only random value first — no admin-known credential survives once a
+// reset/invite is issued. A brand-new invited user has no password yet
+// (password_hash === ""), so there's nothing to rotate. Reused verbatim for
+// admin-triggered "Resend invite" / "Reset password": same call, fresh token.
+export async function createClientInviteToken(clientUserId: string): Promise<ClientInviteResult> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
   await ensureSeed(sql);
-  const client = await findClientById(clientId);
+  const { findClientUserById, setClientUserPassword } = await import("./clientUsers");
+  const user = await findClientUserById(clientUserId);
+  if (!user) throw new Error("Client user not found");
+  const client = await findClientById(user.client_id);
   if (!client) throw new Error("Client not found");
 
-  // Invalidate any outstanding token for this client — one active token.
+  // Invalidate any outstanding token for this user — one active token.
   await sql`UPDATE sentinel_client_invite_token SET consumed_at = now()
-            WHERE client_id = ${clientId} AND consumed_at IS NULL`;
+            WHERE client_user_id = ${clientUserId} AND consumed_at IS NULL`;
 
   const rawToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  await sql`INSERT INTO sentinel_client_invite_token (id, client_id, token_hash, expires_at)
-            VALUES (${"cit_" + crypto.randomBytes(8).toString("hex")}, ${clientId}, ${tokenHash}, ${expiresAt})`;
+  await sql`INSERT INTO sentinel_client_invite_token (id, client_id, client_user_id, token_hash, expires_at)
+            VALUES (${"cit_" + crypto.randomBytes(8).toString("hex")}, ${client.id}, ${clientUserId}, ${tokenHash}, ${expiresAt})`;
 
-  await setClientPassword(clientId, crypto.randomBytes(24).toString("hex"));
-  await audit(sql, "client.invite", "client", client.company, "Sent portal invite to " + client.email);
-  return { token: rawToken, expiresAt, clientId };
+  if (user.password_hash) {
+    await setClientUserPassword(clientUserId, crypto.randomBytes(24).toString("hex"));
+  }
+  await audit(sql, "client_user.invite", "client_user", client.company, "Sent portal invite/reset to " + user.email);
+  return { token: rawToken, expiresAt, clientId: client.id, email: user.email, company: client.company };
 }
 
 export type ConsumeInviteResult =
@@ -1062,18 +1095,20 @@ export type ConsumeInviteResult =
   | { ok: false; reason: "invalid" | "expired" | "used" };
 
 // Validates a raw set-password token, atomically marks it consumed (so two
-// concurrent requests for the same token can't both succeed), then writes
-// the new password via setClientPassword — which itself calls the frozen
-// lib/passwords.ts exports. Password hashing/encryption is never
-// duplicated here.
+// concurrent requests for the same token can't both succeed), then writes the
+// new password via setClientUserPassword (RBAC path) — which itself calls the
+// frozen lib/passwords.ts exports. Password hashing is never duplicated here.
+// Falls back to the legacy setClientPassword path for any token issued before
+// the client_user_id migration (client_user_id IS NULL on that row), so
+// outstanding pre-migration invite links already in an inbox keep working.
 export async function consumeClientInviteToken(rawToken: string, newPassword: string): Promise<ConsumeInviteResult> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
   await ensureSeed(sql);
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-  const rows = (await sql`SELECT id, client_id, expires_at, consumed_at FROM sentinel_client_invite_token
+  const rows = (await sql`SELECT id, client_id, client_user_id, expires_at, consumed_at FROM sentinel_client_invite_token
             WHERE token_hash = ${tokenHash} LIMIT 1`) as
-    { id: string; client_id: string; expires_at: string; consumed_at: string | null }[];
+    { id: string; client_id: string; client_user_id: string | null; expires_at: string; consumed_at: string | null }[];
   const row = rows[0];
   if (!row) return { ok: false, reason: "invalid" };
   if (row.consumed_at) return { ok: false, reason: "used" };
@@ -1083,9 +1118,37 @@ export async function consumeClientInviteToken(rawToken: string, newPassword: st
             WHERE id = ${row.id} AND consumed_at IS NULL RETURNING id`) as { id: string }[];
   if (!claimed[0]) return { ok: false, reason: "used" };
 
-  await setClientPassword(row.client_id, newPassword);
-  await audit(sql, "client.password_set", "client", row.client_id, "Client set their own portal password via invite link");
+  if (row.client_user_id) {
+    const { setClientUserPassword } = await import("./clientUsers");
+    await setClientUserPassword(row.client_user_id, newPassword);
+    await audit(sql, "client_user.password_set", "client_user", row.client_id, "Client set their own portal password via invite link");
+  } else {
+    await setClientPassword(row.client_id, newPassword);
+    await audit(sql, "client.password_set", "client", row.client_id, "Client set their own portal password via invite link (legacy token)");
+  }
   return { ok: true, clientId: row.client_id };
+}
+
+// Orchestrates the whole "send an invite/reset email" action: resolve the
+// company's owner user (creating it on demand for pre-RBAC clients), issue a
+// token, build the set-password URL, and send it. Shared by client creation's
+// "send welcome email" option and the admin-triggered Reset Password actions,
+// so the two never drift.
+export async function issueClientOwnerInvite(clientId: string, requestOrigin: string): Promise<{ sent: boolean; expiresAt: string }> {
+  const owner = await getOrCreateOwnerUser(clientId);
+  const { token, expiresAt } = await createClientInviteToken(owner.id);
+  const { sendClientInviteEmail } = await import("./mailer");
+  const base = process.env.CLIENT_PORTAL_URL || requestOrigin;
+  const setPasswordUrl = new URL(`/set-password?token=${token}`, base).toString();
+  const client = await findClientById(clientId);
+  const { sent, error } = await sendClientInviteEmail({
+    email: owner.email,
+    company: client?.company || "",
+    setPasswordUrl,
+    expiresAt,
+  });
+  if (!sent) console.error("Client invite email not sent:", error);
+  return { sent, expiresAt };
 }
 
 export async function deleteClient(id: string): Promise<boolean> {
