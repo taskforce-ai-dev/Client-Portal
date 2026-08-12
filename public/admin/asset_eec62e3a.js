@@ -255,6 +255,7 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
   const [edit, setEdit] = useState({ company: "", contact: "", email: "", plan: "Growth", status: "Active", mrr: 0 });
   const [savingClient, setSavingClient] = useState(false);
   const [pw, setPw] = useState(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
   const [agentList, setAgentList] = useState([]);
   const [agentModal, setAgentModal] = useState(false);
   const [newAgent, setNewAgent] = useState({ name: "", type: "voice", description: "" });
@@ -349,6 +350,20 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
       if (!r.ok) throw new Error(d.message || "Failed");
       toast("Password updated — share it with the client", "success");
     } catch (e) { toast(e.message, "error"); }
+  };
+
+  // Emails a single-use set-password link instead of the admin setting/
+  // revealing a password directly above. Whatever password currently works
+  // for this client stops working the moment the link is sent — only the
+  // client who opens it can set a real one.
+  const sendResetLink = async () => {
+    setInviteBusy(true);
+    try {
+      const r = await fetch(`/api/admin/clients/${cid}/invite`, { method: "POST", credentials: "include" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed to send");
+      toast(d.emailSent ? "Reset link emailed to the client" : "Link created — email not sent (Resend not configured)", "success");
+    } catch (e) { toast(e.message, "error"); } finally { setInviteBusy(false); }
   };
 
   const addAgent = async () => {
@@ -447,7 +462,15 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                     <button className="btn btn-secondary btn-xs" onClick={() => setPw(suggestPassword())}>Generate</button>
                     <button className="btn btn-secondary btn-xs" onClick={() => { if (pw) { navigator.clipboard && navigator.clipboard.writeText(pw); toast("Password copied", "success"); } }}>Copy</button>
                   </div>
-                  <button className="btn btn-primary btn-sm" style={{ marginTop: 10 }} onClick={savePassword}>Save password</button>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button className="btn btn-primary btn-sm" onClick={savePassword}>Save password</button>
+                    <button className="btn btn-secondary btn-sm" disabled={inviteBusy} onClick={sendResetLink} title="Email the client a single-use link to set their own password — invalidates whatever password works today">
+                      {inviteBusy ? "Sending…" : "Reset password (email link)"}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 8, lineHeight: 1.5 }}>
+                    Every client signs in through a portal-user account now — Reveal/Save above only affect this company's legacy fallback login, which may not be the one actually in use. When in doubt, use Reset password to be sure.
+                  </div>
                 </div>
               </div>
               <div>
@@ -717,6 +740,7 @@ const NewClientPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState(suggestPassword());
   const [busy, setBusy] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
   const [err, setErr] = useState("");
   const [created, setCreated] = useState(null);
   const toast = useToast();
@@ -751,16 +775,59 @@ const NewClientPage = () => {
           agentRole: agentType === "Call Center" ? "Call Center Agent" : agentType + " Agent",
           agentChannels: channelMap[agentChannel] || "Voice Call",
           agentTwilioSubaccountSid: agentSub.trim(),
+          // welcome=true: the owner account is created "invited" — the
+          // password typed above never becomes a real credential. The
+          // welcome email carries a single-use set-password link instead,
+          // so nobody but the client ever knows their password.
+          sendInvite: welcome,
         }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.message || ("Failed (" + r.status + ")"));
-      setCreated({ email: email.trim(), password: password });
-      toast(welcome ? "Client created & welcome email sent" : "Client created", "success");
+      setCreated({
+        id: d.client && d.client.id,
+        email: email.trim(),
+        password: welcome ? null : password,
+        welcome,
+        emailSent: d.emailSent,
+        ownerCreated: d.ownerCreated !== false,
+      });
+      if (d.ownerCreated === false) {
+        // That email is already a portal user on a different company — the
+        // client row exists but has no login. Long-lived error toast since
+        // this needs the admin's attention, not just a passing success blip.
+        toast("Client created, but that email is already a portal-user login on another account — this client can't sign in yet. Use a different email, or resolve the conflict from the other account first.", "error");
+      }
+      toast(
+        welcome
+          ? (d.emailSent ? "Client created & welcome email sent" : "Client created — email not sent (Resend not configured)")
+          : "Client created",
+        "success"
+      );
     } catch (e) {
       setErr(e.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Sends (or re-sends) the set-password link for the just-created client.
+  // Same action whether the admin used "Create account only" and wants to
+  // switch to the invite flow after the fact, or "Send welcome email" needs
+  // a resend because Resend wasn't configured / the email bounced.
+  const sendInviteNow = async () => {
+    if (!created || !created.id) return;
+    setResendBusy(true);
+    try {
+      const r = await fetch(`/api/admin/clients/${created.id}/invite`, { method: "POST", credentials: "include" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "Failed to send");
+      setCreated({ ...created, welcome: true, emailSent: d.emailSent, password: null });
+      toast(d.emailSent ? "Set-password link emailed" : "Link created — email not sent (Resend not configured)", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -933,13 +1000,41 @@ const NewClientPage = () => {
       </FormSection>
 
       {created && (
-        <div className="panel" style={{ padding: 16, borderColor: "var(--emerald)" }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--emerald)" }}>Client created ✓</div>
-          <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>They can now sign in to the client portal with these credentials:</div>
-          <div style={{ fontFamily: "var(--ff-mono)", fontSize: 13, marginTop: 10, lineHeight: 1.9 }}>
-            <div>Email: {created.email}</div>
-            <div>Password: {created.password}</div>
+        <div className="panel" style={{ padding: 16, borderColor: created.ownerCreated ? "var(--emerald)" : "var(--red-500)" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: created.ownerCreated ? "var(--emerald)" : "var(--red-400)" }}>
+            {created.ownerCreated ? "Client created ✓" : "Client created — but can't sign in yet"}
           </div>
+          {!created.ownerCreated ? (
+            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>
+              <strong>{created.email}</strong> is already a portal-user login on a different account, so this client has no working login. Go to the client's detail page and update their login email, or resolve the conflict on the other account, then use Reset Password there.
+            </div>
+          ) : created.welcome ? (
+            <>
+              <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>
+                {created.emailSent
+                  ? `A set-password link was emailed to ${created.email}. They'll choose their own password — nobody else ever sees it.`
+                  : "Account created, but the welcome email could not be sent (Resend isn't configured). Send the link manually below once it is."}
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <button className="btn btn-secondary btn-sm" disabled={resendBusy} onClick={sendInviteNow}>
+                  {resendBusy ? "Sending…" : "Resend set-password link"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 4 }}>They can now sign in to the client portal with these credentials:</div>
+              <div style={{ fontFamily: "var(--ff-mono)", fontSize: 13, marginTop: 10, lineHeight: 1.9 }}>
+                <div>Email: {created.email}</div>
+                <div>Password: {created.password}</div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <button className="btn btn-secondary btn-sm" disabled={resendBusy} onClick={sendInviteNow}>
+                  {resendBusy ? "Sending…" : "Send set-password link instead"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
