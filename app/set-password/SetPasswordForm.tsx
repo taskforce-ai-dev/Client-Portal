@@ -59,7 +59,7 @@ export default function SetPasswordForm() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="inline-flex mb-6">
-            <BrandLogo glow={false} />
+            <BrandLogo />
           </div>
           <h1 className="text-2xl font-semibold text-white tracking-tight">
             Set your password
