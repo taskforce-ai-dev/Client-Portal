@@ -88,7 +88,7 @@ export default function LoginForm() {
         <div className="w-full max-w-sm">
           <div className="mb-8">
             <div className="lg:hidden mb-6">
-              <BrandLogo glow={false} />
+              <BrandLogo />
             </div>
             <h1 className="text-2xl font-semibold text-white tracking-tight">
               Welcome back
