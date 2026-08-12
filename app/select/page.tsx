@@ -31,6 +31,9 @@ export default async function SelectAgentPage() {
     initial: a.initial,
   }));
   const workspace = { name: client.company };
+  const contactUrl = `https://wa.me/94776697566?text=${encodeURIComponent(
+    `Hi, I'm from ${workspace.name}. I'd like to request a new agent.`
+  )}`;
 
   const { calls } = await getCalls(200);
   const today = callsToday(calls);
@@ -94,7 +97,7 @@ export default async function SelectAgentPage() {
                 Your workspace is set up. Agents are provisioned by the TaskforceAI team — reach out and we&apos;ll add your first one.
               </div>
               <a
-                href="https://wa.me/94776697566?text=Hi%2C%20I%27d%20like%20to%20request%20a%20new%20agent."
+                href={contactUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-ghost text-xs inline-flex mt-5"
@@ -166,7 +169,7 @@ export default async function SelectAgentPage() {
               </div>
             </div>
             <a
-              href="https://wa.me/94776697566?text=Hi%2C%20I%27d%20like%20to%20request%20a%20new%20agent."
+              href={contactUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-ghost text-xs"
