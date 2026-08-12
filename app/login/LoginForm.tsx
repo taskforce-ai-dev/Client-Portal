@@ -2,7 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Hexagon, Loader2, Lock, Mail } from "lucide-react";
+import { Loader2, Lock, Mail } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 
 // Client form for /login. Separate file because useSearchParams() forces
 // dynamic rendering — keeping it isolated lets the parent page stay a
@@ -61,14 +62,7 @@ export default function LoginForm() {
               "radial-gradient(800px 500px at 20% 30%, rgba(34,211,238,0.18), transparent 60%), radial-gradient(700px 500px at 80% 80%, rgba(16,185,129,0.12), transparent 60%)",
           }}
         />
-        <div className="relative flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-accent-gradient grid place-items-center shadow-[0_0_24px_-4px_rgba(34,211,238,0.6)]">
-            <Hexagon className="w-4 h-4 text-ink-950" strokeWidth={2.5} />
-          </div>
-          <div className="font-semibold tracking-tight text-white text-[15px]">
-            Portal<span className="text-accent-400">.</span>
-          </div>
-        </div>
+        <BrandLogo className="relative" />
 
         <div className="relative max-w-md space-y-4">
           <h2 className="text-3xl font-semibold text-white tracking-tight leading-tight">
@@ -93,13 +87,8 @@ export default function LoginForm() {
       <div className="flex items-center justify-center p-6 lg:p-10">
         <div className="w-full max-w-sm">
           <div className="mb-8">
-            <div className="lg:hidden flex items-center gap-2.5 mb-6">
-              <div className="w-9 h-9 rounded-xl bg-accent-gradient grid place-items-center">
-                <Hexagon className="w-4 h-4 text-ink-950" strokeWidth={2.5} />
-              </div>
-              <div className="font-semibold tracking-tight text-white text-[15px]">
-                Portal<span className="text-accent-400">.</span>
-              </div>
+            <div className="lg:hidden mb-6">
+              <BrandLogo glow={false} />
             </div>
             <h1 className="text-2xl font-semibold text-white tracking-tight">
               Welcome back

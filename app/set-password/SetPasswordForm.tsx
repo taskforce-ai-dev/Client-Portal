@@ -2,7 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { Hexagon, Loader2, Lock } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
 
 // Client form for /set-password. Separate file for the same reason as
 // app/login/LoginForm.tsx — useSearchParams() forces dynamic rendering, so
@@ -57,13 +58,8 @@ export default function SetPasswordForm() {
     <div className="min-h-screen grid place-items-center p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center gap-2.5 mb-6">
-            <div className="w-9 h-9 rounded-xl bg-accent-gradient grid place-items-center">
-              <Hexagon className="w-4 h-4 text-ink-950" strokeWidth={2.5} />
-            </div>
-            <div className="font-semibold tracking-tight text-white text-[15px]">
-              Portal<span className="text-accent-400">.</span>
-            </div>
+          <div className="inline-flex mb-6">
+            <BrandLogo glow={false} />
           </div>
           <h1 className="text-2xl font-semibold text-white tracking-tight">
             Set your password
