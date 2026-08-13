@@ -433,7 +433,13 @@ const HeaderBar = ({ title, onSearch }) => {
         </div>
       </div>
 
-      {menuPos && me && (
+      {menuPos && me && ReactDOM.createPortal(
+        // Portaled to <body> — .header-bar has backdrop-filter, which makes it
+        // a containing block for position:fixed descendants, so a fixed menu
+        // nested inside it renders relative to the header bar's box instead of
+        // the viewport (pushed off-screen). Portaling escapes that entirely,
+        // same fix CallLogTable's transcript modal already uses for this exact
+        // class of problem.
         <div
           className="menu"
           style={{ position: "fixed", top: menuPos.top, left: menuPos.left, width: 220, zIndex: 1000 }}
@@ -455,16 +461,18 @@ const HeaderBar = ({ title, onSearch }) => {
           <div className="menu-item" onClick={logout}>
             <Icon name="x" size={12} />Log out
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {profileModal && me && (
+      {profileModal && me && ReactDOM.createPortal(
         <ProfileModal
           mode={profileModal}
           me={me}
           onClose={() => setProfileModal(null)}
           onSaved={(updated) => setMe(updated)}
-        />
+        />,
+        document.body
       )}
     </div>
   );
