@@ -4,7 +4,8 @@ import { Bell, ChevronDown, Phone, Search } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import { getClientSession } from "@/lib/clientAuth";
 import { findClientById, listAgentsByClient } from "@/lib/adminDb";
-import { callStats, callsToday, getCalls } from "@/lib/twilio";
+import { callStats, callsToday } from "@/lib/twilio";
+import { getAgentCalls } from "@/lib/callSource";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,10 @@ export default async function SelectAgentPage() {
     `Hi, I'm from ${workspace.name}. I'd like to request a new agent.`
   )}`;
 
-  const { calls } = await getCalls(200);
+  // Workspace-level call stats, aggregated across this client's agents from
+  // TaskForce Link (agent_call_events).
+  const callsResults = await Promise.all(agentRows.map((a) => getAgentCalls(a.id, { max: 200 })));
+  const calls = callsResults.flatMap((r) => r.calls);
   const today = callsToday(calls);
   const stats = callStats(today);
 

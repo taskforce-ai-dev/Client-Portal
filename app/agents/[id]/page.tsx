@@ -17,9 +17,8 @@ import {
   bucketCallsByHour,
   bucketOutcomes,
   callStats,
-  getAllCallsForSubaccount,
-  isTwilioAuthConfigured,
 } from "@/lib/twilio";
+import { getAgentCalls } from "@/lib/callSource";
 import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
 
 function ymdLocal(d: Date) { return d.toISOString().slice(0, 10); }
@@ -171,12 +170,8 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
     initial: agentDb.initial,
   };
 
-  const sub = agentDb.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
-  const configuredAuth = isTwilioAuthConfigured() && !!sub;
   const [{ calls, configured, error }, summariesRaw, quota, smartpbx] = await Promise.all([
-    configuredAuth
-      ? getAllCallsForSubaccount(sub, { max: 1000 })
-      : Promise.resolve({ calls: [] as any[], configured: false, error: undefined as string | undefined }),
+    getAgentCalls(agentDb.id, { max: 1000 }),
     listCallSummaries(agentDb.id, { limit: 100 }),
     getAgentMonthlyQuota(agentDb),
     fetchSmartpbxStatus(),

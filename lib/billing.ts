@@ -1,4 +1,4 @@
-import { DbAgent, getSetting, getSql, setSetting } from "./adminDb";
+import { DbAgent, getSetting, getSql, isDbConfigured, setSetting } from "./adminDb";
 import {
   getAllCallsForSubaccount,
   getUsageRecordsForSubaccount,
@@ -7,6 +7,8 @@ import {
   isTwilioAuthConfigured,
   type UsageCategory,
 } from "./twilio";
+// Call data now comes from TaskForce Link (agent_call_events), not Twilio.
+import { getAgentCalls } from "./callSource";
 
 // Single source of truth for the USD → LKR conversion used everywhere
 // Twilio cost is displayed. Auto-refreshes daily from a free public feed
@@ -195,12 +197,12 @@ export async function getBillingSnapshot(
   opts: { customStart?: string; customEnd?: string } = {}
 ): Promise<BillingSnapshot> {
   const sub = agent.twilio_subaccount_sid || "";
-  if (!isTwilioAuthConfigured() || !sub) {
-    return { ...emptySnapshot(range), configured: false, hasSub: !!sub };
+  if (!isDbConfigured()) {
+    return { ...emptySnapshot(range), configured: false, hasSub: true };
   }
   const { start, endDate, useDateFilter, customMissing } = computeBillingWindow(range, opts.customStart, opts.customEnd);
   const endFilter = new Date(endDate.getTime() + 86400000);
-  const { calls, error } = await getAllCallsForSubaccount(sub, {
+  const { calls, error } = await getAgentCalls(agent.id, {
     max: 1000,
     ...(useDateFilter && !customMissing ? { startDate: ymd(start), endDate: ymd(endFilter) } : {}),
   });
@@ -438,10 +440,9 @@ export async function getAgentMonthlyQuota(agent: DbAgent): Promise<AgentQuotaSn
     overageMinutes: 0,
     overageCost: 0,
   };
-  const sub = agent.twilio_subaccount_sid || "";
-  if (!isTwilioAuthConfigured() || !sub) return base;
+  if (!isDbConfigured()) return base;
 
-  const { calls, error } = await getAllCallsForSubaccount(sub, {
+  const { calls, error } = await getAgentCalls(agent.id, {
     max: 1000,
     startDate: isoDate(win.start),
     endDate: isoDate(win.end),
