@@ -216,13 +216,182 @@ const Sidebar = ({ active, onNavigate }) => (
   </aside>
 );
 
+/* ---------- Profile field (read-only row) ---------- */
+const ProfileField = ({ label, value }) => (
+  <div>
+    <div style={{ fontSize: 10.5, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>{label}</div>
+    <div style={{ fontSize: 13, color: "var(--text-0)" }}>{value || "—"}</div>
+  </div>
+);
+
+/* ---------- Profile modal (View / Edit) ---------- */
+const ProfileModal = ({ mode, me, onClose, onSaved }) => {
+  const [tab, setTab] = useState(mode);
+  const [name, setName] = useState(me.name || "");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const joined = me.createdAt
+    ? new Date(me.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+    : "—";
+
+  const save = async () => {
+    setError("");
+    const trimmedName = name.trim();
+    if (!trimmedName) { setError("Name is required"); return; }
+    if (newPassword || confirmPassword) {
+      if (newPassword.length < 8) { setError("Password must be at least 8 characters"); return; }
+      if (newPassword !== confirmPassword) { setError("Passwords don't match"); return; }
+    }
+    setSaving(true);
+    try {
+      if (trimmedName !== me.name) {
+        const r = await fetch(`/api/admin/admins/${me.id}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: trimmedName }),
+        });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.message || "Failed to update name");
+      }
+      if (newPassword) {
+        const r = await fetch(`/api/admin/admins/${me.id}/password`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ password: newPassword }),
+        });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.message || "Failed to update password");
+      }
+      onSaved({ ...me, name: trimmedName });
+    } catch (e) {
+      setError(e.message || "Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div className="avatar lg">{me.initials}</div>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>{me.name}</div>
+            <div style={{ fontSize: 12, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{me.email}</div>
+          </div>
+        </div>
+
+        {me.editable && (
+          <div className="tabs" style={{ marginBottom: 16 }}>
+            <div className={"tab" + (tab === "view" ? " active" : "")} onClick={() => setTab("view")}>View</div>
+            <div className={"tab" + (tab === "edit" ? " active" : "")} onClick={() => setTab("edit")}>Edit</div>
+          </div>
+        )}
+
+        {tab === "edit" && me.editable ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, color: "var(--text-3)", display: "block", marginBottom: 4 }}>Full name</label>
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="divider" style={{ margin: "2px 0" }} />
+            <div style={{ fontSize: 11.5, color: "var(--text-2)" }}>Change password (leave blank to keep current)</div>
+            <div>
+              <label style={{ fontSize: 11, color: "var(--text-3)", display: "block", marginBottom: 4 }}>New password</label>
+              <input className="input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: "var(--text-3)", display: "block", marginBottom: 4 }}>Confirm new password</label>
+              <input className="input" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
+            </div>
+            {error && <div style={{ fontSize: 12, color: "#fda4af" }}>{error}</div>}
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <ProfileField label="Full name" value={me.name} />
+            <ProfileField label="Email address" value={me.email} />
+            <ProfileField label="Role" value={me.role} />
+            <ProfileField label="Member since" value={joined} />
+            {!me.editable && (
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4 }}>
+                This account is managed via environment configuration and can't be edited here.
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20 }}>
+          <button className="btn btn-secondary btn-sm" onClick={onClose}>Close</button>
+          {tab === "edit" && me.editable && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={save}
+              disabled={saving}
+              style={saving ? { opacity: 0.6, cursor: "not-allowed" } : {}}
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ---------- Header bar ---------- */
 const HeaderBar = ({ title, onSearch }) => {
   const [now, setNow] = useState(new Date());
+  const [me, setMe] = useState(null);
+  const [menuPos, setMenuPos] = useState(null);
+  const [profileModal, setProfileModal] = useState(null); // null | "view" | "edit"
+
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Load the signed-in admin's real profile — never hardcoded.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/admin/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (!cancelled && data) setMe(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!menuPos) return;
+    const close = () => setMenuPos(null);
+    document.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [menuPos]);
+
+  const openMenu = (e) => {
+    if (!me) return;
+    e.stopPropagation();
+    if (menuPos) { setMenuPos(null); return; }
+    const r = e.currentTarget.getBoundingClientRect();
+    setMenuPos({ top: r.bottom + 6, left: Math.max(8, r.right - 220) });
+  };
+
+  const logout = async () => {
+    setMenuPos(null);
+    try { await fetch("/api/auth/admin/logout", { method: "POST", credentials: "include" }); } catch {}
+    window.location.href = "/admin/login";
+  };
+
   return (
     <div className="header-bar">
       <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
@@ -250,14 +419,53 @@ const HeaderBar = ({ title, onSearch }) => {
           <span style={{ position: "absolute", top: 2, right: 2, width: 6, height: 6, background: "var(--rose)", borderRadius: "50%" }} />
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div className="avatar">MR</div>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 8, cursor: me ? "pointer" : "default", padding: "4px 6px", borderRadius: 8 }}
+          onClick={openMenu}
+          title={me ? me.email : ""}
+        >
+          <div className="avatar">{me ? me.initials : "···"}</div>
           <div style={{ lineHeight: 1.15 }}>
-            <div style={{ fontSize: 12, fontWeight: 500 }}>Maya Reyes</div>
-            <div style={{ fontSize: 10, color: "var(--text-3)" }}>Super Admin</div>
+            <div style={{ fontSize: 12, fontWeight: 500 }}>{me ? me.name : "…"}</div>
+            <div style={{ fontSize: 10, color: "var(--text-3)" }}>{me ? me.role : "Super Admin"}</div>
           </div>
+          <Icon name="chevron" size={11} style={{ color: "var(--text-3)", transform: "rotate(90deg)" }} />
         </div>
       </div>
+
+      {menuPos && me && (
+        <div
+          className="menu"
+          style={{ position: "fixed", top: menuPos.top, left: menuPos.left, width: 220, zIndex: 1000 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", marginBottom: 4 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-0)" }}>{me.name}</div>
+            <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "var(--ff-mono)", wordBreak: "break-all" }}>{me.email}</div>
+          </div>
+          <div className="menu-item" onClick={() => { setMenuPos(null); setProfileModal("view"); }}>
+            <Icon name="eye" size={12} />View profile
+          </div>
+          {me.editable && (
+            <div className="menu-item" onClick={() => { setMenuPos(null); setProfileModal("edit"); }}>
+              <Icon name="edit" size={12} />Edit profile
+            </div>
+          )}
+          <div className="menu-divider" />
+          <div className="menu-item" onClick={logout}>
+            <Icon name="x" size={12} />Log out
+          </div>
+        </div>
+      )}
+
+      {profileModal && me && (
+        <ProfileModal
+          mode={profileModal}
+          me={me}
+          onClose={() => setProfileModal(null)}
+          onSaved={(updated) => setMe(updated)}
+        />
+      )}
     </div>
   );
 };
