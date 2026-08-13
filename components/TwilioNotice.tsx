@@ -16,10 +16,8 @@ export default function TwilioNotice({
         <div className="text-sm">
           <div className="font-medium text-amber-200">Voice provider is not connected</div>
           <div className="text-xs text-amber-200/70 mt-0.5">
-            Set <code className="font-mono">TWILIO_ACCOUNT_SID</code>,{" "}
-            <code className="font-mono">TWILIO_AUTH_TOKEN</code> and{" "}
-            <code className="font-mono">TWILIO_TREEHOUSE_SUBACCOUNT_SID</code> in your Vercel
-            environment to show live call data.
+            Live call data isn&apos;t connected for this agent yet. Contact the TaskForce AI
+            team to enable it.
           </div>
         </div>
       </div>
