@@ -39,6 +39,18 @@ function asDate(v: unknown): string | null {
   return d.toISOString().slice(0, 10);
 }
 
+// Full timestamp, unlike asDate() above — that one is for calendar dates
+// (check-in/check-out) and intentionally drops time-of-day. occurredAt is a
+// real moment in time; truncating it to a date collapses every call that day
+// to the same displayed time (midnight UTC, shown as 05:30 in Asia/Colombo).
+function asTimestamp(v: unknown): string | null {
+  const s = asString(v);
+  if (!s) return null;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 function getPath<T extends Record<string, unknown>>(obj: T | null | undefined, path: string): unknown {
   const parts = path.split(".");
   let node: unknown = obj;
@@ -131,7 +143,7 @@ export async function POST(req: NextRequest) {
     "call.metadata.room",
     "call.metadata.room_preference",
   ]));
-  const occurredAt = asDate(pick(body, ["occurredAt", "occurred_at", "timestamp", "time", "eventTime"])) || new Date().toISOString();
+  const occurredAt = asTimestamp(pick(body, ["occurredAt", "occurred_at", "timestamp", "time", "eventTime"])) || new Date().toISOString();
 
   await recordAgentCallEvent({
     eventType,
