@@ -106,6 +106,21 @@ export async function getAgentCalls(agentId: string, opts: SourceOpts = {}): Pro
   const { startIso, endIso } = toIsoRange(opts);
   try {
     const events = await listAgentCallEvents(agentId, { limit: opts.max ?? 1000, startIso, endIso });
+    // Billing/analytics accuracy assumes each call has a stable `call_sid`
+    // (TaskForce Link extracts it from call.id/callSid/call_sid/sid). Dedup
+    // falls back to caller|received_at when it's missing, which only collapses
+    // same-timestamp duplicates — so a real multi-event call with NO id could
+    // still be counted twice. That shouldn't happen; if it ever does, this
+    // warning surfaces it in the logs so we can enforce call_sid at the webhook.
+    const idlessCallEvents = events.filter(
+      (e) => !e.call_sid && (e.duration_seconds != null || e.outcome || e.summary)
+    ).length;
+    if (idlessCallEvents > 0) {
+      console.warn(
+        `[callSource] ${idlessCallEvents} call event(s) without call_sid for agent ${agentId}; ` +
+          `dedup used the caller|received_at fallback. Confirm TaskForce Link sends one billable event per call.`
+      );
+    }
     const calls = dedupeEvents(events)
       .map(eventToDisplayCall)
       .sort((a, b) => (new Date(b.startedAtIso).getTime() || 0) - (new Date(a.startedAtIso).getTime() || 0));
