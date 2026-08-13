@@ -2,7 +2,7 @@
 <html lang="en"><head><base href="/admin/">
   <meta charset="UTF-8">
   <title>TaskForce AI — Super Admin Console</title>
-  <meta name="viewport" content="width=1280">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     /* latin-ext */
 @font-face {
@@ -276,7 +276,13 @@
       font-family: var(--ff-sans);
       font-size: 13px;
       letter-spacing: -0.005em;
-      overflow-x: hidden;
+      /* Console is designed around a 1280px canvas and isn't fully
+         responsive below that, but hiding overflow instead of scrolling
+         it made anything past the visible window (including the header's
+         profile menu) genuinely unreachable on narrower windows — not
+         just cramped. Scroll instead of clip so nothing is ever stranded
+         off-screen. */
+      overflow-x: auto;
       -webkit-font-smoothing: antialiased;
       min-width: 1280px;
     }
@@ -531,6 +537,15 @@
       position: sticky; top: 0; z-index: 4;
     }
     .content { padding: 20px 24px 60px; }
+
+    /* On narrower windows the header row (search bar + status pill + bell +
+       profile) doesn't all fit and, since it can't wrap, the rightmost items
+       — including the profile menu — get pushed off past the visible edge.
+       Drop the least essential controls first so title/bell/profile always
+       stay reachable without horizontal scrolling. */
+    @media (max-width: 980px) {
+      .header-optional { display: none !important; }
+    }
 
     /* nav */
     .nav-section { padding: 6px 12px; }
