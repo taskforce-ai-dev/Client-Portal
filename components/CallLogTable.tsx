@@ -24,6 +24,10 @@ export type CallRow = {
   duration: string;
   outcome: string;
   summary: CallSummary | null;
+  /** Which backend produced this row. Omitted (or "twilio") renders no
+   *  badge — most rows are Twilio-sourced, so only the newer TaskForce
+   *  Link (SmartPBX) rows are called out. */
+  source?: "twilio" | "link";
 };
 
 const outcomePill: Record<string, string> = {
@@ -93,7 +97,14 @@ export default function CallLogTable({
           <tbody>
             {calls.map((c) => (
               <tr key={c.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
-                <td className="py-2.5 px-4 text-slate-100">{c.summary?.caller_name || c.caller}</td>
+                <td className="py-2.5 px-4 text-slate-100">
+                  {c.summary?.caller_name || c.caller}
+                  {c.source === "link" && (
+                    <span className="pill-slate ml-2 text-[10px] align-middle" title="Captured via TaskForce Link (not Twilio)">
+                      TaskForce Link
+                    </span>
+                  )}
+                </td>
                 <td className="py-2.5 px-4 text-slate-500 font-mono text-xs">{c.startedAt}</td>
                 <td className="py-2.5 px-4 text-slate-300 capitalize">{c.direction}</td>
                 <td className="py-2.5 px-4 text-slate-300 font-mono">{c.duration}</td>
