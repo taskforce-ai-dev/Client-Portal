@@ -322,6 +322,15 @@ export async function createAdmin(input: { name?: string; email: string; passwor
   return rows[0];
 }
 
+export async function updateAdminName(id: string, name: string): Promise<boolean> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const rows = (await sql`UPDATE sentinel_admin SET name = ${name} WHERE id = ${id} RETURNING email`) as { email: string }[];
+  if (rows[0]) await audit(sql, "admin.update_name", "admin", rows[0].email, "Updated profile name for " + rows[0].email);
+  return !!rows[0];
+}
+
 export async function setAdminPassword(id: string, newPassword: string): Promise<boolean> {
   const sql = getSql();
   if (!sql) throw new Error("Database not configured");
