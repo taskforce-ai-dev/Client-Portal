@@ -196,9 +196,9 @@ export async function getBillingSnapshot(
   range: BillingRange,
   opts: { customStart?: string; customEnd?: string } = {}
 ): Promise<BillingSnapshot> {
-  const sub = agent.twilio_subaccount_sid || "";
   if (!isDbConfigured()) {
-    return { ...emptySnapshot(range), configured: false, hasSub: true };
+    // No data source reachable (DB down) — not connected.
+    return { ...emptySnapshot(range), configured: false, hasSub: false };
   }
   const { start, endDate, useDateFilter, customMissing } = computeBillingWindow(range, opts.customStart, opts.customEnd);
   const endFilter = new Date(endDate.getTime() + 86400000);
@@ -270,7 +270,7 @@ export async function getBillingSnapshot(
   return {
     configured: true,
     error: error || null,
-    subaccount: sub,
+    subaccount: agent.twilio_subaccount_sid || "",
     range,
     start: range === "total" ? null : ymd(start),
     end: range === "total" ? null : ymd(endDate),

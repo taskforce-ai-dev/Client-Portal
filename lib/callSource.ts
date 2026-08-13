@@ -2,17 +2,16 @@
 //
 // The portal's voice line runs on **TaskForce Link** (SmartPBX), which pushes
 // per-call events to /api/webhooks/agent-events -> `agent_call_events`. This
-// module reads those events and maps them into the exact `DisplayCall` /
-// `UsageResult` shapes the rest of the app already consumes, so every page
-// (Call Log, Overview, Analytics, Billing, Conversions) is fed from TaskForce
-// Link without any UI change.
+// module reads those events and maps them into the exact `DisplayCall` shape
+// the rest of the app already consumes, so every page (Call Log, Overview,
+// Analytics, Billing) is fed from TaskForce Link without any UI change.
 //
 // The legacy Twilio reader (lib/twilio.ts) is no longer called by the client
 // portal or billing; it's kept only so the admin console keeps compiling until
 // its own Twilio surfaces are removed.
 
-import { listAgentCallEvents, listCallSummaries, type DbAgentCallEvent } from "./adminDb";
-import { formatTs, type DisplayCall, type CallsResult, type UsageResult } from "./twilio";
+import { listAgentCallEvents, type DbAgentCallEvent } from "./adminDb";
+import { formatTs, type DisplayCall, type CallsResult } from "./twilio";
 
 function mmss(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds || 0));
@@ -35,38 +34,35 @@ function normalizeOutcome(raw: string | null): string {
   return raw!.charAt(0).toUpperCase() + raw!.slice(1);
 }
 
-function normalizeSentiment(raw: string | null | undefined): DisplayCall["sentiment"] {
-  const t = (raw || "").toLowerCase();
-  if (t.includes("pos")) return "positive";
-  if (t.includes("neg")) return "negative";
-  return "neutral";
-}
-
 // Collapse the raw event stream into one row per call. A single call can emit
-// several events (e.g. started, then completed); we keep, per call_sid, the
-// richest one — the greatest duration, tie-broken by most recent received_at —
-// so analytics and billing never double-count a call.
+// several events (e.g. started, then completed); we keep, per call, the richest
+// one — greatest duration, tie-broken by most recent received_at — so analytics
+// and billing never double-count a call.
+//
+// The dedup key is the provider call id when present. TaskForce Link may omit
+// it, so we fall back to `caller|received_at`: events for the same call still
+// collapse instead of each being counted (and billed) separately. Two genuinely
+// distinct calls would only merge if they shared caller AND exact timestamp,
+// which doesn't happen in practice.
 function dedupeEvents(events: DbAgentCallEvent[]): DbAgentCallEvent[] {
-  const byCall = new Map<string, DbAgentCallEvent>();
-  const noKey: DbAgentCallEvent[] = [];
+  const byKey = new Map<string, DbAgentCallEvent>();
   for (const e of events) {
-    // Only rows that describe an actual call (have a duration or an outcome);
-    // pure status pings without either are ignored so they don't inflate counts.
+    // Only rows that describe an actual call (have a duration, outcome, or
+    // summary); pure status pings are ignored so they don't inflate counts.
     if (e.duration_seconds == null && !e.outcome && !e.summary) continue;
-    const key = e.call_sid;
-    if (!key) { noKey.push(e); continue; }
-    const prev = byCall.get(key);
-    if (!prev) { byCall.set(key, e); continue; }
+    const key = e.call_sid || `${e.caller ?? "?"}|${e.received_at}`;
+    const prev = byKey.get(key);
+    if (!prev) { byKey.set(key, e); continue; }
     const better =
       (e.duration_seconds ?? 0) > (prev.duration_seconds ?? 0) ||
       ((e.duration_seconds ?? 0) === (prev.duration_seconds ?? 0) &&
         new Date(e.received_at).getTime() > new Date(prev.received_at).getTime());
-    if (better) byCall.set(key, e);
+    if (better) byKey.set(key, e);
   }
-  return [...byCall.values(), ...noKey];
+  return [...byKey.values()];
 }
 
-function eventToDisplayCall(e: DbAgentCallEvent, sentiment: DisplayCall["sentiment"]): DisplayCall {
+function eventToDisplayCall(e: DbAgentCallEvent): DisplayCall {
   const dur = e.duration_seconds ?? 0;
   const caller = e.caller || e.guest_name || "Unknown";
   return {
@@ -78,7 +74,10 @@ function eventToDisplayCall(e: DbAgentCallEvent, sentiment: DisplayCall["sentime
     duration: mmss(dur),
     durationSec: dur,
     outcome: normalizeOutcome(e.outcome),
-    sentiment,
+    // Per-call sentiment lives on the AI summary row (joined by the pages when
+    // they need it); the call record itself carries none — same as the old
+    // Twilio path, which always set "neutral" here.
+    sentiment: "neutral",
     // TaskForce Link doesn't distinguish direction; agent calls are inbound.
     direction: "inbound",
     recordingUrl: null,
@@ -99,29 +98,19 @@ function toIsoRange(opts: SourceOpts): { startIso?: string; endIso?: string } {
 
 // All calls for one agent, newest first. Drop-in replacement for the Twilio
 // reader — same CallsResult shape, keyed by agentId instead of a subaccount.
+// Degrades gracefully: on any DB error it resolves with an `error` string (the
+// pages render it via SourceBadge/TwilioNotice) instead of throwing and
+// crashing the server component, matching the old Twilio reader's behaviour.
 export async function getAgentCalls(agentId: string, opts: SourceOpts = {}): Promise<CallsResult> {
   if (!agentId) return { calls: [], configured: false };
   const { startIso, endIso } = toIsoRange(opts);
-  const [events, summaries] = await Promise.all([
-    listAgentCallEvents(agentId, { limit: opts.max ?? 1000, startIso, endIso }),
-    listCallSummaries(agentId, { limit: 1000 }),
-  ]);
-  // Sentiment comes from the AI summary pushed via /summaries, joined by call id.
-  const sentimentByCall = new Map<string, string>();
-  for (const s of summaries) if (s.twilio_call_sid && s.sentiment) sentimentByCall.set(s.twilio_call_sid, s.sentiment);
-
-  const calls = dedupeEvents(events)
-    .map((e) => eventToDisplayCall(e, normalizeSentiment(e.call_sid ? sentimentByCall.get(e.call_sid) : undefined)))
-    .sort((a, b) => (new Date(b.startedAtIso).getTime() || 0) - (new Date(a.startedAtIso).getTime() || 0));
-
-  return { calls, configured: true };
-}
-
-// Usage totals for an agent, derived from the same events. Minutes are raw
-// (sum of seconds / 60); the billing rate is applied by lib/billing.ts.
-export async function getAgentUsage(agentId: string, opts: SourceOpts = {}): Promise<UsageResult> {
-  const { calls, configured, error } = await getAgentCalls(agentId, opts);
-  if (!configured) return { configured: false, totalCalls: 0, totalMinutes: 0, totalPrice: 0, error };
-  const totalSec = calls.reduce((s, c) => s + c.durationSec, 0);
-  return { configured: true, totalCalls: calls.length, totalMinutes: totalSec / 60, totalPrice: 0, error };
+  try {
+    const events = await listAgentCallEvents(agentId, { limit: opts.max ?? 1000, startIso, endIso });
+    const calls = dedupeEvents(events)
+      .map(eventToDisplayCall)
+      .sort((a, b) => (new Date(b.startedAtIso).getTime() || 0) - (new Date(a.startedAtIso).getTime() || 0));
+    return { calls, configured: true };
+  } catch (e) {
+    return { calls: [], configured: true, error: e instanceof Error ? e.message : String(e) };
+  }
 }
