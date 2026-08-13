@@ -15,9 +15,8 @@ import {
   bucketCallsByHour,
   bucketOutcomes,
   callStats,
-  getAllCallsForSubaccount,
-  isTwilioAuthConfigured,
 } from "@/lib/twilio";
+import { getAgentCalls } from "@/lib/callSource";
 import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
 import type { CallRow } from "@/components/CallLogTable";
 
@@ -47,9 +46,6 @@ export default async function AnalyticsPage({
   if (!agent) redirect("/select");
   await guardClientFeature("analytics", params.id);
 
-  const sub = agent.twilio_subaccount_sid || process.env.TWILIO_TREEHOUSE_SUBACCOUNT_SID || "";
-  const configured = isTwilioAuthConfigured() && !!sub;
-
   // Compute window from ?range (+ ?start/?end for custom)
   let range = (searchParams.range as string) || "month";
   if (!["today", "week", "month", "custom"].includes(range)) range = "month";
@@ -70,10 +66,12 @@ export default async function AnalyticsPage({
   else if (range === "month") start.setDate(now.getDate() - 29);
   const endFilter = new Date(endDate.getTime() + 86400000);
 
-  const [{ calls, error }, summariesRaw] = await Promise.all([
-    configured && !customMissing
-      ? getAllCallsForSubaccount(sub, { max: 1000, startDate: ymd(start), endDate: ymd(endFilter) })
-      : Promise.resolve({ calls: [] as any[], error: undefined as string | undefined }),
+  // `configured`/`error` come from the source itself (same pattern as the
+  // Overview and Call Log pages), so a source error degrades gracefully.
+  const [{ calls, configured, error }, summariesRaw] = await Promise.all([
+    !customMissing
+      ? getAgentCalls(agent.id, { max: 1000, startDate: ymd(start), endDate: ymd(endFilter) })
+      : Promise.resolve({ calls: [] as any[], configured: true as boolean, error: undefined as string | undefined }),
     listCallSummaries(agent.id, { limit: 1000 }),
   ]);
 
