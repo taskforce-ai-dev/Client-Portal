@@ -954,6 +954,16 @@ export async function setClientLogo(clientId: string, logoUrl: string | null): P
   return rows[0] ?? null;
 }
 
+// Set a client's business (company) name. Returns the updated row, or null if
+// the client doesn't exist.
+export async function setClientCompany(clientId: string, company: string): Promise<DbClient | null> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const rows = (await sql`UPDATE sentinel_client SET company = ${company} WHERE id = ${clientId} RETURNING *`) as DbClient[];
+  return rows[0] ?? null;
+}
+
 export async function listClients(): Promise<DbClient[]> {
   const sql = getSql();
   if (!sql) return [];
