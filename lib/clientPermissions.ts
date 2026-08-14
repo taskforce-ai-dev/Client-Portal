@@ -8,11 +8,16 @@ import { findClientUserById, type ClientUser } from "./clientUsers";
 // still reach the Team feature and create their first real users. Once a client
 // has real users they log in as those users and this path is never hit for them.
 function syntheticOwner(client: DbClient): ClientUser {
+  // The owner's own display name lives in `contact` (that's where /api/me
+  // writes it for a legacy session) — NOT the company name. Treat the "—"
+  // seed default and blanks as "no name set" so it falls back to the email.
+  const contact = (client.contact || "").trim();
+  const displayName = contact && contact !== "—" ? contact : null;
   return {
     id: `legacy:${client.id}`,
     client_id: client.id,
     email: client.email,
-    name: client.company,
+    name: displayName,
     password_hash: "",
     is_admin: true,
     allowed_features: "", // "" = full company plan

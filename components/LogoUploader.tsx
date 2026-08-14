@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, ImageUp, Trash2, Check } from "lucide-react";
 
 const ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
@@ -37,6 +38,7 @@ function toDataUrl(file: File, maxPx = 512): Promise<string> {
 }
 
 export default function LogoUploader({ initialLogo, company }: { initialLogo: string | null; company: string }) {
+  const router = useRouter();
   const [logo, setLogo] = useState<string | null>(initialLogo);
   const [pending, setPending] = useState<string | null>(null); // staged, not yet saved
   const [busy, setBusy] = useState(false);
@@ -79,6 +81,7 @@ export default function LogoUploader({ initialLogo, company }: { initialLogo: st
       setLogo(d.logoUrl);
       setPending(null);
       setMsg({ kind: "ok", text: "Logo saved." });
+      router.refresh();
     } catch (err) {
       setMsg({ kind: "err", text: err instanceof Error ? err.message : "Couldn't save the logo" });
     } finally {
@@ -96,6 +99,7 @@ export default function LogoUploader({ initialLogo, company }: { initialLogo: st
       setLogo(null);
       setPending(null);
       setMsg({ kind: "ok", text: "Logo removed." });
+      router.refresh();
     } catch (err) {
       setMsg({ kind: "err", text: err instanceof Error ? err.message : "Couldn't remove the logo" });
     } finally {
