@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Bell, Check, ChevronDown, Search, User } from "lucide-react";
+import { Bell, Check, ChevronDown, Search } from "lucide-react";
+
+function initials(name?: string): string {
+  const parts = (name || "").trim().split(/[\s@._-]+/).filter(Boolean);
+  const two = (parts[0]?.[0] || "") + (parts[1]?.[0] || "");
+  return (two || "U").toUpperCase();
+}
 
 export type TopbarAgent = {
   id: string;
@@ -18,12 +24,16 @@ export default function AgentTopbar({
   unreadNotifications = 0,
   companyLogo = null,
   companyName = "",
+  userName = "",
+  userRole = "",
 }: {
   current: TopbarAgent;
   agents: TopbarAgent[];
   unreadNotifications?: number;
   companyLogo?: string | null;
   companyName?: string;
+  userName?: string;
+  userRole?: string;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -44,15 +54,26 @@ export default function AgentTopbar({
   return (
     <header className="h-16 border-b border-white/5 bg-ink-950/60 backdrop-blur-xl flex items-center justify-between px-6 lg:px-8 gap-4">
       <div className="flex items-center gap-3" ref={wrapRef}>
-        {companyLogo && (
-          // eslint-disable-next-line @next/next/no-img-element -- client-supplied data URL
-          <img
-            src={companyLogo}
-            alt={companyName ? `${companyName} logo` : "Company logo"}
-            title={companyName}
-            className="w-8 h-8 rounded-lg object-contain bg-white/[0.04] ring-1 ring-white/10 shrink-0"
-          />
-        )}
+        {/* Company / workspace identity — the same for every user in this client. */}
+        <div className="flex items-center gap-2 shrink-0">
+          {companyLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element -- client-supplied data URL
+            <img
+              src={companyLogo}
+              alt={companyName ? `${companyName} logo` : "Company logo"}
+              title={companyName}
+              className="w-8 h-8 rounded-lg object-contain bg-white/[0.04] ring-1 ring-white/10"
+            />
+          ) : companyName ? (
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-xs">
+              {companyName.charAt(0).toUpperCase()}
+            </div>
+          ) : null}
+          {companyName && (
+            <span className="text-sm font-semibold text-white hidden sm:block max-w-[180px] truncate">{companyName}</span>
+          )}
+        </div>
+        <span className="text-slate-700 hidden sm:block">/</span>
         <div className="relative">
           <button
             type="button"
@@ -131,13 +152,19 @@ export default function AgentTopbar({
             </span>
           )}
         </Link>
+        {/* The signed-in person — distinct from the company above. */}
         <Link
           href={`/agents/${current.id}/profile`}
-          aria-label="Your profile"
           title="Your profile"
-          className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs ring-1 ring-transparent hover:ring-white/20 transition"
+          className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-white/[0.05] transition"
         >
-          <User className="w-4 h-4" />
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs ring-1 ring-white/10">
+            {initials(userName)}
+          </div>
+          <div className="hidden md:block leading-tight text-left">
+            <div className="text-sm font-medium text-slate-100 max-w-[150px] truncate">{userName || "Profile"}</div>
+            {userRole && <div className="text-[11px] text-slate-500">{userRole}</div>}
+          </div>
         </Link>
       </div>
     </header>

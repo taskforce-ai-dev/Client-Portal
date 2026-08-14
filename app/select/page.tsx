@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Bell, ChevronDown, Phone, Search } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import { getClientSession } from "@/lib/clientAuth";
+import { getCurrentClientUser } from "@/lib/clientPermissions";
 import { findClientById, listAgentsByClient } from "@/lib/adminDb";
 import { callStats, callsToday } from "@/lib/twilio";
 import { getAgentCalls } from "@/lib/callSource";
@@ -43,6 +44,14 @@ export default async function SelectAgentPage() {
   const today = callsToday(calls);
   const stats = callStats(today);
 
+  // The signed-in person (distinct from the company/workspace above).
+  const me = await getCurrentClientUser();
+  const userName = me?.name || me?.email || "";
+  const userRole = me?.is_admin ? (session.userId === null ? "Owner" : "Admin") : "Member";
+  const userInitials =
+    (userName.trim().split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("") || "U").toUpperCase();
+  const profileHref = agents[0] ? `/agents/${agents[0].id}/profile` : null;
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="h-16 border-b border-white/5 bg-ink-950/60 backdrop-blur-xl flex items-center justify-between px-6 lg:px-8 gap-4">
@@ -72,9 +81,21 @@ export default async function SelectAgentPage() {
             <Bell className="w-4 h-4" />
             <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-rose-400 shadow-[0_0_8px_0_rgba(251,113,133,0.8)]" />
           </button>
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs">
-            {workspace.name.split(/\s+/).slice(0, 2).map((w) => w.charAt(0)).join("").toUpperCase() || "C"}
-          </div>
+          {profileHref ? (
+            <Link href={profileHref} title="Your profile" className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl hover:bg-white/[0.05] transition">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs ring-1 ring-white/10">
+                {userInitials}
+              </div>
+              <div className="hidden sm:block leading-tight text-left">
+                <div className="text-sm font-medium text-slate-100 max-w-[150px] truncate">{userName || "Profile"}</div>
+                <div className="text-[11px] text-slate-500">{userRole}</div>
+              </div>
+            </Link>
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-accent-400 to-indigo-500 text-ink-950 font-bold grid place-items-center text-xs">
+              {userInitials}
+            </div>
+          )}
         </div>
       </header>
 

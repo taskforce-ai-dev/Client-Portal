@@ -46,6 +46,9 @@ export default async function AgentLayout({
 
   // Only admins (and legacy single-login owners) see the Team management link.
   const isTeamAdmin = me.is_admin;
+  // The signed-in person's identity — distinct from the company/workspace.
+  const userName = me.name || me.email;
+  const userRole = me.is_admin ? (session.userId === null ? "Owner" : "Admin") : "Member";
 
   const agent = {
     id: dbAgent.id,
@@ -88,7 +91,15 @@ export default async function AgentLayout({
         isTeamAdmin={isTeamAdmin}
       />
       <div className="flex-1 flex flex-col min-w-0">
-        <AgentTopbar current={topbarCurrent} agents={topbarAgents} unreadNotifications={unread} companyLogo={client.logo_url} companyName={client.company} />
+        <AgentTopbar
+          current={topbarCurrent}
+          agents={topbarAgents}
+          unreadNotifications={unread}
+          companyLogo={client.logo_url}
+          companyName={client.company}
+          userName={userName}
+          userRole={userRole}
+        />
         <main className="flex-1 p-6 lg:p-8 overflow-x-hidden space-y-6">
           <QuotaBanner quota={quota} agentId={dbAgent.id} />
           <QuotaPopup agentId={dbAgent.id} agentName={dbAgent.name} quota={quota} />
