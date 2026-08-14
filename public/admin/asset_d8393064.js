@@ -247,7 +247,7 @@ const SystemHealthPage = () => {
 
       {/* Live metrics */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <LiveMetric label="Active calls" value={metrics.calls} history={metrics.callsHistory} color="#ef4444" />
+        <LiveMetric label="Active calls" value={metrics.calls} history={metrics.callsHistory} color="#5b4b8a" />
         <LiveMetric label="Messages / min" value={metrics.msgsPerMin.toLocaleString()} history={metrics.msgsHistory} color="#38bdf8" />
         <LiveMetric label="API req / min" value={fmtAbbrev(metrics.apiPerMin)} history={metrics.apiHistory} color="#10b981" />
         <LiveMetric label="Error rate" value={metrics.errorRate.toFixed(2)} suffix="%" history={metrics.errorHistory} color="#f59e0b" />

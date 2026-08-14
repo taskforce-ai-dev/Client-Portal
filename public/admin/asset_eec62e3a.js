@@ -1072,7 +1072,7 @@ const AgentBars = ({ data }) => {
     <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 120, padding: "8px 0" }}>
       {data.map((d, i) => (
         <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-          <div title={d.value + " calls"} style={{ width: "100%", maxWidth: 26, height: Math.round((d.value / max) * 92) + 2, background: "linear-gradient(180deg,#ef4444,#f59e0b)", borderRadius: 4 }} />
+          <div title={d.value + " calls"} style={{ width: "100%", maxWidth: 26, height: Math.round((d.value / max) * 92) + 2, background: "linear-gradient(180deg,#5b4b8a,#f59e0b)", borderRadius: 4 }} />
           <span style={{ fontSize: 9.5, color: "var(--text-3)" }}>{d.label}</span>
         </div>
       ))}
@@ -1229,7 +1229,7 @@ const MetaInboxPanel = ({ agentId }) => {
 
       {/* Error banner */}
       {err && (
-        <div style={{ padding: 12, background: "rgba(244, 63, 94, 0.08)", border: "1px solid rgba(244, 63, 94, 0.3)", borderRadius: 8, color: "#fca5a5", fontSize: 12 }}>
+        <div style={{ padding: 12, background: "rgba(244, 63, 94, 0.08)", border: "1px solid rgba(244, 63, 94, 0.3)", borderRadius: 8, color: "#bba2db", fontSize: 12 }}>
           Failed to load: {err}
         </div>
       )}
@@ -1825,15 +1825,15 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               display: "flex", alignItems: "center", gap: 8,
               padding: "6px 10px", borderRadius: 8,
               cursor: "pointer",
-              border: "1px solid " + (agentQuota.status === "exceeded" ? "rgba(239,68,68,0.45)" : agentQuota.status === "warn" ? "rgba(245,158,11,0.45)" : "rgba(110,231,183,0.35)"),
-              background: agentQuota.status === "exceeded" ? "rgba(239,68,68,0.10)" : agentQuota.status === "warn" ? "rgba(245,158,11,0.08)" : "rgba(110,231,183,0.06)",
+              border: "1px solid " + (agentQuota.status === "exceeded" ? "rgba(91, 75, 138,0.45)" : agentQuota.status === "warn" ? "rgba(245,158,11,0.45)" : "rgba(110,231,183,0.35)"),
+              background: agentQuota.status === "exceeded" ? "rgba(91, 75, 138,0.10)" : agentQuota.status === "warn" ? "rgba(245,158,11,0.08)" : "rgba(110,231,183,0.06)",
             }}
           >
             <span style={{ fontSize: 14 }}>{agentQuota.status === "exceeded" ? "⚠" : agentQuota.status === "warn" ? "⏱" : "✓"}</span>
             <div style={{ fontSize: 11, lineHeight: 1.25 }}>
               <div style={{ color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.06em", fontSize: 9.5 }}>{agentQuota.periodLabel}</div>
               <div style={{ color: "var(--text-0)", fontFamily: "var(--ff-mono)" }}>
-                {agentQuota.billableMinutes} / {agentQuota.includedMinutes} min · <span style={{ color: agentQuota.status === "exceeded" ? "#fca5a5" : agentQuota.status === "warn" ? "#fcd34d" : "#86efac" }}>{agentQuota.status}</span>
+                {agentQuota.billableMinutes} / {agentQuota.includedMinutes} min · <span style={{ color: agentQuota.status === "exceeded" ? "#bba2db" : agentQuota.status === "warn" ? "#fcd34d" : "#86efac" }}>{agentQuota.status}</span>
               </div>
             </div>
             <span style={{ fontSize: 10, color: "var(--text-3)", marginLeft: 2 }}>⚙</span>
@@ -2264,8 +2264,8 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             style={{
               width: "100%",
               maxWidth: 460,
-              background: "linear-gradient(180deg, " + (quotaPopup.status === "exceeded" ? "rgba(239,68,68,0.18)" : "rgba(245,158,11,0.16)") + " 0%, rgba(10,15,28,0.95) 70%)",
-              border: "1px solid " + (quotaPopup.status === "exceeded" ? "rgba(239,68,68,0.35)" : "rgba(245,158,11,0.35)"),
+              background: "linear-gradient(180deg, " + (quotaPopup.status === "exceeded" ? "rgba(91, 75, 138,0.18)" : "rgba(245,158,11,0.16)") + " 0%, rgba(10,15,28,0.95) 70%)",
+              border: "1px solid " + (quotaPopup.status === "exceeded" ? "rgba(91, 75, 138,0.35)" : "rgba(245,158,11,0.35)"),
               borderRadius: 14,
               boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7)",
               padding: 18,
@@ -2275,8 +2275,8 @@ const AgentConfigPage = ({ agentId, onBack }) => {
               <div style={{
                 width: 44, height: 44, borderRadius: 14,
                 display: "grid", placeItems: "center",
-                background: quotaPopup.status === "exceeded" ? "rgba(239,68,68,0.22)" : "rgba(245,158,11,0.22)",
-                color: quotaPopup.status === "exceeded" ? "#fecaca" : "#fde68a",
+                background: quotaPopup.status === "exceeded" ? "rgba(91, 75, 138,0.22)" : "rgba(245,158,11,0.22)",
+                color: quotaPopup.status === "exceeded" ? "#d9cbec" : "#fde68a",
                 fontSize: 22,
                 flexShrink: 0,
               }}>{quotaPopup.status === "exceeded" ? "⚠" : "⏱"}</div>
@@ -2770,7 +2770,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                         <span style={{ padding: "1px 6px", borderRadius: 4, background: "rgba(245,158,11,0.12)", color: "#fcd34d", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Manual override</span>
                       )}
                       {fxSource === "fallback" && (
-                        <span style={{ padding: "1px 6px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#fca5a5", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Fallback (live feed failed)</span>
+                        <span style={{ padding: "1px 6px", borderRadius: 4, background: "rgba(91, 75, 138,0.12)", color: "#bba2db", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Fallback (live feed failed)</span>
                       )}
                       {fxUpdatedAt && (
                         <span style={{ color: "var(--text-3)" }}>· updated {String(fxUpdatedAt).replace("T", " ").slice(0, 19)}</span>
@@ -2808,7 +2808,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   <div style={{ fontSize: 12, color: "var(--text-3)" }}>Twilio not connected for this agent.</div>
                 )}
                 {!twilioCostLoading && twilioCost && twilioCost.configured && twilioCost.error && (
-                  <div style={{ fontSize: 12, color: "#fca5a5" }}>Twilio error: {twilioCost.error}</div>
+                  <div style={{ fontSize: 12, color: "#bba2db" }}>Twilio error: {twilioCost.error}</div>
                 )}
                 {!twilioCostLoading && twilioCost && twilioCost.configured && !twilioCost.error && (
                   <>
@@ -3167,9 +3167,9 @@ const AgentConfigPage = ({ agentId, onBack }) => {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {notif.items.map((n) => {
                 const isExceeded = n.kind === "exceeded";
-                const accent = isExceeded ? "rgba(239,68,68,0.45)" : "rgba(245,158,11,0.45)";
-                const bg = isExceeded ? "rgba(239,68,68,0.06)" : "rgba(245,158,11,0.05)";
-                const dot = isExceeded ? "#ef4444" : "#f59e0b";
+                const accent = isExceeded ? "rgba(91, 75, 138,0.45)" : "rgba(245,158,11,0.45)";
+                const bg = isExceeded ? "rgba(91, 75, 138,0.06)" : "rgba(245,158,11,0.05)";
+                const dot = isExceeded ? "#5b4b8a" : "#f59e0b";
                 const title = isExceeded ? "Quota reached" : "80% of quota used";
                 const onDelete = async () => {
                   if (!window.confirm("Delete this notification?")) return;
@@ -3191,7 +3191,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                         <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, boxShadow: `0 0 8px ${dot}` }} />
-                        <div style={{ fontSize: 12.5, fontWeight: 600, color: isExceeded ? "#fecaca" : "#fde68a" }}>{title}</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: isExceeded ? "#d9cbec" : "#fde68a" }}>{title}</div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <div className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{n.occurredAt ? n.occurredAt.replace("T", " ").slice(0, 19) : ""}</div>

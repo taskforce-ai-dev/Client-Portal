@@ -189,8 +189,8 @@ const EarningsPage = () => {
                 <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
                 <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} />
                 <YAxis tickFormatter={(v) => "$" + (v / 1000).toFixed(0) + "k"} tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} width={50} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(239,68,68,0.05)" }} />
-                <Bar dataKey="invoiced" name="Invoiced" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(91, 75, 138,0.05)" }} />
+                <Bar dataKey="invoiced" name="Invoiced" fill="#5b4b8a" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="collected" name="Collected" fill="#10b981" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="outstanding" name="Outstanding" fill="#f59e0b" radius={[3, 3, 0, 0]} />
               </BarChart>
@@ -210,7 +210,7 @@ const EarningsPage = () => {
                     <span style={{ fontFamily: "var(--ff-mono)", fontSize: 12, color: "var(--text-0)" }}>${r.revenue.toLocaleString()}</span>
                   </div>
                   <div style={{ height: 8, background: "rgba(255,255,255,0.05)", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ width: (r.revenue / max * 100) + "%", height: "100%", background: "linear-gradient(90deg, #ef4444, #f87171)", borderRadius: 4, animation: "countup 600ms ease-out both" }} />
+                    <div style={{ width: (r.revenue / max * 100) + "%", height: "100%", background: "linear-gradient(90deg, #5b4b8a, #7858a6)", borderRadius: 4, animation: "countup 600ms ease-out both" }} />
                   </div>
                 </div>
               );

@@ -6,17 +6,18 @@
 <title>TaskForce AI — Admin sign in</title>
 <style>
   :root {
-    --bg-0: #04070f;
-    --bg-1: #080d1a;
-    --cyan: #00d4ff;
-    --violet: #7b61ff;
+    --bg-0: #08050f;
+    --bg-1: #0d0a1a;
+    --violet-light: #7858a6;
+    --violet: #5b4b8a;
+    --violet-deep: #371b58;
     --rose: #ff4d6d;
-    --text-0: #f4f7ff;
-    --text-1: #c8d0e3;
-    --text-2: #8a93ab;
-    --text-3: #5a6378;
-    --glass-bg: rgba(255, 255, 255, 0.045);
-    --glass-border: rgba(255, 255, 255, 0.08);
+    --text-0: #f4f2fb;
+    --text-1: #c9c3db;
+    --text-2: #948eab;
+    --text-3: #5f5878;
+    --glass-bg: rgba(120, 88, 166, 0.06);
+    --glass-border: rgba(187, 162, 219, 0.14);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; min-height: 100vh; }
@@ -26,9 +27,9 @@
     background: var(--bg-0);
     display: flex; align-items: center; justify-content: center;
     background:
-      radial-gradient(1200px 800px at 12% -10%, rgba(123,97,255,0.18), transparent 60%),
-      radial-gradient(1000px 700px at 95% 10%, rgba(0,212,255,0.13), transparent 60%),
-      linear-gradient(180deg, #04070f 0%, #060a16 50%, #04070f 100%);
+      radial-gradient(1200px 800px at 12% -10%, rgba(91,75,138,0.28), transparent 60%),
+      radial-gradient(1000px 700px at 95% 10%, rgba(120,88,166,0.18), transparent 60%),
+      linear-gradient(180deg, #08050f 0%, #0d0a1a 50%, #08050f 100%);
   }
   .card {
     width: 100%; max-width: 420px;
@@ -37,13 +38,24 @@
     border-radius: 18px;
     padding: 36px 32px;
     backdrop-filter: blur(20px);
-    box-shadow: 0 30px 60px -30px rgba(0,0,0,0.6);
+    box-shadow: 0 30px 60px -30px rgba(0,0,0,0.6), 0 0 0 1px rgba(120,88,166,0.08), 0 40px 80px -40px rgba(91,75,138,0.4);
+    position: relative;
+    overflow: hidden;
+    animation: card-in 320ms cubic-bezier(.2,.8,.2,1);
   }
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--violet-deep), var(--violet-light), var(--violet-deep));
+  }
+  @keyframes card-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
   h1 {
     margin: 0 0 4px;
     font-size: 24px;
     letter-spacing: -0.02em;
-    background: linear-gradient(135deg, #ffffff, #cfd6ee 60%, #8a93ab);
+    background: linear-gradient(135deg, #ffffff, #dcd3ee 60%, #948eab);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .sub { margin: 0 0 28px; color: var(--text-2); font-size: 13px; }
@@ -59,23 +71,39 @@
     border: 1px solid var(--glass-border);
     border-radius: 10px; color: var(--text-0);
     font-size: 14px; outline: none;
-    transition: border-color 150ms, background 150ms;
+    transition: border-color 150ms, background 150ms, box-shadow 150ms;
   }
+  input:hover { border-color: rgba(187,162,219,0.28); }
   input:focus {
-    border-color: rgba(0,212,255,0.5);
-    background: rgba(0,212,255,0.04);
+    border-color: rgba(120,88,166,0.6);
+    background: rgba(120,88,166,0.06);
+    box-shadow: 0 0 0 3px rgba(91,75,138,0.25);
   }
   button {
     width: 100%;
     margin-top: 22px;
     padding: 12px 16px;
     border: none; border-radius: 10px;
-    background: linear-gradient(135deg, #00d4ff, #4d8bff);
-    color: #04070f; font-weight: 600; font-size: 14px;
+    background: linear-gradient(135deg, var(--violet-light), var(--violet) 55%, var(--violet-deep));
+    color: #fff; font-weight: 600; font-size: 14px;
     cursor: pointer;
-    box-shadow: 0 6px 24px -4px rgba(0,212,255,0.5);
+    box-shadow: 0 6px 24px -4px rgba(91,75,138,0.55);
+    transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+    position: relative;
+    overflow: hidden;
   }
-  button:hover { filter: brightness(1.08); }
+  button::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.18) 45%, transparent 60%);
+    transform: translateX(-120%);
+    transition: transform 520ms cubic-bezier(.2,.8,.2,1);
+  }
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 30px -6px rgba(91,75,138,0.65);
+  }
+  button:hover:not(:disabled)::after { transform: translateX(120%); }
   button:disabled { opacity: 0.55; cursor: not-allowed; }
   .error {
     margin-top: 14px; padding: 10px 12px;
@@ -92,15 +120,16 @@
   }
   .brand-mark {
     width: 30px; height: 30px; border-radius: 8px;
-    background: conic-gradient(from 210deg, #00d4ff, #7b61ff, #00e5a0, #00d4ff);
-    box-shadow: 0 0 18px rgba(0,212,255,0.4);
+    background: conic-gradient(from 210deg, var(--violet-light), var(--violet-deep), #bba2db, var(--violet-light));
+    box-shadow: 0 0 18px rgba(91,75,138,0.4);
   }
   .brand-name {
     font-weight: 700; font-size: 16px; letter-spacing: -0.01em;
   }
-  .brand-name span { color: var(--cyan); }
+  .brand-name span { color: var(--violet-light); }
   .footer { margin-top: 18px; text-align: center; font-size: 12px; color: var(--text-3); }
-  .footer a { color: var(--text-2); }
+  .footer a { color: var(--text-2); transition: color 140ms ease; }
+  .footer a:hover { color: var(--violet-light); }
 </style>
 </head>
 <body>

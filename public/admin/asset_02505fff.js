@@ -37,15 +37,15 @@ const RevenueChart = () => (
     <LineChart data={REVENUE_TREND} margin={{ top: 8, right: 14, left: -8, bottom: 0 }}>
       <defs>
         <linearGradient id="gMrr" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
+          <stop offset="0%" stopColor="#5b4b8a" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="#5b4b8a" stopOpacity="0" />
         </linearGradient>
       </defs>
       <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
       <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} />
       <YAxis tickFormatter={(v) => "$" + (v / 1000).toFixed(0) + "k"} tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} width={50} />
-      <Tooltip content={<ChartTooltip />} cursor={{ stroke: "rgba(239,68,68,0.4)", strokeDasharray: "3 3" }} />
-      <Line type="monotone" dataKey="mrr" name="MRR" stroke="#ef4444" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#ef4444", stroke: "#0f1116", strokeWidth: 2 }} />
+      <Tooltip content={<ChartTooltip />} cursor={{ stroke: "rgba(91, 75, 138,0.4)", strokeDasharray: "3 3" }} />
+      <Line type="monotone" dataKey="mrr" name="MRR" stroke="#5b4b8a" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#5b4b8a", stroke: "#0f1116", strokeWidth: 2 }} />
       <Line type="monotone" dataKey="collected" name="Collected cash" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#10b981", stroke: "#0f1116", strokeWidth: 2 }} />
     </LineChart>
   </ResponsiveContainer>
@@ -107,7 +107,7 @@ const DashboardPage = ({ onOpenClient, onNavigate }) => {
             subtitle="MRR and collected cash · last 12 months"
             action={
               <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 11, fontFamily: "var(--ff-mono)" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 2, background: "#ef4444" }} />MRR</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 2, background: "#5b4b8a" }} />MRR</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 2, background: "#10b981" }} />Collected</span>
               </div>
             }

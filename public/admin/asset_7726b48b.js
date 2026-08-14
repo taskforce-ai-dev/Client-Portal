@@ -98,7 +98,7 @@ const TicketsPage = () => {
               <div className="panel-flat" style={{ padding: 14 }}>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>By category</div>
                 {[
-                  { k: "Technical",  v: 5, c: "#ef4444" },
+                  { k: "Technical",  v: 5, c: "#5b4b8a" },
                   { k: "Billing",    v: 4, c: "#f59e0b" },
                   { k: "Account",    v: 3, c: "#38bdf8" },
                   { k: "Feature",    v: 2, c: "#10b981" },
@@ -207,15 +207,15 @@ const TicketDrawer = ({ ticket, onClose }) => {
               <div key={i} style={{
                 marginBottom: 10,
                 padding: 12,
-                background: m.who === "admin" ? "rgba(239,68,68,0.06)" : "rgba(255,255,255,0.03)",
-                border: "1px solid " + (m.who === "admin" ? "rgba(239,68,68,0.15)" : "var(--border)"),
+                background: m.who === "admin" ? "rgba(91, 75, 138,0.06)" : "rgba(255,255,255,0.03)",
+                border: "1px solid " + (m.who === "admin" ? "rgba(91, 75, 138,0.15)" : "var(--border)"),
                 borderRadius: 8,
                 marginLeft: m.who === "admin" ? 28 : 0,
                 marginRight: m.who === "admin" ? 0 : 28,
               }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: m.who === "admin" ? "#fca5a5" : "var(--text-0)" }}>
-                    {m.who === "admin" && <span style={{ marginRight: 6, fontSize: 10, padding: "1px 6px", background: "rgba(239,68,68,0.15)", borderRadius: 3, letterSpacing: "0.04em" }}>STAFF</span>}
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: m.who === "admin" ? "#bba2db" : "var(--text-0)" }}>
+                    {m.who === "admin" && <span style={{ marginRight: 6, fontSize: 10, padding: "1px 6px", background: "rgba(91, 75, 138,0.15)", borderRadius: 3, letterSpacing: "0.04em" }}>STAFF</span>}
                     {m.name}
                   </span>
                   <span style={{ fontSize: 10.5, color: "var(--text-3)", fontFamily: "var(--ff-mono)" }}>{m.ts}</span>
@@ -312,7 +312,7 @@ const AnnouncementPage = () => {
                 </div>
               </div>
             )}
-            <div style={{ marginTop: 14, padding: "10px 12px", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)", borderRadius: 8, fontFamily: "var(--ff-mono)", fontSize: 12 }}>
+            <div style={{ marginTop: 14, padding: "10px 12px", background: "rgba(91, 75, 138,0.06)", border: "1px solid rgba(91, 75, 138,0.18)", borderRadius: 8, fontFamily: "var(--ff-mono)", fontSize: 12 }}>
               <Icon name="users" size={12} style={{ marginRight: 6, verticalAlign: "middle", color: "var(--red-400)" }} />
               Estimated recipients: <span style={{ color: "var(--text-0)" }}>{recipients}</span>
             </div>
@@ -385,7 +385,7 @@ const AnnouncementPage = () => {
             </div>
             <div style={{ background: "#fff", padding: 24, borderRadius: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-                <div style={{ width: 24, height: 24, borderRadius: 6, background: "linear-gradient(135deg, #ef4444 0%, #7f1d1d 100%)" }} />
+                <div style={{ width: 24, height: 24, borderRadius: 6, background: "linear-gradient(135deg, #5b4b8a 0%, #1f0f33 100%)" }} />
                 <span style={{ fontWeight: 600, fontSize: 14, color: "#0c0e13" }}>Sentinel</span>
               </div>
               <div style={{ fontSize: 18, fontWeight: 600, color: "#0c0e13", marginBottom: 14 }}>{subject}</div>
