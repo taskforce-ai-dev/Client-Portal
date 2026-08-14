@@ -394,7 +394,7 @@ const HeaderBar = ({ title, onSearch }) => {
 
   return (
     <div className="header-bar">
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13.5, fontWeight: 600, letterSpacing: "-0.01em" }}>{title}</div>
         <span style={{ color: "var(--text-3)", fontSize: 12, fontFamily: "var(--ff-mono)" }}>·</span>
         <span style={{ color: "var(--text-3)", fontSize: 11.5, fontFamily: "var(--ff-mono)" }}>
@@ -402,25 +402,25 @@ const HeaderBar = ({ title, onSearch }) => {
         </span>
       </div>
 
-      <div className="searchbar" style={{ width: 280, marginRight: 14 }}>
+      <div className="searchbar header-optional" style={{ width: 280, marginRight: 14 }}>
         <Icon name="search" size={13} className="text-3" style={{ color: "var(--text-3)" }} />
         <input placeholder="Search clients, invoices, tickets…" onClick={onSearch} readOnly />
         <span className="kbd">⌘K</span>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.22)", borderRadius: 14, fontSize: 11.5, fontFamily: "var(--ff-mono)", color: "#6ee7b7" }}>
+        <div className="header-optional" style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.22)", borderRadius: 14, fontSize: 11.5, fontFamily: "var(--ff-mono)", color: "#6ee7b7" }}>
           <span className="dot emerald" style={{ marginRight: 0 }} />
           <span>All systems operational</span>
         </div>
 
-        <button className="btn btn-ghost btn-sm" style={{ position: "relative", padding: "5px 8px" }}>
+        <button className="btn btn-ghost btn-sm" style={{ position: "relative", padding: "5px 8px", flexShrink: 0 }}>
           <Icon name="bell" size={15} />
           <span style={{ position: "absolute", top: 2, right: 2, width: 6, height: 6, background: "var(--rose)", borderRadius: "50%" }} />
         </button>
 
         <div
-          style={{ display: "flex", alignItems: "center", gap: 8, cursor: me ? "pointer" : "default", padding: "4px 6px", borderRadius: 8 }}
+          style={{ display: "flex", alignItems: "center", gap: 8, cursor: me ? "pointer" : "default", padding: "4px 6px", borderRadius: 8, flexShrink: 0 }}
           onClick={openMenu}
           title={me ? me.email : ""}
         >
@@ -433,7 +433,13 @@ const HeaderBar = ({ title, onSearch }) => {
         </div>
       </div>
 
-      {menuPos && me && (
+      {menuPos && me && ReactDOM.createPortal(
+        // Portaled to <body> — .header-bar has backdrop-filter, which makes it
+        // a containing block for position:fixed descendants, so a fixed menu
+        // nested inside it renders relative to the header bar's box instead of
+        // the viewport (pushed off-screen). Portaling escapes that entirely,
+        // same fix CallLogTable's transcript modal already uses for this exact
+        // class of problem.
         <div
           className="menu"
           style={{ position: "fixed", top: menuPos.top, left: menuPos.left, width: 220, zIndex: 1000 }}
@@ -455,16 +461,18 @@ const HeaderBar = ({ title, onSearch }) => {
           <div className="menu-item" onClick={logout}>
             <Icon name="x" size={12} />Log out
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {profileModal && me && (
+      {profileModal && me && ReactDOM.createPortal(
         <ProfileModal
           mode={profileModal}
           me={me}
           onClose={() => setProfileModal(null)}
           onSaved={(updated) => setMe(updated)}
-        />
+        />,
+        document.body
       )}
     </div>
   );
