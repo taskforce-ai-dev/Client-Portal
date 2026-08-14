@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Check, User, Mail, Building2, ShieldCheck, Clock, KeyRound } from "lucide-react";
 
 type Profile = {
@@ -22,6 +23,7 @@ function fmtDate(d: string | null): string {
 }
 
 export default function ProfileManager({ initial }: { initial: Profile }) {
+  const router = useRouter();
   const [name, setName] = useState(initial.name ?? "");
   const [savedName, setSavedName] = useState(initial.name ?? "");
   const [nameBusy, setNameBusy] = useState(false);
@@ -47,6 +49,8 @@ export default function ProfileManager({ initial }: { initial: Profile }) {
       if (!res.ok) throw new Error(d.message || "Couldn't save your name");
       setSavedName(name.trim());
       setMsg({ kind: "ok", text: "Profile updated." });
+      router.refresh(); // re-render the server layout so the header shows the new name
+
     } catch (err) {
       setMsg({ kind: "err", text: err instanceof Error ? err.message : "Couldn't save your name" });
     } finally {

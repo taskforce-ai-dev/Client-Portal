@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Check, Building2 } from "lucide-react";
 
 export default function BusinessDetails({ initialCompany }: { initialCompany: string }) {
+  const router = useRouter();
   const [company, setCompany] = useState(initialCompany);
   const [saved, setSaved] = useState(initialCompany);
   const [busy, setBusy] = useState(false);
@@ -26,6 +28,8 @@ export default function BusinessDetails({ initialCompany }: { initialCompany: st
       setSaved(d.company);
       setCompany(d.company);
       setMsg({ kind: "ok", text: "Business name saved." });
+      router.refresh(); // re-render the server layout so the header/company name updates
+
     } catch (err) {
       setMsg({ kind: "err", text: err instanceof Error ? err.message : "Couldn't save the business name" });
     } finally {
