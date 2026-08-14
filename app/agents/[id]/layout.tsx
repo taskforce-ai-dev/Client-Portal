@@ -88,7 +88,7 @@ export default async function AgentLayout({
         isTeamAdmin={isTeamAdmin}
       />
       <div className="flex-1 flex flex-col min-w-0">
-        <AgentTopbar current={topbarCurrent} agents={topbarAgents} unreadNotifications={unread} />
+        <AgentTopbar current={topbarCurrent} agents={topbarAgents} unreadNotifications={unread} companyLogo={client.logo_url} companyName={client.company} />
         <main className="flex-1 p-6 lg:p-8 overflow-x-hidden space-y-6">
           <QuotaBanner quota={quota} agentId={dbAgent.id} />
           <QuotaPopup agentId={dbAgent.id} agentName={dbAgent.name} quota={quota} />

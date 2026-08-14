@@ -32,6 +32,7 @@ export type DbClient = {
   contact: string | null;
   country: string;
   allowed_features: string; // comma-separated feature keys; "" = all features
+  logo_url: string | null; // client's own logo (data URL); null = use initial
   created_at: string;
 };
 
@@ -91,6 +92,11 @@ export async function ensureSchema(sql: Sql) {
   // callLog, knowledge, analytics, conversions, billing, transcripts.
   // Overview, Notifications, and Settings are always on.
   await sql`ALTER TABLE sentinel_client ADD COLUMN IF NOT EXISTS allowed_features text NOT NULL DEFAULT ''`;
+  // The client's own company logo, shown in their portal (white-label). Stored
+  // as a data URL (base64) so there's no external blob store to depend on; a
+  // client admin sets it from the Team page. Nullable — no logo = fall back to
+  // the company initial.
+  await sql`ALTER TABLE sentinel_client ADD COLUMN IF NOT EXISTS logo_url text`;
   await sql`CREATE TABLE IF NOT EXISTS sentinel_audit (
     id text PRIMARY KEY, admin_name text NOT NULL DEFAULT 'System', action text NOT NULL,
     type text NOT NULL DEFAULT 'system', target text, summary text NOT NULL,
@@ -936,6 +942,16 @@ export async function setAgentKb(agentId: string, clientId: string, content: str
   await sql`INSERT INTO sentinel_kb (agent_id, client_id, content, updated_at)
             VALUES (${agentId}, ${clientId}, ${content}, now())
             ON CONFLICT (agent_id) DO UPDATE SET content = ${content}, updated_at = now()`;
+}
+
+// Set (or clear, with null) a client's own company logo. Returns the updated
+// row, or null if the client doesn't exist.
+export async function setClientLogo(clientId: string, logoUrl: string | null): Promise<DbClient | null> {
+  const sql = getSql();
+  if (!sql) throw new Error("Database not configured");
+  await ensureSeed(sql);
+  const rows = (await sql`UPDATE sentinel_client SET logo_url = ${logoUrl} WHERE id = ${clientId} RETURNING *`) as DbClient[];
+  return rows[0] ?? null;
 }
 
 export async function listClients(): Promise<DbClient[]> {
