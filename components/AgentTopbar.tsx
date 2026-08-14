@@ -16,10 +16,14 @@ export default function AgentTopbar({
   current,
   agents,
   unreadNotifications = 0,
+  companyLogo = null,
+  companyName = "",
 }: {
   current: TopbarAgent;
   agents: TopbarAgent[];
   unreadNotifications?: number;
+  companyLogo?: string | null;
+  companyName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -40,6 +44,15 @@ export default function AgentTopbar({
   return (
     <header className="h-16 border-b border-white/5 bg-ink-950/60 backdrop-blur-xl flex items-center justify-between px-6 lg:px-8 gap-4">
       <div className="flex items-center gap-3" ref={wrapRef}>
+        {companyLogo && (
+          // eslint-disable-next-line @next/next/no-img-element -- client-supplied data URL
+          <img
+            src={companyLogo}
+            alt={companyName ? `${companyName} logo` : "Company logo"}
+            title={companyName}
+            className="w-8 h-8 rounded-lg object-contain bg-white/[0.04] ring-1 ring-white/10 shrink-0"
+          />
+        )}
         <div className="relative">
           <button
             type="button"

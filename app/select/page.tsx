@@ -31,7 +31,7 @@ export default async function SelectAgentPage() {
     gradient: a.gradient,
     initial: a.initial,
   }));
-  const workspace = { name: client.company };
+  const workspace = { name: client.company, logo: client.logo_url };
   const contactUrl = `https://wa.me/94776697566?text=${encodeURIComponent(
     `Hi, I'm from ${workspace.name}. I'd like to request a new agent.`
   )}`;
@@ -50,9 +50,14 @@ export default async function SelectAgentPage() {
           <BrandLogo />
           <span className="text-slate-700">/</span>
           <button className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl bg-white/[0.03] ring-1 ring-white/10 hover:bg-white/[0.06]">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-xs">
-              {workspace.name.charAt(0).toUpperCase()}
-            </div>
+            {workspace.logo ? (
+              // eslint-disable-next-line @next/next/no-img-element -- client-supplied data URL
+              <img src={workspace.logo} alt={`${workspace.name} logo`} className="w-7 h-7 rounded-lg object-contain bg-white/[0.04]" />
+            ) : (
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-xs">
+                {workspace.name.charAt(0).toUpperCase()}
+              </div>
+            )}
             <span className="text-sm font-medium text-slate-200">{workspace.name}</span>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </button>

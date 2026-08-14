@@ -4,6 +4,7 @@ import { getCurrentClientUser } from "@/lib/clientPermissions";
 import { findAgentForClient, findClientById, parseAllowedFeatures } from "@/lib/adminDb";
 import { listClientUsers } from "@/lib/clientUsers";
 import TeamManager from "@/components/TeamManager";
+import LogoUploader from "@/components/LogoUploader";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function TeamPage({ params }: { params: { id: string } }) {
           Add people from {client?.company ?? "your company"} and choose what each can access. Only admins can manage the team.
         </p>
       </div>
+      <LogoUploader initialLogo={client?.logo_url ?? null} company={client?.company ?? "your company"} />
       <TeamManager meId={me.id} companyFeatures={companyFeatures} initialUsers={users} />
     </div>
   );
