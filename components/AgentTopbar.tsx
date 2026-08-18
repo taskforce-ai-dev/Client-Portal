@@ -62,10 +62,10 @@ export default function AgentTopbar({
               src={companyLogo}
               alt={companyName ? `${companyName} logo` : "Company logo"}
               title={companyName}
-              className="w-8 h-8 rounded-lg object-contain bg-white/[0.04] ring-1 ring-white/10"
+              className="w-11 h-11 rounded-lg object-contain bg-white/[0.04] ring-1 ring-white/10"
             />
           ) : companyName ? (
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-xs">
+            <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-sm">
               {companyName.charAt(0).toUpperCase()}
             </div>
           ) : null}

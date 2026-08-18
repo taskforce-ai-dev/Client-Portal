@@ -15,10 +15,9 @@ import { getAgentMonthlyQuota } from "@/lib/billing";
 import CallLogTable, { CallRow } from "@/components/CallLogTable";
 import {
   bucketCallsByHour,
-  bucketOutcomes,
   callStats,
 } from "@/lib/twilio";
-import { getAgentCalls } from "@/lib/callSource";
+import { bucketOverviewOutcomes, getAgentCalls, overviewOutcomeCategory } from "@/lib/callSource";
 import { HANDOVER_OUTCOME, isHandoverCall } from "@/lib/handover";
 
 function ymdLocal(d: Date) { return d.toISOString().slice(0, 10); }
@@ -211,12 +210,16 @@ export default async function AgentOverviewPage({ params }: { params: { id: stri
     outcome: c.outcome,
     summary: (summaryByCall.get(c.id) as any) || null,
   }));
-  const outcomeBuckets = bucketOutcomes(enrichedCalls);
+  const outcomeBuckets = bucketOverviewOutcomes(enrichedCalls);
+  // Group rows by their Overview category, not their raw per-call outcome —
+  // "Booking confirmed" and "Product sold" are different strings that both
+  // belong under the "Call completed" slice here.
   const rowsByOutcome = new Map<string, CallRow[]>();
   for (const r of allRows) {
-    const arr = rowsByOutcome.get(r.outcome) ?? [];
+    const key = overviewOutcomeCategory(r.outcome);
+    const arr = rowsByOutcome.get(key) ?? [];
     arr.push(r);
-    rowsByOutcome.set(r.outcome, arr);
+    rowsByOutcome.set(key, arr);
   }
   const outcomes = outcomeBuckets.map((b) => ({
     ...b,
