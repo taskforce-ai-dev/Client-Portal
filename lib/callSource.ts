@@ -147,26 +147,36 @@ export async function getAgentCalls(agentId: string, opts: SourceOpts = {}): Pro
 // WhatsApp message was sent to staff instead ("missed"). TaskForce Link's
 // raw `outcome` string is the only place that distinction could come from,
 // and there's no documented vocabulary for it in this codebase — the
-// patterns below are a best-effort read of plausible phrasing (including
-// "callback requested", which is the value that showed up in place of a
-// clear handover label during testing). If TaskForce Link's real strings
-// don't match, the fix is here: add the exact raw value to the matching
-// pattern.
+// patterns below are a best-effort read of plausible phrasing. "callback
+// requested" (the value seen in production in place of a clear handover
+// label) is treated as the *missed* case: a callback only gets requested
+// because the live transfer didn't connect, so this is the fallback path,
+// not a successful handover. If TaskForce Link's real strings don't match,
+// the fix is here: add the exact raw value to the matching pattern.
+//
+// TaskForce Link's outcomes are snake_case ("booking_confirmed",
+// "callback_requested"). JS regex \b treats "_" as a word character, so
+// \bconfirmed\b never matched inside "booking_confirmed" — every category
+// below silently matched nothing except plain single-word values. Fixed by
+// normalizing "_" and "-" to spaces before matching, so the same word-based
+// patterns work regardless of the provider's separator convention.
 function categorizeOverviewOutcome(outcome: string): string {
-  const t = (outcome || "").toLowerCase().trim();
+  const t = (outcome || "").toLowerCase().trim().replace(/[_-]+/g, " ");
+  if (!t) return "Call completed";
 
-  const isHandoverLike = /\b(handover|hand[\s-]?off|handed[\s-]?over|transfer(?:red)?|escalat(?:e|ed)|callback[\s_-]?request(?:ed)?)\b/.test(t);
+  const isHandoverLike = /\b(handover|hand ?off|handed ?over|transfer(?:red)?|escalat(?:e|ed)|callback ?request(?:ed)?)\b/.test(t);
   if (isHandoverLike) {
-    // A human never picked up — the fallback path (WhatsApp to staff) fired.
-    const missed = /\b(miss(?:ed)?|declin(?:e|ed)|unanswered|no[\s-]?answer|unavailable|whatsapp|not[\s-]?answer(?:ed)?|no[\s-]?response|voicemail)\b/.test(t);
+    const missed =
+      /\b(miss(?:ed)?|declin(?:e|ed)|unanswered|no ?answer|unavailable|whatsapp|not ?answer(?:ed)?|no ?response|voicemail)\b/.test(t) ||
+      /\bcallback ?request(?:ed)?\b/.test(t);
     return missed ? "Handover – missed (WhatsApp)" : "Handover – connected";
   }
   if (/\b(complete|completed|success|answered|booked|done|confirm(?:ed)?|sold|won|purchase[d]?)\b/.test(t)) return "Call completed";
-  if (/\b(no[\s-]*answer|noanswer|missed|unanswered|no[\s-]*response)\b/.test(t)) return "No answer";
-  if (/\bbusy\b/.test(t)) return "Busy";
+  // No answer / busy / in-progress aren't shown as their own Overview
+  // slices (too granular for a cross-agent-type summary) — they still
+  // count as an unsuccessful outcome, so they fold into "Failed / dropped".
+  if (/\b(no ?answer|noanswer|unanswered|no ?response|busy|in ?progress|ongoing|live)\b/.test(t)) return "Failed / dropped";
   if (/\b(fail(?:ed)?|error|declined|rejected|drop(?:ped)?|cancel(?:led|ed)?|abandon(?:ed)?)\b/.test(t)) return "Failed / dropped";
-  if (/\b(in[\s-]*progress|ongoing|live)\b/.test(t)) return "In progress";
-  if (!t) return "Call completed";
   return "Other";
 }
 
@@ -174,10 +184,7 @@ const OVERVIEW_OUTCOME_COLORS: Record<string, string> = {
   "Call completed": "#34D399",
   "Handover – connected": "#A78BFA",
   "Handover – missed (WhatsApp)": "#FB923C",
-  "No answer": "#94A3B8",
-  Busy: "#FBBF24",
   "Failed / dropped": "#FB7185",
-  "In progress": "#22D3EE",
   Other: "#64748B",
 };
 
@@ -190,10 +197,7 @@ const OVERVIEW_CATEGORY_ORDER = [
   "Call completed",
   "Handover – connected",
   "Handover – missed (WhatsApp)",
-  "No answer",
-  "Busy",
   "Failed / dropped",
-  "In progress",
 ];
 
 export function bucketOverviewOutcomes(calls: { outcome: string }[]) {
