@@ -61,9 +61,9 @@ export default async function SelectAgentPage() {
           <button className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-xl bg-white/[0.03] ring-1 ring-white/10 hover:bg-white/[0.06]">
             {workspace.logo ? (
               // eslint-disable-next-line @next/next/no-img-element -- client-supplied data URL
-              <img src={workspace.logo} alt={`${workspace.name} logo`} className="w-7 h-7 rounded-lg object-contain bg-white/[0.04]" />
+              <img src={workspace.logo} alt={`${workspace.name} logo`} className="w-9 h-9 rounded-lg object-contain bg-white/[0.04]" />
             ) : (
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-xs">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-ink-950 font-bold grid place-items-center text-xs">
                 {workspace.name.charAt(0).toUpperCase()}
               </div>
             )}

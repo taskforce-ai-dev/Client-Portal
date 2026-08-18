@@ -129,3 +129,92 @@ export async function getAgentCalls(agentId: string, opts: SourceOpts = {}): Pro
     return { calls: [], configured: true, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+// ===== Overview outcome categories =====
+//
+// The Overview tab is the one page that's identical across every agent type
+// (Call Log/Analytics/Billing are also generic; Conversions is the page
+// Chanya customizes per agent type — booking status for a hospitality agent,
+// deal status for a sales agent, etc.). Overview's outcome breakdown must
+// therefore never show agent-type-specific labels like "Booking confirmed"
+// or "Booking inquiry" — those are meaningless on a sales or support agent's
+// Overview. This maps any per-call outcome (already normalized by
+// normalizeOutcome() above, or set to HANDOVER_OUTCOME by the transcript
+// enrichment step in the Overview page) down to a small, universal set.
+//
+// Handover has two distinct outcomes clients care about: a human actually
+// picked up the transferred call ("connected"), vs. no one picked up and a
+// WhatsApp message was sent to staff instead ("missed"). TaskForce Link's
+// raw `outcome` string is the only place that distinction could come from,
+// and there's no documented vocabulary for it in this codebase — the
+// patterns below are a best-effort read of plausible phrasing (including
+// "callback requested", which is the value that showed up in place of a
+// clear handover label during testing). If TaskForce Link's real strings
+// don't match, the fix is here: add the exact raw value to the matching
+// pattern.
+function categorizeOverviewOutcome(outcome: string): string {
+  const t = (outcome || "").toLowerCase().trim();
+
+  const isHandoverLike = /\b(handover|hand[\s-]?off|handed[\s-]?over|transfer(?:red)?|escalat(?:e|ed)|callback[\s_-]?request(?:ed)?)\b/.test(t);
+  if (isHandoverLike) {
+    // A human never picked up — the fallback path (WhatsApp to staff) fired.
+    const missed = /\b(miss(?:ed)?|declin(?:e|ed)|unanswered|no[\s-]?answer|unavailable|whatsapp|not[\s-]?answer(?:ed)?|no[\s-]?response|voicemail)\b/.test(t);
+    return missed ? "Handover – missed (WhatsApp)" : "Handover – connected";
+  }
+  if (/\b(complete|completed|success|answered|booked|done|confirm(?:ed)?|sold|won|purchase[d]?)\b/.test(t)) return "Call completed";
+  if (/\b(no[\s-]*answer|noanswer|missed|unanswered|no[\s-]*response)\b/.test(t)) return "No answer";
+  if (/\bbusy\b/.test(t)) return "Busy";
+  if (/\b(fail(?:ed)?|error|declined|rejected|drop(?:ped)?|cancel(?:led|ed)?|abandon(?:ed)?)\b/.test(t)) return "Failed / dropped";
+  if (/\b(in[\s-]*progress|ongoing|live)\b/.test(t)) return "In progress";
+  if (!t) return "Call completed";
+  return "Other";
+}
+
+const OVERVIEW_OUTCOME_COLORS: Record<string, string> = {
+  "Call completed": "#34D399",
+  "Handover – connected": "#A78BFA",
+  "Handover – missed (WhatsApp)": "#FB923C",
+  "No answer": "#94A3B8",
+  Busy: "#FBBF24",
+  "Failed / dropped": "#FB7185",
+  "In progress": "#22D3EE",
+  Other: "#64748B",
+};
+
+// Fixed, agent-type-agnostic category order for the Overview donut — always
+// returned in this order (zero-count categories included) so the legend
+// doesn't reshuffle between agents/periods. "Other" only appears if it's
+// ever actually hit, so an unrecognized provider string doesn't clutter the
+// chart for every agent that has none.
+const OVERVIEW_CATEGORY_ORDER = [
+  "Call completed",
+  "Handover – connected",
+  "Handover – missed (WhatsApp)",
+  "No answer",
+  "Busy",
+  "Failed / dropped",
+  "In progress",
+];
+
+export function bucketOverviewOutcomes(calls: { outcome: string }[]) {
+  const counts = new Map<string, number>();
+  for (const key of OVERVIEW_CATEGORY_ORDER) counts.set(key, 0);
+  for (const c of calls) {
+    const key = categorizeOverviewOutcome(c.outcome);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).map(([outcome, count]) => ({
+    outcome,
+    count,
+    color: OVERVIEW_OUTCOME_COLORS[outcome] ?? "#64748B",
+  }));
+}
+
+// Same mapping, exposed standalone so the Overview page can group its
+// per-call rows (CallRow[]) by the same category the chart uses — a call's
+// raw outcome ("Booking confirmed") and its Overview category ("Call
+// completed") are different strings, so the row grouping can't just key off
+// c.outcome directly.
+export function overviewOutcomeCategory(outcome: string): string {
+  return categorizeOverviewOutcome(outcome);
+}
