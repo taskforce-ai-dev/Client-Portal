@@ -160,6 +160,14 @@ export async function getAgentCalls(agentId: string, opts: SourceOpts = {}): Pro
 // below silently matched nothing except plain single-word values. Fixed by
 // normalizing "_" and "-" to spaces before matching, so the same word-based
 // patterns work regardless of the provider's separator convention.
+//
+// "Call completed" is deliberately the default outcome, not one matched by
+// a narrow list of success keywords: it means "the call was answered and
+// finished with no technical error" — which covers a confirmed booking, an
+// inquiry that didn't convert, or anything else business-specific, since
+// that detail belongs to Conversions, not Overview. Only an explicit
+// handover or an explicit error/never-connected signal moves a call out of
+// it, so "Failed / dropped" only counts calls that actually had a problem.
 function categorizeOverviewOutcome(outcome: string): string {
   const t = (outcome || "").toLowerCase().trim().replace(/[_-]+/g, " ");
   if (!t) return "Call completed";
@@ -171,13 +179,12 @@ function categorizeOverviewOutcome(outcome: string): string {
       /\bcallback ?request(?:ed)?\b/.test(t);
     return missed ? "Handover – missed (WhatsApp)" : "Handover – connected";
   }
-  if (/\b(complete|completed|success|answered|booked|done|confirm(?:ed)?|sold|won|purchase[d]?)\b/.test(t)) return "Call completed";
-  // No answer / busy / in-progress aren't shown as their own Overview
-  // slices (too granular for a cross-agent-type summary) — they still
-  // count as an unsuccessful outcome, so they fold into "Failed / dropped".
-  if (/\b(no ?answer|noanswer|unanswered|no ?response|busy|in ?progress|ongoing|live)\b/.test(t)) return "Failed / dropped";
-  if (/\b(fail(?:ed)?|error|declined|rejected|drop(?:ped)?|cancel(?:led|ed)?|abandon(?:ed)?)\b/.test(t)) return "Failed / dropped";
-  return "Other";
+  // Genuine errors/never-connected calls only — everything else (a
+  // confirmed booking, an inquiry, a "Test" call, any label this list
+  // doesn't recognize) falls through to "Call completed" below.
+  const isError = /\b(fail(?:ed)?|error|declined|rejected|drop(?:ped)?|cancel(?:led|ed)?|abandon(?:ed)?|no ?answer|noanswer|unanswered|no ?response|busy)\b/.test(t);
+  if (isError) return "Failed / dropped";
+  return "Call completed";
 }
 
 const OVERVIEW_OUTCOME_COLORS: Record<string, string> = {
@@ -185,14 +192,11 @@ const OVERVIEW_OUTCOME_COLORS: Record<string, string> = {
   "Handover – connected": "#A78BFA",
   "Handover – missed (WhatsApp)": "#FB923C",
   "Failed / dropped": "#FB7185",
-  Other: "#64748B",
 };
 
 // Fixed, agent-type-agnostic category order for the Overview donut — always
 // returned in this order (zero-count categories included) so the legend
-// doesn't reshuffle between agents/periods. "Other" only appears if it's
-// ever actually hit, so an unrecognized provider string doesn't clutter the
-// chart for every agent that has none.
+// doesn't reshuffle between agents/periods.
 const OVERVIEW_CATEGORY_ORDER = [
   "Call completed",
   "Handover – connected",
