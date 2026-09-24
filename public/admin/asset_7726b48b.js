@@ -177,7 +177,7 @@ const TicketDrawer = ({ ticket, onClose }) => {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-0)" }}>{ticket.client}</div>
               <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "var(--ff-mono)", marginTop: 2, display: "flex", gap: 10 }}>
-                {client && <><PlanBadge plan={client.plan} /><StatusDot status={client.status} /><span>MRR ${client.mrr.toLocaleString()}</span></>}
+                {client && <><PlanBadge plan={client.plan} /><StatusDot status={client.status} /><span>MRR <Money value={client.mrr} /></span></>}
               </div>
             </div>
             <button className="btn btn-ghost btn-xs">View client →</button>

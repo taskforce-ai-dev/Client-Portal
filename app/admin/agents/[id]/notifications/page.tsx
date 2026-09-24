@@ -62,9 +62,10 @@ export default async function AdminAgentNotificationsPage({
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Kpi label="Status" value={statusLabel(quota.status)} hint={`${quota.percent}% of monthly 40h`} />
-          <Kpi label="Used this month" value={fmtHm(quota.billableMinutes)} hint={quota.periodLabel} />
-          <Kpi label="Included" value={fmtHm(quota.includedMinutes)} hint="Per calendar month" />
+          {/* Period wording comes from the API (periodLabel); nothing here assumes a month or a 40h plan. */}
+          <Kpi label="Status" value={statusLabel(quota.status)} hint={`${quota.percent}% of ${fmtHm(quota.includedMinutes)} included`} />
+          <Kpi label="Used this period" value={fmtHm(quota.billableMinutes)} hint={quota.periodLabel} />
+          <Kpi label="Included" value={fmtHm(quota.includedMinutes)} hint="Per billing period" />
           <Kpi
             label="Overage so far"
             value={quota.overageMinutes ? fmtHm(quota.overageMinutes) : "—"}
@@ -162,7 +163,8 @@ function Card({ n }: { n: QuotaNotification }) {
   const box = isExceeded ? "border-rose-500/30 bg-rose-500/[0.06]" : "border-amber-500/25 bg-amber-500/[0.05]";
   const iconWrap = isExceeded ? "bg-rose-500/15 text-rose-300" : "bg-amber-500/15 text-amber-300";
   const titleClr = isExceeded ? "text-rose-200" : "text-amber-200";
-  const title = isExceeded ? "Monthly 40h quota reached" : "80% of monthly quota used";
+  // Placeholder titles — the final wording (plan size, period) will come from the API.
+  const title = isExceeded ? "Included call quota reached" : "Call quota warning threshold reached";
   return (
     <li className={`card p-4 border ${box} flex items-start gap-3`}>
       <div className={`w-9 h-9 rounded-xl ${iconWrap} grid place-items-center shrink-0`}>

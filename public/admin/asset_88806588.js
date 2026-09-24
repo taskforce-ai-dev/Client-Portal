@@ -25,11 +25,12 @@ window.__LIVE_ADMIN = (function () {
     { name: "Churned", count: 0, color: "#4b5563" },
   ];
 
+  // No monitoring is wired up: no status / uptime / latency is claimed.
   var SERVICES = [
-    { name: "API", status: "Operational", uptime: 99.98, latency: 142, lastIncident: "—" },
-    { name: "Voice gateway", status: "Operational", uptime: 99.95, latency: 88, lastIncident: "—" },
-    { name: "Dashboard", status: "Operational", uptime: 100, latency: 60, lastIncident: "—" },
-    { name: "Webhooks", status: "Operational", uptime: 99.92, latency: 210, lastIncident: "—" },
+    { name: "API", status: null, uptime: null, latency: null, lastIncident: "—" },
+    { name: "Voice gateway", status: null, uptime: null, latency: null, lastIncident: "—" },
+    { name: "Dashboard", status: null, uptime: null, latency: null, lastIncident: "—" },
+    { name: "Webhooks", status: null, uptime: null, latency: null, lastIncident: "—" },
   ];
 
   var AGENT_TEMPLATES = [

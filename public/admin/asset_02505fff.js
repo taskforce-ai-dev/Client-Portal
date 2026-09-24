@@ -32,25 +32,6 @@ const ActivityRow = ({ item }) => {
   );
 };
 
-const RevenueChart = () => (
-  <ResponsiveContainer width="100%" height={240}>
-    <LineChart data={REVENUE_TREND} margin={{ top: 8, right: 14, left: -8, bottom: 0 }}>
-      <defs>
-        <linearGradient id="gMrr" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#5b4b8a" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#5b4b8a" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-      <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} />
-      <YAxis tickFormatter={(v) => "$" + (v / 1000).toFixed(0) + "k"} tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} width={50} />
-      <Tooltip content={<ChartTooltip />} cursor={{ stroke: "rgba(91, 75, 138,0.4)", strokeDasharray: "3 3" }} />
-      <Line type="monotone" dataKey="mrr" name="MRR" stroke="#5b4b8a" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#5b4b8a", stroke: "#0f1116", strokeWidth: 2 }} />
-      <Line type="monotone" dataKey="collected" name="Collected cash" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#10b981", stroke: "#0f1116", strokeWidth: 2 }} />
-    </LineChart>
-  </ResponsiveContainer>
-);
-
 const ClientBreakdownChart = () => {
   const total = CLIENT_BREAKDOWN.reduce((s, x) => s + x.count, 0);
   return (
@@ -71,48 +52,38 @@ const ClientBreakdownChart = () => {
 };
 
 const DashboardPage = ({ onOpenClient, onNavigate }) => {
-  const totalMrr = CLIENTS.reduce((s, c) => s + c.mrr, 0);
   const activeCount = CLIENTS.filter((c) => c.status === "Active").length;
-  const newThisMonth = 4;
-  const outstandingTotal = OVERDUE.reduce((s, o) => s + o.amount, 0);
-  const avgRpc = Math.round(totalMrr / activeCount);
 
-  const topClients = [...CLIENTS].sort((a, b) => b.mrr - a.mrr).slice(0, 8);
-  const needsAttention = [
-    ...OVERDUE.map((o) => ({ client: o.client, issue: "Overdue", since: `${o.days}d`, amount: o.amount, kind: "overdue" })),
-    { client: "Maple Movers",    issue: "Payment failed", since: "2d", amount: 1490, kind: "failed" },
-    { client: "Helio Logistics", issue: "Open ticket",    since: "T-2046", amount: null, kind: "ticket" },
-    { client: "Atlas Realty",    issue: "Open ticket",    since: "T-2041", amount: null, kind: "ticket" },
-  ];
+  // No money is derived here. MRR, ARR, outstanding, avg-per-client and
+  // uptime render as "Not available yet" until the billing API publishes
+  // them — the console only displays what the API returns.
+  const topClients = [...CLIENTS].sort((a, b) => (b.mrr || 0) - (a.mrr || 0)).slice(0, 8);
+  const needsAttention = OVERDUE.map((o) => ({ client: o.client, issue: "Overdue", since: `${o.days}d`, amount: o.amount, kind: "overdue" }));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {/* KPI strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-        <KpiCard label="Monthly Recurring Revenue" value={fmtMoney(totalMrr)} delta="+8.2% vs last month" deltaKind="up" subtitle="MTD" />
-        <KpiCard label="Annualized Revenue (ARR)"  value={fmtMoney(totalMrr * 12)} delta="+12.4% YoY" deltaKind="up" />
-        <KpiCard label="Active Clients" value={activeCount} delta={`+${newThisMonth} this month`} deltaKind="up" subtitle={`${CLIENTS.length} total`} />
+        <KpiUnavailable label="Monthly Recurring Revenue" />
+        <KpiUnavailable label="Annualized Revenue (ARR)" />
+        <KpiCard label="Active Clients" value={activeCount} subtitle={`${CLIENTS.length} total`} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-        <KpiCard label="Outstanding / Overdue" value={fmtMoney(outstandingTotal)} delta={`${OVERDUE.length} accounts`} deltaKind="down" tint="rose" />
-        <KpiCard label="Avg Revenue Per Client" value={fmtMoney(avgRpc)} delta="+4.1%" deltaKind="up" subtitle="among active" />
-        <KpiCard label="Platform Uptime (30d)"  value="99.96" suffix="%" delta="SLA 99.9%" deltaKind="up" subtitle="1 minor incident" />
+        <KpiUnavailable label="Outstanding / Overdue" tint="rose" />
+        <KpiUnavailable label="Avg Revenue Per Client" />
+        <KpiUnavailable label="Platform Uptime (30d)" kind="disconnected" hint="Uptime monitoring isn't connected yet." />
       </div>
 
       {/* Charts row */}
       <div style={{ display: "grid", gridTemplateColumns: "45% 30% minmax(0, 1fr)", gap: 14 }}>
         <div className="panel">
-          <SectionHeader
-            title="Revenue trend"
-            subtitle="MRR and collected cash · last 12 months"
-            action={
-              <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 11, fontFamily: "var(--ff-mono)" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 2, background: "#5b4b8a" }} />MRR</span>
-                <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 2, background: "#10b981" }} />Collected</span>
-              </div>
-            }
+          <SectionHeader title="Revenue trend" subtitle="MRR and collected cash · last 12 months" />
+          <DataState
+            kind="pending"
+            title="Revenue trend not available yet"
+            description="MRR and collected cash will be plotted here once the billing API publishes them."
+            style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}
           />
-          <div style={{ padding: "8px 8px 4px" }}><RevenueChart /></div>
         </div>
 
         <div className="panel">
@@ -141,7 +112,7 @@ const DashboardPage = ({ onOpenClient, onNavigate }) => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div className="panel">
           <SectionHeader
-            title="Top clients by revenue"
+            title="Top clients"
             subtitle={`${topClients.length} of ${CLIENTS.length} accounts`}
             action={<button className="btn btn-ghost btn-xs" onClick={() => onNavigate("clients")}>All clients <Icon name="chevron" size={10} /></button>}
           />
@@ -168,8 +139,8 @@ const DashboardPage = ({ onOpenClient, onNavigate }) => {
                     </div>
                   </td>
                   <td><PlanBadge plan={c.plan} /></td>
-                  <td style={{ textAlign: "right", color: "var(--text-0)" }}>${c.mrr.toLocaleString()}</td>
-                  <td style={{ textAlign: "right" }}>${c.totalPaid.toLocaleString()}</td>
+                  <td style={{ textAlign: "right", color: "var(--text-0)" }}><Money value={c.mrr} /></td>
+                  <td style={{ textAlign: "right" }}><Money value={c.totalPaid} /></td>
                   <td style={{ textAlign: "right" }}>{c.agents}</td>
                   <td><StatusDot status={c.status} /></td>
                 </tr>
@@ -180,6 +151,9 @@ const DashboardPage = ({ onOpenClient, onNavigate }) => {
 
         <div className="panel">
           <SectionHeader title="Needs attention" subtitle={`${needsAttention.length} items require action`} />
+          {needsAttention.length === 0 ? (
+            <DataState kind="pending" title="Nothing to show yet" description="Overdue and failed payments will appear here once the billing API publishes them." />
+          ) : (
           <table className="data-table">
             <thead>
               <tr>
@@ -203,14 +177,15 @@ const DashboardPage = ({ onOpenClient, onNavigate }) => {
                   </td>
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button className="btn btn-amber btn-xs">Remind</button>
-                      <button className="btn btn-secondary btn-xs">View</button>
+                      <UnavailableControl className="btn btn-amber btn-xs" showReason={false}>Remind</UnavailableControl>
+                      <UnavailableControl className="btn btn-secondary btn-xs">View</UnavailableControl>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          )}
         </div>
       </div>
     </div>

@@ -50,7 +50,8 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
     if (countryFilter !== "All")list = list.filter((c) => c.country === countryFilter);
     list.sort((a, b) => {
       const av = a[sortKey], bv = b[sortKey];
-      const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+      const numeric = typeof av === "number" || typeof bv === "number" || av == null || bv == null;
+      const cmp = numeric ? (Number(av) || 0) - (Number(bv) || 0) : String(av).localeCompare(String(bv));
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
@@ -146,7 +147,7 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
                     <td style={{ color: "var(--text-2)" }}>{c.email}</td>
                     <td><PlanBadge plan={c.plan} /></td>
                     <td><StatusDot status={c.status} /></td>
-                    <td style={{ textAlign: "right", color: "var(--text-0)" }}>${c.mrr.toLocaleString()}</td>
+                    <td style={{ textAlign: "right", color: "var(--text-0)" }}><Money value={c.mrr} /></td>
                     <td style={{ textAlign: "right" }}>{c.agents}</td>
                     <td style={{ color: "var(--text-2)" }}>{c.lastActive}</td>
                     <td style={{ color: "var(--text-2)" }}>{c.joined}</td>
@@ -179,7 +180,7 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
                 <div style={{ display: "flex", gap: 14, marginTop: 12, fontFamily: "var(--ff-mono)", fontSize: 11.5 }}>
                   <div>
                     <div style={{ color: "var(--text-3)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>MRR</div>
-                    <div style={{ color: "var(--text-0)", fontSize: 13 }}>${c.mrr.toLocaleString()}</div>
+                    <div style={{ color: "var(--text-0)", fontSize: 13 }}><Money value={c.mrr} /></div>
                   </div>
                   <div>
                     <div style={{ color: "var(--text-3)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Agents</div>
@@ -191,7 +192,7 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
                 </div>
                 <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
                   <button className="btn btn-secondary btn-xs" style={{ flex: 1 }}>Message</button>
-                  <button className="btn btn-secondary btn-xs" style={{ flex: 1 }}>Invoice</button>
+                  <UnavailableControl className="btn btn-secondary btn-xs" style={{ flex: 1 }} showReason={false}>Invoice</UnavailableControl>
                   <button className="btn btn-ghost btn-xs" style={{ padding: "3px 6px" }}><Icon name="dots" size={12} /></button>
                 </div>
               </div>
@@ -274,7 +275,7 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
 
   useEffect(() => {
     if (!client) return;
-    setEdit({ company: client.company || "", contact: client.contact || "", email: client.email || "", plan: client.plan || "Growth", status: client.status || "Active", mrr: client.mrr || 0 });
+    setEdit({ company: client.company || "", contact: client.contact || "", email: client.email || "", plan: client.plan || "Growth", status: client.status || "Active", mrr: client.mrr == null ? "" : client.mrr });
     setPw(null);
     if (client.__tab) setTab(client.__tab);
     if (client.__action) setConfirm(client.__action);
@@ -408,8 +409,8 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                 {client.id} · {client.email}
               </div>
               <div style={{ marginTop: 8, display: "flex", gap: 14, fontSize: 11.5, fontFamily: "var(--ff-mono)" }}>
-                <span><span style={{ color: "var(--text-3)" }}>MRR </span><span style={{ color: "var(--text-0)" }}>${client.mrr.toLocaleString()}</span></span>
-                <span><span style={{ color: "var(--text-3)" }}>Paid </span><span style={{ color: "var(--text-0)" }}>${client.totalPaid.toLocaleString()}</span></span>
+                <span><span style={{ color: "var(--text-3)" }}>MRR </span><span style={{ color: "var(--text-0)" }}><Money value={client.mrr} /></span></span>
+                <span><span style={{ color: "var(--text-3)" }}>Paid </span><span style={{ color: "var(--text-0)" }}><Money value={client.totalPaid} /></span></span>
                 <span><span style={{ color: "var(--text-3)" }}>Agents </span><span style={{ color: "var(--text-0)" }}>{client.agents}</span></span>
                 <span><StatusDot status={client.status} /></span>
               </div>
@@ -419,7 +420,7 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
           <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
             <button className="btn btn-primary btn-sm"><Icon name="eye" size={12} />Impersonate</button>
             <button className="btn btn-secondary btn-sm"><Icon name="mail" size={12} />Message</button>
-            <button className="btn btn-secondary btn-sm"><Icon name="invoice" size={12} />Send invoice</button>
+            <UnavailableControl className="btn btn-secondary btn-sm"><Icon name="invoice" size={12} />Send invoice</UnavailableControl>
             <div style={{ flex: 1 }} />
             <button className="btn btn-danger btn-sm" onClick={() => setConfirm("block")}>Block</button>
           </div>
@@ -492,19 +493,21 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
           {tab === "financials" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                <MiniStat label="MRR" value={"$" + client.mrr.toLocaleString()} />
-                <MiniStat label="Total paid" value={"$" + client.totalPaid.toLocaleString()} />
-                <MiniStat label="Outstanding" value={client.status === "Overdue" ? "$1,200" : "$0"} tone={client.status === "Overdue" ? "rose" : null} />
+                <MiniStat label="MRR" value={<Money value={client.mrr} />} />
+                <MiniStat label="Total paid" value={<Money value={client.totalPaid} />} />
+                <MiniStat label="Outstanding" value={<NotAvailable />} />
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Payment method</div>
-                <div className="panel-flat" style={{ padding: 12, fontFamily: "var(--ff-mono)", fontSize: 12, display: "flex", justifyContent: "space-between" }}>
-                  <span>VISA •••• 4421</span>
-                  <span style={{ color: "var(--text-3)" }}>exp 04/28</span>
+                <div className="panel-flat" style={{ padding: 12 }}>
+                  <DataState kind="pending" compact title="Not available yet" description="Card details will come from the billing provider." />
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Recent invoices</div>
+                {CLIENT_INVOICES.length === 0 ? (
+                  <DataState kind="pending" title="Invoices not available yet" description="Invoice history will be listed here once the billing API publishes it." style={{ margin: 0 }} />
+                ) : (
                 <table className="data-table" style={{ borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
                   <thead>
                     <tr><th>Invoice</th><th>Date</th><th style={{ textAlign: "right" }}>Amount</th><th>Status</th><th></th></tr>
@@ -516,21 +519,23 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                         <td style={{ color: "var(--text-2)" }}>{inv.date}</td>
                         <td style={{ textAlign: "right", color: "var(--text-0)" }}>${inv.amount.toLocaleString()}</td>
                         <td><StatusBadge status={inv.status} /></td>
-                        <td><button className="btn btn-ghost btn-xs" onClick={() => toast("Downloading PDF", "success")}><Icon name="download" size={11} /></button></td>
+                        <td><UnavailableControl className="btn btn-ghost btn-xs" reason="Download not available yet"><Icon name="download" size={11} /></UnavailableControl></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                )}
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Manual adjustment</div>
-                <div className="panel-flat" style={{ padding: 12 }}>
+                <div className="panel-flat" style={{ padding: 12, opacity: 0.6 }} aria-disabled="true" data-unavailable="true">
+                  <DataState kind="pending" compact title="Not available yet" description="Credits and charges will be applied through the billing API." style={{ marginBottom: 10 }} />
                   <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                    <select className="input" style={{ width: 110 }}><option>Add credit</option><option>Charge</option></select>
-                    <input className="input mono" placeholder="$0.00" style={{ width: 110 }} />
-                    <input className="input" placeholder="Reason" />
+                    <select className="input" style={{ width: 110 }} disabled><option>Add credit</option><option>Charge</option></select>
+                    <input className="input mono" placeholder="$0.00" style={{ width: 110 }} disabled />
+                    <input className="input" placeholder="Reason" disabled />
                   </div>
-                  <button className="btn btn-primary btn-sm" style={{ width: "100%" }}>Apply adjustment</button>
+                  <UnavailableControl className="btn btn-primary btn-sm" style={{ width: "100%" }}>Apply adjustment</UnavailableControl>
                 </div>
               </div>
             </div>
@@ -2298,13 +2303,13 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   {quotaPopup.status === "exceeded"
                     ? agent?.name + " has used all " + (() => { const m = quotaPopup.includedMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
                       + " of included calls for " + quotaPopup.periodLabel
-                      + ". From now until the new month resets, calls are billed pay-as-you-go at " + (quotaPopup.rate?.currency || "Rs.") + " 3 per minute. Overage so far: "
+                      + ". Until the billing period resets, calls are billed at the pay-as-you-go rate. Overage so far: "
                       + (() => { const m = quotaPopup.overageMinutes || 0; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
                       + "."
                     : agent?.name + " has used " + (() => { const m = quotaPopup.billableMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
                       + " of " + (() => { const m = quotaPopup.includedMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
                       + " for " + quotaPopup.periodLabel
-                      + ". Calls after the full quota bill at Rs. 3 per minute."}
+                      + ". Calls beyond the included quota are billed at the pay-as-you-go rate."}
                 </p>
               </div>
               <button
@@ -2836,7 +2841,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                         <span style={{ color: "#fcd34d", fontWeight: 600 }}>Heads-up:</span>{" "}
                         Twilio also billed <span className="mono">$ {twilioCost.twilio.nonCallUsd.toFixed(4)}</span>{" "}
                         (<span className="mono">Rs. {(twilioCost.twilio.nonCallLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>){" "}
-                        for non-call services. See breakdown below — these are NOT factored into the margin since the flat Rs. 3/min invoice doesn&apos;t cover them. Twilio Console total: <span className="mono">$ {(twilioCost.twilio.allInUsd || 0).toFixed(4)}</span>.
+                        for non-call services. See breakdown below — these are NOT factored into the margin since the flat per-minute invoice doesn&apos;t cover them. Twilio Console total: <span className="mono">$ {(twilioCost.twilio.allInUsd || 0).toFixed(4)}</span>.
                       </div>
                     )}
                     {Array.isArray(twilioCost.twilio.categories) && twilioCost.twilio.categories.length > 0 && (
@@ -2893,7 +2898,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                           </tbody>
                         </table>
                         <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 6, lineHeight: 1.5 }}>
-                          These charges (Conversation Relay, Voice Insights, phone-number rentals, recordings, TTS, Media Streams, etc.) are NOT part of the margin calculation — your Rs. 3/min invoice covers call minutes only. Listed here for cost visibility.
+                          These charges (Conversation Relay, Voice Insights, phone-number rentals, recordings, TTS, Media Streams, etc.) are NOT part of the margin calculation — the per-minute invoice covers call minutes only. Listed here for cost visibility.
                         </div>
                       </div>
                     )}

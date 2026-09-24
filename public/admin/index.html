@@ -948,6 +948,40 @@
     .menu-item.danger { color: #fda4af; }
     .menu-item.danger:hover { background: rgba(244,63,94,0.12); color: #fff; }
     .menu-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+    /* ---------- Display states (shared with the client portal) ---------- */
+    @keyframes ds-spin { to { transform: rotate(360deg); } }
+    .data-state {
+      padding: 28px 20px;
+      text-align: center;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 12px;
+    }
+    .data-state-icon {
+      width: 44px; height: 44px; margin: 0 auto 12px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .data-state-title { font-size: 13px; font-weight: 500; }
+    .data-state-desc { font-size: 11.5px; margin-top: 4px; line-height: 1.5; max-width: 420px; margin-left: auto; margin-right: auto; }
+    .data-state-detail { font-family: var(--ff-mono); font-size: 10.5px; color: var(--text-3); margin-top: 8px; word-break: break-all; }
+    .ds-pill { display: inline-flex; align-items: center; gap: 5px; }
+    .na-value { display: inline-flex; align-items: baseline; gap: 6px; color: var(--text-3); }
+    .na-value .na-dash { font-family: var(--ff-mono); }
+    .na-tag {
+      font-family: var(--ff-sans);
+      font-size: 10px; font-weight: 500;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--text-3);
+      white-space: nowrap;
+    }
+    .btn.is-unavailable, .btn.is-unavailable:hover {
+      opacity: 0.55;
+      cursor: not-allowed;
+      box-shadow: none;
+      filter: grayscale(0.4);
+    }
   </style>
 </head>
 <body>
@@ -963,6 +997,7 @@
 
   <script type="text/babel" src="asset_88806588.js"></script>
   <script type="text/babel" src="asset_c86a0410.js"></script>
+  <script type="text/babel" src="asset_display_states.js"></script>
   <script type="text/babel" src="asset_02505fff.js"></script>
   <script type="text/babel" src="asset_eec62e3a.js"></script>
   <script type="text/babel" src="asset_d3549e48.js"></script>
