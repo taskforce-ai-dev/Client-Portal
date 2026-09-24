@@ -16,7 +16,7 @@ function fmtHm(minutes: number) {
 // Shows once per (agent, period, status). "Got it" writes a localStorage
 // key so the popup stays dismissed even after closing the tab / browser —
 // it only returns when the billing period rolls over or the status flips
-// (e.g. warn → exceeded). Brand-new month → new periodYm → new key → it
+// (e.g. warn → exceeded). New billing period → new periodYm → new key → it
 // pops again automatically.
 export default function QuotaPopup({ agentId, agentName, quota }: { agentId: string; agentName?: string; quota: AgentQuotaSnapshot }) {
   const [mounted, setMounted] = useState(false);
@@ -54,12 +54,14 @@ export default function QuotaPopup({ agentId, agentName, quota }: { agentId: str
   const tint = exceeded ? "from-rose-500/30 to-rose-500/5 border-rose-500/30" : "from-amber-500/25 to-amber-500/5 border-amber-500/30";
   const iconWrap = exceeded ? "bg-rose-500/20 text-rose-200" : "bg-amber-500/20 text-amber-200";
   const titleClr = exceeded ? "text-rose-100" : "text-amber-100";
+  // Period and plan wording come from the API snapshot (periodLabel,
+  // includedMinutes, overageCost). Nothing here assumes a month or a rate.
   const title = exceeded
-    ? `Monthly ${fmtHm(quota.includedMinutes)} quota reached`
-    : `${quota.percent}% of monthly ${fmtHm(quota.includedMinutes)} quota used`;
+    ? `Included ${fmtHm(quota.includedMinutes)} quota reached`
+    : `${quota.percent}% of included ${fmtHm(quota.includedMinutes)} quota used`;
   const detail = exceeded
-    ? `You've used ${fmtHm(quota.billableMinutes)} of ${fmtHm(quota.includedMinutes)} included calls for ${quota.periodLabel}. Overage so far: ${fmtHm(quota.overageMinutes)} — pay-as-you-go billing of ${moneyLKR(quota.overageCost)} applies until the new month resets.`
-    : `${fmtHm(quota.billableMinutes)} of ${fmtHm(quota.includedMinutes)} for ${quota.periodLabel}. Calls after ${fmtHm(quota.includedMinutes)} bill at Rs. 3 / minute.`;
+    ? `You've used ${fmtHm(quota.billableMinutes)} of ${fmtHm(quota.includedMinutes)} included calls for ${quota.periodLabel}. Overage so far: ${fmtHm(quota.overageMinutes)} — pay-as-you-go billing of ${moneyLKR(quota.overageCost)} applies until the billing period resets.`
+    : `${fmtHm(quota.billableMinutes)} of ${fmtHm(quota.includedMinutes)} for ${quota.periodLabel}. Calls beyond the included quota are billed at the pay-as-you-go rate.`;
 
   return createPortal(
     <div

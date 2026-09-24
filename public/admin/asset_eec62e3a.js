@@ -2303,13 +2303,13 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                   {quotaPopup.status === "exceeded"
                     ? agent?.name + " has used all " + (() => { const m = quotaPopup.includedMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
                       + " of included calls for " + quotaPopup.periodLabel
-                      + ". From now until the new month resets, calls are billed pay-as-you-go at " + (quotaPopup.rate?.currency || "Rs.") + " 3 per minute. Overage so far: "
+                      + ". Until the billing period resets, calls are billed at the pay-as-you-go rate. Overage so far: "
                       + (() => { const m = quotaPopup.overageMinutes || 0; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
                       + "."
                     : agent?.name + " has used " + (() => { const m = quotaPopup.billableMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
                       + " of " + (() => { const m = quotaPopup.includedMinutes; const h = Math.floor(m / 60), r = m % 60; return r ? h + "h " + r + "m" : h + "h"; })()
                       + " for " + quotaPopup.periodLabel
-                      + ". Calls after the full quota bill at Rs. 3 per minute."}
+                      + ". Calls beyond the included quota are billed at the pay-as-you-go rate."}
                 </p>
               </div>
               <button
@@ -2841,7 +2841,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                         <span style={{ color: "#fcd34d", fontWeight: 600 }}>Heads-up:</span>{" "}
                         Twilio also billed <span className="mono">$ {twilioCost.twilio.nonCallUsd.toFixed(4)}</span>{" "}
                         (<span className="mono">Rs. {(twilioCost.twilio.nonCallLkr || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>){" "}
-                        for non-call services. See breakdown below — these are NOT factored into the margin since the flat Rs. 3/min invoice doesn&apos;t cover them. Twilio Console total: <span className="mono">$ {(twilioCost.twilio.allInUsd || 0).toFixed(4)}</span>.
+                        for non-call services. See breakdown below — these are NOT factored into the margin since the flat per-minute invoice doesn&apos;t cover them. Twilio Console total: <span className="mono">$ {(twilioCost.twilio.allInUsd || 0).toFixed(4)}</span>.
                       </div>
                     )}
                     {Array.isArray(twilioCost.twilio.categories) && twilioCost.twilio.categories.length > 0 && (
@@ -2898,7 +2898,7 @@ const AgentConfigPage = ({ agentId, onBack }) => {
                           </tbody>
                         </table>
                         <div style={{ fontSize: 10.5, color: "var(--text-3)", marginTop: 6, lineHeight: 1.5 }}>
-                          These charges (Conversation Relay, Voice Insights, phone-number rentals, recordings, TTS, Media Streams, etc.) are NOT part of the margin calculation — your Rs. 3/min invoice covers call minutes only. Listed here for cost visibility.
+                          These charges (Conversation Relay, Voice Insights, phone-number rentals, recordings, TTS, Media Streams, etc.) are NOT part of the margin calculation — the per-minute invoice covers call minutes only. Listed here for cost visibility.
                         </div>
                       </div>
                     )}

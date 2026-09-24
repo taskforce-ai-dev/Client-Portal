@@ -145,7 +145,8 @@ function Card({ row, agentName, clientCompany, agentId }: { row: Row; agentName?
   const box = exceeded ? "border-rose-500/30 bg-rose-500/[0.06]" : "border-amber-500/25 bg-amber-500/[0.05]";
   const iconWrap = exceeded ? "bg-rose-500/15 text-rose-300" : "bg-amber-500/15 text-amber-300";
   const titleClr = exceeded ? "text-rose-200" : "text-amber-200";
-  const title = exceeded ? "Monthly 40h quota reached" : "80% of monthly quota used";
+  // Placeholder titles — the final wording (plan size, period) will come from the API.
+  const title = exceeded ? "Included call quota reached" : "Call quota warning threshold reached";
   return (
     <li className={`card p-4 border ${box} flex items-start gap-3`}>
       <div className={`w-9 h-9 rounded-xl ${iconWrap} grid place-items-center shrink-0`}>

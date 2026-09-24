@@ -81,7 +81,7 @@ export default function QuotaBanner({ quota, agentId }: { quota: AgentQuotaSnaps
           {quota.percent}% of your {includedLabel} call quota used for {quota.periodLabel}
         </div>
         <div className="text-xs text-amber-200/80 mt-0.5">
-          {usedLabel} of {includedLabel}. Calls after {includedLabel} bill at Rs. 3 / minute.
+          {usedLabel} of {includedLabel}. Calls beyond the included quota are billed at the pay-as-you-go rate.
         </div>
       </div>
       <button
