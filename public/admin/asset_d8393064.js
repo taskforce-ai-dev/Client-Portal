@@ -193,80 +193,69 @@ const AgentTemplateDrawer = ({ template, onClose, onSave }) => {
 };
 
 /* ============================================================
-   SYSTEM HEALTH PAGE — live updating
+   SYSTEM HEALTH PAGE
+   No monitoring source is wired up yet, so nothing here claims a
+   status, an uptime or a latency. Every figure renders as
+   "not connected" until the monitoring API publishes it.
    ============================================================ */
 
 const SystemHealthPage = () => {
-  const [tick, setTick] = useState(0);
-  const [services, setServices] = useState(SERVICES);
-  const [metrics, setMetrics] = useState({
-    calls: 18, msgsPerMin: 412, apiPerMin: 8420, errorRate: 0.18,
-    callsHistory: Array.from({ length: 20 }, () => 15 + Math.random() * 12),
-    msgsHistory: Array.from({ length: 20 }, () => 380 + Math.random() * 60),
-    apiHistory: Array.from({ length: 20 }, () => 8000 + Math.random() * 900),
-    errorHistory: Array.from({ length: 20 }, () => 0.12 + Math.random() * 0.14),
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTick((t) => t + 1);
-      setMetrics((m) => ({
-        calls: Math.max(12, Math.min(28, m.calls + Math.round((Math.random() - 0.5) * 4))),
-        msgsPerMin: Math.round(380 + Math.random() * 80),
-        apiPerMin: Math.round(7800 + Math.random() * 1200),
-        errorRate: +(0.12 + Math.random() * 0.18).toFixed(2),
-        callsHistory: [...m.callsHistory.slice(1), Math.max(12, Math.min(28, m.calls + Math.round((Math.random() - 0.5) * 4)))],
-        msgsHistory:  [...m.msgsHistory.slice(1),  380 + Math.random() * 60],
-        apiHistory:   [...m.apiHistory.slice(1),   8000 + Math.random() * 900],
-        errorHistory: [...m.errorHistory.slice(1), 0.12 + Math.random() * 0.14],
-      }));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const anyDegraded = services.some((s) => s.status === "Degraded");
-  const anyOutage = services.some((s) => s.status === "Outage");
-  const overallStatus = anyOutage ? "Outage" : anyDegraded ? "Degraded" : "Operational";
-  const statusCls = anyOutage ? "rose pulse" : anyDegraded ? "amber" : "emerald";
-  const statusLabel = anyOutage ? "Outage detected" : anyDegraded ? "Partial degradation" : "All systems operational";
+  const services = SERVICES;
+  const monitored = services.filter((s) => s.status != null);
+  const anyDegraded = monitored.some((s) => s.status === "Degraded");
+  const anyOutage = monitored.some((s) => s.status === "Outage");
+  const hasMonitoring = monitored.length > 0;
+  const statusCls = !hasMonitoring ? "gray" : anyOutage ? "rose pulse" : anyDegraded ? "amber" : "emerald";
+  const statusLabel = !hasMonitoring
+    ? "Monitoring not connected"
+    : anyOutage ? "Outage detected" : anyDegraded ? "Partial degradation" : "All systems operational";
+  const halo = !hasMonitoring
+    ? "0 0 0 6px rgba(107,114,128,0.15)"
+    : anyOutage ? "0 0 0 6px rgba(244,63,94,0.15)" : anyDegraded ? "0 0 0 6px rgba(245,158,11,0.15)" : "0 0 0 6px rgba(16,185,129,0.15)";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="panel" style={{ padding: 20, display: "flex", alignItems: "center", gap: 18 }}>
         <div style={{ width: 14, height: 14 }}>
-          <span className={"dot " + statusCls} style={{ width: 14, height: 14, marginRight: 0, boxShadow: anyOutage ? "0 0 0 6px rgba(244,63,94,0.15)" : anyDegraded ? "0 0 0 6px rgba(245,158,11,0.15)" : "0 0 0 6px rgba(16,185,129,0.15)" }} />
+          <span className={"dot " + statusCls} style={{ width: 14, height: 14, marginRight: 0, boxShadow: halo }} />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 18, fontWeight: 600 }}>{statusLabel}</div>
           <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4, fontFamily: "var(--ff-mono)" }}>
-            Last checked: {new Date().toLocaleTimeString("en-GB")} UTC · auto-refresh every 5s
+            {hasMonitoring ? "Reported by the monitoring API" : "Service health will appear here once the monitoring API is connected."}
           </div>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={() => setTick(tick + 1)}><Icon name="refresh" size={12} />Force check</button>
+        <UnavailableControl className="btn btn-secondary btn-sm"><Icon name="refresh" size={12} />Force check</UnavailableControl>
       </div>
 
       {/* Live metrics */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <LiveMetric label="Active calls" value={metrics.calls} history={metrics.callsHistory} color="#5b4b8a" />
-        <LiveMetric label="Messages / min" value={metrics.msgsPerMin.toLocaleString()} history={metrics.msgsHistory} color="#38bdf8" />
-        <LiveMetric label="API req / min" value={fmtAbbrev(metrics.apiPerMin)} history={metrics.apiHistory} color="#10b981" />
-        <LiveMetric label="Error rate" value={metrics.errorRate.toFixed(2)} suffix="%" history={metrics.errorHistory} color="#f59e0b" />
+        <KpiUnavailable label="Active calls" kind="disconnected" hint="Live metrics aren't connected yet." />
+        <KpiUnavailable label="Messages / min" kind="disconnected" hint="Live metrics aren't connected yet." />
+        <KpiUnavailable label="API req / min" kind="disconnected" hint="Live metrics aren't connected yet." />
+        <KpiUnavailable label="Error rate" kind="disconnected" hint="Live metrics aren't connected yet." />
       </div>
 
       {/* Service grid */}
       <div className="panel">
-        <SectionHeader title="Services" subtitle="Real-time health of all platform services." />
+        <SectionHeader title="Services" subtitle="Health of all platform services, as reported by the monitoring API." />
         <div style={{ padding: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {services.map((s) => (
             <div key={s.name} className="panel-flat" style={{ padding: 14, display: "flex", alignItems: "center", gap: 14 }}>
-              <span className={"dot " + (s.status === "Operational" ? "emerald" : s.status === "Degraded" ? "amber" : "rose pulse")} style={{ marginRight: 0, width: 8, height: 8 }} />
+              <span className={"dot " + (s.status == null ? "gray" : s.status === "Operational" ? "emerald" : s.status === "Degraded" ? "amber" : "rose pulse")} style={{ marginRight: 0, width: 8, height: 8 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-0)" }}>{s.name}</div>
-                <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "var(--ff-mono)", marginTop: 2 }}>Last incident: {s.lastIncident}</div>
+                <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "var(--ff-mono)", marginTop: 2 }}>
+                  {s.status == null ? "Not monitored yet" : "Last incident: " + s.lastIncident}
+                </div>
               </div>
               <div style={{ textAlign: "right", fontFamily: "var(--ff-mono)" }}>
-                <div style={{ fontSize: 13, color: s.uptime >= 99.95 ? "#6ee7b7" : s.uptime >= 99.9 ? "#fcd34d" : "#fda4af" }}>{s.uptime.toFixed(2)}%</div>
-                <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{s.latency} ms p95</div>
+                {typeof s.uptime === "number"
+                  ? <div style={{ fontSize: 13, color: s.uptime >= 99.95 ? "#6ee7b7" : s.uptime >= 99.9 ? "#fcd34d" : "#fda4af" }}>{s.uptime.toFixed(2)}%</div>
+                  : <div style={{ fontSize: 12 }}><NotAvailable kind="disconnected" label="Uptime not connected" /></div>}
+                {typeof s.latency === "number"
+                  ? <div style={{ fontSize: 10.5, color: "var(--text-3)" }}>{s.latency} ms p95</div>
+                  : null}
               </div>
             </div>
           ))}
@@ -275,7 +264,10 @@ const SystemHealthPage = () => {
 
       {/* Incident log */}
       <div className="panel">
-        <SectionHeader title="Incident log" subtitle="Last 30 days" action={<button className="btn btn-ghost btn-sm">View full history</button>} />
+        <SectionHeader title="Incident log" subtitle="Last 30 days" action={<UnavailableControl className="btn btn-ghost btn-sm">View full history</UnavailableControl>} />
+        {INCIDENTS.length === 0 ? (
+          <DataState kind="disconnected" title="Incident history not connected" description="Incidents will be listed here once the monitoring API is connected." />
+        ) : (
         <table className="data-table">
           <thead>
             <tr>
@@ -304,25 +296,10 @@ const SystemHealthPage = () => {
             ))}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );
 };
-
-const LiveMetric = ({ label, value, suffix = "", history, color }) => (
-  <div className="kpi">
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-      <div>
-        <div className="kpi-label">{label}</div>
-        <div className="kpi-value" style={{ marginTop: 6 }}>{value}{suffix}</div>
-      </div>
-      <Sparkline data={history} width={70} height={28} color={color} />
-    </div>
-    <div style={{ fontSize: 10.5, color: "var(--text-3)", fontFamily: "var(--ff-mono)", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
-      <span className="dot emerald" style={{ marginRight: 0, width: 4, height: 4 }} />
-      <span>live · updates every 5s</span>
-    </div>
-  </div>
-);
 
 Object.assign(window, { AgentConfigsPage, SystemHealthPage });

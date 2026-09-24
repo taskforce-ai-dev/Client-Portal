@@ -13,18 +13,15 @@ const PaymentsPage = () => {
     (!query || (p.client + p.id).toLowerCase().includes(query.toLowerCase()))
   );
 
-  const collected = PAYMENTS.filter((p) => p.status === "Paid").reduce((s, p) => s + p.amount, 0);
-  const pending = PAYMENTS.filter((p) => p.status === "Pending").reduce((s, p) => s + p.amount, 0);
-  const overdue = PAYMENTS.filter((p) => p.status === "Overdue").reduce((s, p) => s + p.amount, 0);
-  const failed = PAYMENTS.filter((p) => p.status === "Failed").reduce((s, p) => s + p.amount, 0);
-
+  // Totals are not summed in the browser. The four headline figures render
+  // as "Not available yet" until the billing API publishes them.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <KpiCard label="Collected this month" value={fmtMoney(collected)} delta="+12.4%" deltaKind="up" />
-        <KpiCard label="Pending / due" value={fmtMoney(pending)} subtitle={`${PAYMENTS.filter((p) => p.status === "Pending").length} invoices`} />
-        <KpiCard label="Overdue" value={fmtMoney(overdue)} subtitle={`${PAYMENTS.filter((p) => p.status === "Overdue").length} accounts`} tint="rose" />
-        <KpiCard label="Failed payments" value={fmtMoney(failed)} subtitle={`${PAYMENTS.filter((p) => p.status === "Failed").length} this period`} tint="rose" />
+        <KpiUnavailable label="Collected this month" />
+        <KpiUnavailable label="Pending / due" />
+        <KpiUnavailable label="Overdue" tint="rose" />
+        <KpiUnavailable label="Failed payments" tint="rose" />
       </div>
 
       <div className="panel">
@@ -46,6 +43,9 @@ const PaymentsPage = () => {
         </div>
 
         <div style={{ maxHeight: 540, overflowY: "auto" }}>
+          {filtered.length === 0 ? (
+            <DataState kind="pending" title="Payments not available yet" description="Payment records will be listed here once the billing API publishes them." />
+          ) : (
           <table className="data-table">
             <thead>
               <tr>
@@ -82,6 +82,7 @@ const PaymentsPage = () => {
               ))}
             </tbody>
           </table>
+          )}
         </div>
       </div>
 
@@ -89,7 +90,7 @@ const PaymentsPage = () => {
       <div className="panel">
         <SectionHeader
           title="Overdue accounts"
-          subtitle={`${OVERDUE.length} accounts requiring follow-up · ${fmtMoney(overdue)} outstanding`}
+          subtitle={`${OVERDUE.length} accounts requiring follow-up`}
           action={
             <div style={{ display: "flex", gap: 6 }}>
               <button className="btn btn-amber btn-sm" onClick={() => toast(`Reminders sent to ${OVERDUE.length} accounts`, "warn")}>
@@ -101,7 +102,10 @@ const PaymentsPage = () => {
             </div>
           }
         />
-        {overdueOpen && (
+        {overdueOpen && OVERDUE.length === 0 && (
+          <DataState kind="pending" title="Overdue accounts not available yet" description="Overdue balances will be listed here once the billing API publishes them." />
+        )}
+        {overdueOpen && OVERDUE.length > 0 && (
           <table className="data-table">
             <thead>
               <tr>
@@ -148,11 +152,9 @@ const PaymentsPage = () => {
 const EarningsPage = () => {
   const [range, setRange] = useState("This year");
 
-  const gross = EARNINGS_MONTHLY.reduce((s, m) => s + m.invoiced, 0);
-  const refunds = 8400;
-  const net = gross - refunds;
-  const collected = EARNINGS_MONTHLY.reduce((s, m) => s + m.collected, 0);
-
+  // Nothing is summed here. Gross / net / refunds / avg invoice /
+  // collection rate all come from the billing API or render as
+  // "Not available yet".
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div className="panel" style={{ padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
@@ -164,8 +166,8 @@ const EarningsPage = () => {
         </div>
         {range === "Custom" && (
           <>
-            <input className="input mono" type="date" style={{ width: 140 }} defaultValue="2026-01-01" />
-            <input className="input mono" type="date" style={{ width: 140 }} defaultValue="2026-05-23" />
+            <input className="input mono" type="date" style={{ width: 140 }} />
+            <input className="input mono" type="date" style={{ width: 140 }} />
           </>
         )}
         <div style={{ flex: 1 }} />
@@ -173,44 +175,40 @@ const EarningsPage = () => {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
-        <KpiCard label="Gross revenue" value={fmtAbbrev(gross)} prefix="$" delta="+18.2%" deltaKind="up" />
-        <KpiCard label="Net revenue" value={fmtAbbrev(net)} prefix="$" delta="+17.6%" deltaKind="up" subtitle="after refunds" />
-        <KpiCard label="Refunds total" value={fmtMoney(refunds)} subtitle="3 refunds issued" tint="rose" />
-        <KpiCard label="Avg invoice size" value={fmtMoney(Math.round(gross / 32))} delta="+4.1%" deltaKind="up" />
-        <KpiCard label="Collection rate" value="94.7" suffix="%" delta="+1.2pp" deltaKind="up" />
+        <KpiUnavailable label="Gross revenue" />
+        <KpiUnavailable label="Net revenue" hint="After refunds — published by the billing API." />
+        <KpiUnavailable label="Refunds total" tint="rose" />
+        <KpiUnavailable label="Avg invoice size" />
+        <KpiUnavailable label="Collection rate" />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "60% minmax(0, 1fr)", gap: 14 }}>
         <div className="panel">
           <SectionHeader title="Revenue by month" subtitle="Invoiced · collected · refunded" />
-          <div style={{ padding: "8px 8px 4px" }}>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={EARNINGS_MONTHLY} margin={{ top: 8, right: 14, left: -10, bottom: 0 }}>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={(v) => "$" + (v / 1000).toFixed(0) + "k"} tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} width={50} />
-                <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(91, 75, 138,0.05)" }} />
-                <Bar dataKey="invoiced" name="Invoiced" fill="#5b4b8a" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="collected" name="Collected" fill="#10b981" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="outstanding" name="Outstanding" fill="#f59e0b" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <DataState
+            kind="pending"
+            title="Monthly revenue not available yet"
+            description="Invoiced, collected and refunded amounts will be plotted here once the billing API publishes them."
+            style={{ minHeight: 260, display: "flex", flexDirection: "column", justifyContent: "center" }}
+          />
         </div>
 
         <div className="panel">
           <SectionHeader title="Revenue by plan" subtitle="Current MRR contribution" />
+          {REVENUE_BY_PLAN.length === 0 && (
+            <DataState kind="pending" title="Not available yet" description="Plan-level revenue will come from the billing API." />
+          )}
           <div style={{ padding: 16 }}>
             {REVENUE_BY_PLAN.map((r) => {
-              const max = Math.max(...REVENUE_BY_PLAN.map((x) => x.revenue));
+              const max = Math.max(1, ...REVENUE_BY_PLAN.map((x) => x.revenue || 0));
               return (
                 <div key={r.plan} style={{ marginBottom: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                     <PlanBadge plan={r.plan} />
-                    <span style={{ fontFamily: "var(--ff-mono)", fontSize: 12, color: "var(--text-0)" }}>${r.revenue.toLocaleString()}</span>
+                    <span style={{ fontFamily: "var(--ff-mono)", fontSize: 12, color: "var(--text-0)" }}><Money value={r.revenue} /></span>
                   </div>
                   <div style={{ height: 8, background: "rgba(255,255,255,0.05)", borderRadius: 4, overflow: "hidden" }}>
-                    <div style={{ width: (r.revenue / max * 100) + "%", height: "100%", background: "linear-gradient(90deg, #5b4b8a, #7858a6)", borderRadius: 4, animation: "countup 600ms ease-out both" }} />
+                    <div style={{ width: ((r.revenue || 0) / max * 100) + "%", height: "100%", background: "linear-gradient(90deg, #5b4b8a, #7858a6)", borderRadius: 4, animation: "countup 600ms ease-out both" }} />
                   </div>
                 </div>
               );
@@ -222,88 +220,28 @@ const EarningsPage = () => {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div className="panel">
           <SectionHeader title="Client growth" subtitle="Cumulative active vs churned" />
-          <div style={{ padding: "8px 8px 4px" }}>
-            <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={EARNINGS_MONTHLY} margin={{ top: 8, right: 14, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gActive" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-                  </linearGradient>
-                  <linearGradient id="gChurn" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#f43f5e" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#6b7280", fontSize: 10, fontFamily: "var(--ff-mono)" }} axisLine={false} tickLine={false} width={30} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="clients" name="Active clients" stroke="#10b981" strokeWidth={2} fill="url(#gActive)" />
-                <Area type="monotone" dataKey="churned" name="Churned" stroke="#f43f5e" strokeWidth={2} fill="url(#gChurn)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <DataState
+            kind="pending"
+            title="Client growth not available yet"
+            description="Active and churned client counts by month will come from the billing API."
+            style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}
+          />
         </div>
 
         <div className="panel">
           <SectionHeader title="MRR movement" subtitle="This month — net MRR change" />
-          <div style={{ padding: 18 }}>
-            {MRR_MOVEMENT.map((m, i) => {
-              const max = Math.max(...MRR_MOVEMENT.map((x) => Math.abs(x.value)));
-              const isPos = m.value > 0;
-              return (
-                <div key={m.kind} style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, color: "var(--text-1)" }}>{m.kind} MRR</span>
-                    <span style={{ fontFamily: "var(--ff-mono)", fontSize: 12, color: isPos ? "#6ee7b7" : "#fda4af" }}>
-                      {isPos ? "+" : "−"}${Math.abs(m.value).toLocaleString()}
-                    </span>
-                  </div>
-                  <div style={{ height: 6, background: "rgba(255,255,255,0.05)", borderRadius: 3, overflow: "hidden" }}>
-                    <div style={{ width: (Math.abs(m.value) / max * 100) + "%", height: "100%", background: m.color, borderRadius: 3 }} />
-                  </div>
-                </div>
-              );
-            })}
-            <div style={{ paddingTop: 12, marginTop: 8, borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "var(--text-1)", fontWeight: 500 }}>Net new MRR</span>
-              <span style={{ fontFamily: "var(--ff-mono)", fontSize: 18, color: "#6ee7b7" }}>+$5,120</span>
-            </div>
-          </div>
+          <DataState
+            kind="pending"
+            title="MRR movement not available yet"
+            description="New, expansion, contraction and churned MRR will come from the billing API."
+            style={{ minHeight: 240, display: "flex", flexDirection: "column", justifyContent: "center" }}
+          />
         </div>
       </div>
 
       <div className="panel">
         <SectionHeader title="Monthly breakdown" />
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Month</th>
-              <th style={{ textAlign: "right" }}>Clients</th>
-              <th style={{ textAlign: "right" }}>New</th>
-              <th style={{ textAlign: "right" }}>Churned</th>
-              <th style={{ textAlign: "right" }}>Invoiced</th>
-              <th style={{ textAlign: "right" }}>Collected</th>
-              <th style={{ textAlign: "right" }}>Outstanding</th>
-              <th style={{ textAlign: "right" }}>Net MRR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {EARNINGS_MONTHLY.map((m) => (
-              <tr key={m.month}>
-                <td>{m.month}</td>
-                <td style={{ textAlign: "right", color: "var(--text-0)" }}>{m.clients}</td>
-                <td style={{ textAlign: "right", color: "#6ee7b7" }}>+{m.newClients}</td>
-                <td style={{ textAlign: "right", color: "#fda4af" }}>−{m.churned}</td>
-                <td style={{ textAlign: "right" }}>${m.invoiced.toLocaleString()}</td>
-                <td style={{ textAlign: "right", color: "var(--text-0)" }}>${m.collected.toLocaleString()}</td>
-                <td style={{ textAlign: "right", color: m.outstanding > 1500 ? "#fcd34d" : "var(--text-1)" }}>${m.outstanding.toLocaleString()}</td>
-                <td style={{ textAlign: "right", color: "var(--text-0)" }}>${m.netMrr.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataState kind="pending" title="Monthly breakdown not available yet" description="Clients, invoiced, collected, outstanding and net MRR by month will come from the billing API." />
       </div>
     </div>
   );

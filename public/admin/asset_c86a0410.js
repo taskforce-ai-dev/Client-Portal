@@ -157,7 +157,7 @@ const NAV = [
     { id: "payments",  label: "Payments", icon: "money" },
     { id: "invoices",  label: "Invoices", icon: "invoice" },
     { id: "earnings",  label: "Earnings", icon: "chart" },
-    { id: "overdue",   label: "Delayed / Overdue", icon: "warn", count: 2 },
+    { id: "overdue",   label: "Delayed / Overdue", icon: "warn" },
   ]},
   { section: "Platform", items: [
     { id: "agents",    label: "Agent Configs", icon: "config" },
@@ -165,7 +165,7 @@ const NAV = [
     { id: "health",    label: "System Health",  icon: "health" },
   ]},
   { section: "Support", items: [
-    { id: "tickets",   label: "Help Tickets", icon: "ticket", count: 4 },
+    { id: "tickets",   label: "Help Tickets", icon: "ticket" },
     { id: "announce",  label: "Send Announcement", icon: "megaphone" },
   ]},
   { section: "Settings", items: [
@@ -409,9 +409,9 @@ const HeaderBar = ({ title, onSearch }) => {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <div className="header-optional" style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.22)", borderRadius: 14, fontSize: 11.5, fontFamily: "var(--ff-mono)", color: "#6ee7b7" }}>
-          <span className="dot emerald" style={{ marginRight: 0 }} />
-          <span>All systems operational</span>
+        <div className="header-optional" title="Service health will show here once the monitoring API is connected." style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", background: "rgba(107,114,128,0.10)", border: "1px solid rgba(107,114,128,0.28)", borderRadius: 14, fontSize: 11.5, fontFamily: "var(--ff-mono)", color: "var(--text-2)" }}>
+          <span className="dot gray" style={{ marginRight: 0 }} />
+          <span>Monitoring not connected</span>
         </div>
 
         <button className="btn btn-ghost btn-sm" style={{ position: "relative", padding: "5px 8px", flexShrink: 0 }}>

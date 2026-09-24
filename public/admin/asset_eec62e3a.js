@@ -50,7 +50,8 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
     if (countryFilter !== "All")list = list.filter((c) => c.country === countryFilter);
     list.sort((a, b) => {
       const av = a[sortKey], bv = b[sortKey];
-      const cmp = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+      const numeric = typeof av === "number" || typeof bv === "number" || av == null || bv == null;
+      const cmp = numeric ? (Number(av) || 0) - (Number(bv) || 0) : String(av).localeCompare(String(bv));
       return sortDir === "asc" ? cmp : -cmp;
     });
     return list;
@@ -146,7 +147,7 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
                     <td style={{ color: "var(--text-2)" }}>{c.email}</td>
                     <td><PlanBadge plan={c.plan} /></td>
                     <td><StatusDot status={c.status} /></td>
-                    <td style={{ textAlign: "right", color: "var(--text-0)" }}>${c.mrr.toLocaleString()}</td>
+                    <td style={{ textAlign: "right", color: "var(--text-0)" }}><Money value={c.mrr} /></td>
                     <td style={{ textAlign: "right" }}>{c.agents}</td>
                     <td style={{ color: "var(--text-2)" }}>{c.lastActive}</td>
                     <td style={{ color: "var(--text-2)" }}>{c.joined}</td>
@@ -179,7 +180,7 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
                 <div style={{ display: "flex", gap: 14, marginTop: 12, fontFamily: "var(--ff-mono)", fontSize: 11.5 }}>
                   <div>
                     <div style={{ color: "var(--text-3)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>MRR</div>
-                    <div style={{ color: "var(--text-0)", fontSize: 13 }}>${c.mrr.toLocaleString()}</div>
+                    <div style={{ color: "var(--text-0)", fontSize: 13 }}><Money value={c.mrr} /></div>
                   </div>
                   <div>
                     <div style={{ color: "var(--text-3)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>Agents</div>
@@ -274,7 +275,7 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
 
   useEffect(() => {
     if (!client) return;
-    setEdit({ company: client.company || "", contact: client.contact || "", email: client.email || "", plan: client.plan || "Growth", status: client.status || "Active", mrr: client.mrr || 0 });
+    setEdit({ company: client.company || "", contact: client.contact || "", email: client.email || "", plan: client.plan || "Growth", status: client.status || "Active", mrr: client.mrr == null ? "" : client.mrr });
     setPw(null);
     if (client.__tab) setTab(client.__tab);
     if (client.__action) setConfirm(client.__action);
@@ -408,8 +409,8 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                 {client.id} · {client.email}
               </div>
               <div style={{ marginTop: 8, display: "flex", gap: 14, fontSize: 11.5, fontFamily: "var(--ff-mono)" }}>
-                <span><span style={{ color: "var(--text-3)" }}>MRR </span><span style={{ color: "var(--text-0)" }}>${client.mrr.toLocaleString()}</span></span>
-                <span><span style={{ color: "var(--text-3)" }}>Paid </span><span style={{ color: "var(--text-0)" }}>${client.totalPaid.toLocaleString()}</span></span>
+                <span><span style={{ color: "var(--text-3)" }}>MRR </span><span style={{ color: "var(--text-0)" }}><Money value={client.mrr} /></span></span>
+                <span><span style={{ color: "var(--text-3)" }}>Paid </span><span style={{ color: "var(--text-0)" }}><Money value={client.totalPaid} /></span></span>
                 <span><span style={{ color: "var(--text-3)" }}>Agents </span><span style={{ color: "var(--text-0)" }}>{client.agents}</span></span>
                 <span><StatusDot status={client.status} /></span>
               </div>
@@ -492,19 +493,21 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
           {tab === "financials" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                <MiniStat label="MRR" value={"$" + client.mrr.toLocaleString()} />
-                <MiniStat label="Total paid" value={"$" + client.totalPaid.toLocaleString()} />
-                <MiniStat label="Outstanding" value={client.status === "Overdue" ? "$1,200" : "$0"} tone={client.status === "Overdue" ? "rose" : null} />
+                <MiniStat label="MRR" value={<Money value={client.mrr} />} />
+                <MiniStat label="Total paid" value={<Money value={client.totalPaid} />} />
+                <MiniStat label="Outstanding" value={<NotAvailable />} />
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Payment method</div>
-                <div className="panel-flat" style={{ padding: 12, fontFamily: "var(--ff-mono)", fontSize: 12, display: "flex", justifyContent: "space-between" }}>
-                  <span>VISA •••• 4421</span>
-                  <span style={{ color: "var(--text-3)" }}>exp 04/28</span>
+                <div className="panel-flat" style={{ padding: 12 }}>
+                  <DataState kind="pending" compact title="Not available yet" description="Card details will come from the billing provider." />
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Recent invoices</div>
+                {CLIENT_INVOICES.length === 0 ? (
+                  <DataState kind="pending" title="Invoices not available yet" description="Invoice history will be listed here once the billing API publishes it." style={{ margin: 0 }} />
+                ) : (
                 <table className="data-table" style={{ borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
                   <thead>
                     <tr><th>Invoice</th><th>Date</th><th style={{ textAlign: "right" }}>Amount</th><th>Status</th><th></th></tr>
@@ -521,6 +524,7 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                     ))}
                   </tbody>
                 </table>
+                )}
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Manual adjustment</div>
