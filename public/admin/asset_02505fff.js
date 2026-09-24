@@ -177,8 +177,8 @@ const DashboardPage = ({ onOpenClient, onNavigate }) => {
                   </td>
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button className="btn btn-amber btn-xs">Remind</button>
-                      <button className="btn btn-secondary btn-xs">View</button>
+                      <UnavailableControl className="btn btn-amber btn-xs" showReason={false}>Remind</UnavailableControl>
+                      <UnavailableControl className="btn btn-secondary btn-xs">View</UnavailableControl>
                     </div>
                   </td>
                 </tr>

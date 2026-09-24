@@ -192,7 +192,7 @@ const ClientsPage = ({ onOpenClient, filterStatus = null }) => {
                 </div>
                 <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
                   <button className="btn btn-secondary btn-xs" style={{ flex: 1 }}>Message</button>
-                  <button className="btn btn-secondary btn-xs" style={{ flex: 1 }}>Invoice</button>
+                  <UnavailableControl className="btn btn-secondary btn-xs" style={{ flex: 1 }} showReason={false}>Invoice</UnavailableControl>
                   <button className="btn btn-ghost btn-xs" style={{ padding: "3px 6px" }}><Icon name="dots" size={12} /></button>
                 </div>
               </div>
@@ -420,7 +420,7 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
           <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
             <button className="btn btn-primary btn-sm"><Icon name="eye" size={12} />Impersonate</button>
             <button className="btn btn-secondary btn-sm"><Icon name="mail" size={12} />Message</button>
-            <button className="btn btn-secondary btn-sm"><Icon name="invoice" size={12} />Send invoice</button>
+            <UnavailableControl className="btn btn-secondary btn-sm"><Icon name="invoice" size={12} />Send invoice</UnavailableControl>
             <div style={{ flex: 1 }} />
             <button className="btn btn-danger btn-sm" onClick={() => setConfirm("block")}>Block</button>
           </div>
@@ -519,7 +519,7 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
                         <td style={{ color: "var(--text-2)" }}>{inv.date}</td>
                         <td style={{ textAlign: "right", color: "var(--text-0)" }}>${inv.amount.toLocaleString()}</td>
                         <td><StatusBadge status={inv.status} /></td>
-                        <td><button className="btn btn-ghost btn-xs" onClick={() => toast("Downloading PDF", "success")}><Icon name="download" size={11} /></button></td>
+                        <td><UnavailableControl className="btn btn-ghost btn-xs" reason="Download not available yet"><Icon name="download" size={11} /></UnavailableControl></td>
                       </tr>
                     ))}
                   </tbody>
@@ -528,13 +528,14 @@ const ClientDrawer = ({ client, onClose, onConfigureAgent }) => {
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Manual adjustment</div>
-                <div className="panel-flat" style={{ padding: 12 }}>
+                <div className="panel-flat" style={{ padding: 12, opacity: 0.6 }} aria-disabled="true" data-unavailable="true">
+                  <DataState kind="pending" compact title="Not available yet" description="Credits and charges will be applied through the billing API." style={{ marginBottom: 10 }} />
                   <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                    <select className="input" style={{ width: 110 }}><option>Add credit</option><option>Charge</option></select>
-                    <input className="input mono" placeholder="$0.00" style={{ width: 110 }} />
-                    <input className="input" placeholder="Reason" />
+                    <select className="input" style={{ width: 110 }} disabled><option>Add credit</option><option>Charge</option></select>
+                    <input className="input mono" placeholder="$0.00" style={{ width: 110 }} disabled />
+                    <input className="input" placeholder="Reason" disabled />
                   </div>
-                  <button className="btn btn-primary btn-sm" style={{ width: "100%" }}>Apply adjustment</button>
+                  <UnavailableControl className="btn btn-primary btn-sm" style={{ width: "100%" }}>Apply adjustment</UnavailableControl>
                 </div>
               </div>
             </div>

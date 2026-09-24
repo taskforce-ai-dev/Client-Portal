@@ -39,7 +39,7 @@ const PaymentsPage = () => {
           <input className="input mono" placeholder="Min $" style={{ width: 90 }} />
           <input className="input mono" placeholder="Max $" style={{ width: 90 }} />
           <div style={{ flex: 1 }} />
-          <button className="btn btn-secondary btn-sm" onClick={() => toast("CSV export queued", "success")}><Icon name="download" size={12} />Export</button>
+          <UnavailableControl className="btn btn-secondary btn-sm"><Icon name="download" size={12} />Export</UnavailableControl>
         </div>
 
         <div style={{ maxHeight: 540, overflowY: "auto" }}>
@@ -71,11 +71,11 @@ const PaymentsPage = () => {
                   <td><StatusBadge status={p.status} /></td>
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>
-                      {p.status === "Failed" && <button className="btn btn-amber btn-xs" onClick={() => toast("Retry queued", "warn")}>Retry</button>}
-                      {p.status === "Overdue" && <button className="btn btn-amber btn-xs" onClick={() => toast("Reminder sent", "warn")}>Remind</button>}
-                      {(p.status === "Pending" || p.status === "Overdue") && <button className="btn btn-secondary btn-xs">Mark paid</button>}
-                      {p.status === "Paid" && <button className="btn btn-secondary btn-xs">Refund</button>}
-                      <button className="btn btn-ghost btn-xs"><Icon name="invoice" size={11} />View</button>
+                      {p.status === "Failed" && <UnavailableControl className="btn btn-amber btn-xs" showReason={false}>Retry</UnavailableControl>}
+                      {p.status === "Overdue" && <UnavailableControl className="btn btn-amber btn-xs" showReason={false}>Remind</UnavailableControl>}
+                      {(p.status === "Pending" || p.status === "Overdue") && <UnavailableControl className="btn btn-secondary btn-xs" showReason={false}>Mark paid</UnavailableControl>}
+                      {p.status === "Paid" && <UnavailableControl className="btn btn-secondary btn-xs" showReason={false}>Refund</UnavailableControl>}
+                      <UnavailableControl className="btn btn-ghost btn-xs"><Icon name="invoice" size={11} />View</UnavailableControl>
                     </div>
                   </td>
                 </tr>
@@ -93,9 +93,9 @@ const PaymentsPage = () => {
           subtitle={`${OVERDUE.length} accounts requiring follow-up`}
           action={
             <div style={{ display: "flex", gap: 6 }}>
-              <button className="btn btn-amber btn-sm" onClick={() => toast(`Reminders sent to ${OVERDUE.length} accounts`, "warn")}>
+              <UnavailableControl className="btn btn-amber btn-sm">
                 <Icon name="bell" size={12} />Remind all overdue
-              </button>
+              </UnavailableControl>
               <button className="btn btn-ghost btn-sm" onClick={() => setOverdueOpen(!overdueOpen)}>
                 <Icon name="chevron" size={12} style={{ transform: overdueOpen ? "rotate(90deg)" : "none" }} />
               </button>
@@ -130,9 +130,9 @@ const PaymentsPage = () => {
                   <td style={{ color: "var(--text-2)" }}>{o.lastContact}</td>
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button className="btn btn-amber btn-xs" onClick={() => toast("Reminder sent", "warn")}>Remind</button>
-                      <button className="btn btn-danger btn-xs">Block access</button>
-                      <button className="btn btn-secondary btn-xs">Write off</button>
+                      <UnavailableControl className="btn btn-amber btn-xs" showReason={false}>Remind</UnavailableControl>
+                      <UnavailableControl className="btn btn-danger btn-xs" showReason={false}>Block access</UnavailableControl>
+                      <UnavailableControl className="btn btn-secondary btn-xs">Write off</UnavailableControl>
                     </div>
                   </td>
                 </tr>
@@ -171,7 +171,7 @@ const EarningsPage = () => {
           </>
         )}
         <div style={{ flex: 1 }} />
-        <button className="btn btn-secondary btn-sm"><Icon name="download" size={12} />Export report</button>
+        <UnavailableControl className="btn btn-secondary btn-sm"><Icon name="download" size={12} />Export report</UnavailableControl>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
